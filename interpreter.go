@@ -44,7 +44,6 @@ func (intp *Interpreter) ExecuteString(code string) error {
 
 func (intp *Interpreter) Execute(r io.Reader) error {
 	s := newScanner(r)
-scanLoop:
 	for {
 		o, err := s.scanToken()
 		if err == io.EOF {
@@ -52,58 +51,77 @@ scanLoop:
 		} else if err != nil {
 			return err
 		}
-
-		switch o.Kind() {
-		case KindOperator:
-			op := o.(Operator)
-			switch op {
-			case "{":
-				intp.scanOnly = true
-				fallthrough
-			case "[", "<<":
-				intp.Stack = append(intp.Stack, theMark)
-				continue scanLoop
-			case "}":
-				intp.scanOnly = false
-				fallthrough
-			case "]":
-				n := len(intp.Stack)
-				for i := n - 1; i >= 0; i-- {
-					if intp.Stack[i] == theMark {
-						size := n - i - 1
-						a := make(Array, size)
-						copy(a, intp.Stack[i+1:])
-						intp.Stack = append(intp.Stack[:i], a)
-						continue scanLoop
-					}
-				}
-				return errors.New("unmatched '" + string(op) + "'")
-			}
-
-			if intp.scanOnly {
-				intp.Stack = append(intp.Stack, o)
-				continue scanLoop
-			}
-
-			for j := len(intp.DictStack) - 1; j >= 0; j-- {
-				d := intp.DictStack[j]
-				if o, ok := d[Name(op)]; ok {
-					switch o.Kind() {
-					case KindBuiltIn:
-						if err := o.(builtin)(intp); err != nil {
-							return err
-						}
-					default:
-						intp.Stack = append(intp.Stack, o)
-					}
-					continue scanLoop
-				}
-			}
-			return errors.New("unknown operator '" + string(o.(Operator)) + "'")
-
-		default:
-			intp.Stack = append(intp.Stack, o)
+		err = intp.executeOne(o)
+		if err != nil {
+			return err
 		}
 	}
 	return nil
 }
+
+func (intp *Interpreter) executeArray(a Array) error {
+	for _, o := range a {
+		err := intp.executeOne(o)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (intp *Interpreter) executeOne(o Object) error {
+	switch o.Kind() {
+	case KindOperator:
+		op := o.(Operator)
+		switch op {
+		case "{":
+			intp.scanOnly = true
+			fallthrough
+		case "[", "<<":
+			intp.Stack = append(intp.Stack, theMark)
+			return nil
+		case "}":
+			intp.scanOnly = false
+			fallthrough
+		case "]":
+			n := len(intp.Stack)
+			for i := n - 1; i >= 0; i-- {
+				if intp.Stack[i] == theMark {
+					size := n - i - 1
+					a := make(Array, size)
+					copy(a, intp.Stack[i+1:])
+					intp.Stack = append(intp.Stack[:i], a)
+					return nil
+				}
+			}
+			return errors.New("unmatched '" + string(op) + "'")
+		}
+
+		if intp.scanOnly {
+			intp.Stack = append(intp.Stack, o)
+			return nil
+		}
+
+		for j := len(intp.DictStack) - 1; j >= 0; j-- {
+			d := intp.DictStack[j]
+			if o, ok := d[Name(op)]; ok {
+				switch o.Kind() {
+				case KindBuiltIn:
+					if err := o.(builtin)(intp); err != nil {
+						return err
+					}
+				default:
+					intp.Stack = append(intp.Stack, o)
+				}
+				return nil
+			}
+		}
+		return errors.New("unknown operator '" + string(o.(Operator)) + "'")
+
+	default:
+		intp.Stack = append(intp.Stack, o)
+	}
+	return nil
+}
+
+var errExit = errors.New("exit")

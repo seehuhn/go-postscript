@@ -16,7 +16,10 @@
 
 package postscript
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 var systemDict = Dict{
 	"array": builtin(func(intp *Interpreter) error {
@@ -91,7 +94,108 @@ var systemDict = Dict{
 		intp.DictStack = intp.DictStack[:len(intp.DictStack)-1]
 		return nil
 	}),
+	"exch": builtin(func(intp *Interpreter) error {
+		if len(intp.Stack) < 2 {
+			return errors.New("exch: stack underflow")
+		}
+		intp.Stack[len(intp.Stack)-1], intp.Stack[len(intp.Stack)-2] = intp.Stack[len(intp.Stack)-2], intp.Stack[len(intp.Stack)-1]
+		return nil
+	}),
 	"false": Boolean(false),
+	"for": builtin(func(intp *Interpreter) error {
+		if len(intp.Stack) < 4 {
+			return errors.New("for: stack underflow")
+		}
+		// TODO(voss): the spec also allows Real values here
+		initial, ok := intp.Stack[len(intp.Stack)-4].(Integer)
+		if !ok {
+			return errors.New("for: invalid initial argument")
+		}
+		increment, ok := intp.Stack[len(intp.Stack)-3].(Integer)
+		if !ok {
+			return errors.New("for: invalid increment argument")
+		}
+		limit, ok := intp.Stack[len(intp.Stack)-2].(Integer)
+		if !ok {
+			return errors.New("for: invalid limit argument")
+		}
+		proc, ok := intp.Stack[len(intp.Stack)-1].(Array)
+		if !ok {
+			return fmt.Errorf("for: invalid proc argument %T", intp.Stack[len(intp.Stack)-1])
+		}
+		intp.Stack = intp.Stack[:len(intp.Stack)-4]
+		val := initial
+		for {
+			if increment > 0 && val > limit || increment < 0 && val < limit {
+				break
+			}
+			intp.Stack = append(intp.Stack, val)
+			err := intp.executeArray(proc)
+			if err == errExit {
+				break
+			} else if err != nil {
+				return err
+			}
+		}
+		return nil
+	}),
+	"index": builtin(func(intp *Interpreter) error {
+		if len(intp.Stack) < 2 {
+			return errors.New("index: stack underflow")
+		}
+		index, ok := intp.Stack[len(intp.Stack)-1].(Integer)
+		if !ok {
+			return errors.New("index: invalid argument")
+		}
+		intp.Stack = intp.Stack[:len(intp.Stack)-1]
+		if index < 0 || index >= Integer(len(intp.Stack)) {
+			return errors.New("index: invalid argument")
+		}
+		intp.Stack = append(intp.Stack, intp.Stack[len(intp.Stack)-int(index)-1])
+		return nil
+	}),
+	"put": builtin(func(intp *Interpreter) error {
+		fmt.Println("put", intp.Stack)
+		if len(intp.Stack) < 3 {
+			return errors.New("put: stack underflow")
+		}
+		obj := intp.Stack[len(intp.Stack)-3]
+		sel := intp.Stack[len(intp.Stack)-2]
+		value := intp.Stack[len(intp.Stack)-1]
+		switch obj := obj.(type) {
+		case Array:
+			index, ok := sel.(Integer)
+			if !ok {
+				return errors.New("put: invalid index for Array")
+			}
+			if index < 0 || index >= Integer(len(obj)) {
+				return errors.New("put: index out of range for Array")
+			}
+			obj[index] = value
+		case Dict:
+			key, ok := sel.(Name)
+			if !ok {
+				return errors.New("put: invalid key for Dict")
+			}
+			obj[key] = value
+		case String:
+			index, ok := sel.(Integer)
+			if !ok {
+				return errors.New("put: invalid index for String")
+			}
+			if index < 0 || index >= Integer(len(obj)) {
+				return errors.New("put: index out of range for String")
+			}
+			c, ok := value.(Integer)
+			if !ok {
+				return errors.New("put: invalid value for String")
+			}
+			obj[index] = byte(c)
+		default:
+			return fmt.Errorf("put: invalid argument %T", obj)
+		}
+		return nil
+	}),
 	"readonly": builtin(func(intp *Interpreter) error {
 		// not implemented
 		return nil
