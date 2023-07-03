@@ -95,7 +95,9 @@ func (s *scanner) scanToken() (Object, error) {
 		if isRegular(b) {
 			for {
 				b, err := s.peek()
-				if err != nil {
+				if err == io.EOF {
+					break
+				} else if err != nil {
 					return nil, err
 				}
 				if !isRegular(b) {

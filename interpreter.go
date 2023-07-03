@@ -59,20 +59,10 @@ func (intp *Interpreter) Execute(r io.Reader) error {
 	return nil
 }
 
-func (intp *Interpreter) executeArray(a Array) error {
-	for _, o := range a {
-		err := intp.executeOne(o)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func (intp *Interpreter) executeOne(o Object) error {
-	switch o.Kind() {
-	case KindOperator:
-		op := o.(Operator)
+	switch o := o.(type) {
+	case Operator:
+		op := o
 		switch op {
 		case "{":
 			intp.scanOnly = true
@@ -82,7 +72,17 @@ func (intp *Interpreter) executeOne(o Object) error {
 			return nil
 		case "}":
 			intp.scanOnly = false
-			fallthrough
+			n := len(intp.Stack)
+			for i := n - 1; i >= 0; i-- {
+				if intp.Stack[i] == theMark {
+					size := n - i - 1
+					a := make(Procedure, size)
+					copy(a, intp.Stack[i+1:])
+					intp.Stack = append(intp.Stack[:i], a)
+					return nil
+				}
+			}
+			return errors.New("unmatched '}'")
 		case "]":
 			n := len(intp.Stack)
 			for i := n - 1; i >= 0; i-- {
@@ -94,7 +94,7 @@ func (intp *Interpreter) executeOne(o Object) error {
 					return nil
 				}
 			}
-			return errors.New("unmatched '" + string(op) + "'")
+			return errors.New("unmatched ']'")
 		}
 
 		if intp.scanOnly {
@@ -105,18 +105,21 @@ func (intp *Interpreter) executeOne(o Object) error {
 		for j := len(intp.DictStack) - 1; j >= 0; j-- {
 			d := intp.DictStack[j]
 			if o, ok := d[Name(op)]; ok {
-				switch o.Kind() {
-				case KindBuiltIn:
-					if err := o.(builtin)(intp); err != nil {
-						return err
-					}
-				default:
-					intp.Stack = append(intp.Stack, o)
-				}
-				return nil
+				return intp.executeOne(o)
 			}
 		}
-		return errors.New("unknown operator '" + string(o.(Operator)) + "'")
+		return errors.New("unknown operator '" + string(o) + "'")
+
+	case builtin:
+		return o(intp)
+
+	case Procedure:
+		for _, token := range o {
+			err := intp.executeOne(token)
+			if err != nil {
+				return err
+			}
+		}
 
 	default:
 		intp.Stack = append(intp.Stack, o)

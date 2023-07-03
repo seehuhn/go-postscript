@@ -16,86 +16,28 @@
 
 package postscript
 
-type ObjectKind int
-
-const (
-	KindInteger ObjectKind = iota
-	KindReal
-	KindBoolean
-	KindString
-	KindName
-	KindOperator
-
-	KindArray
-	KindDict
-
-	KindMark
-
-	KindBuiltIn
-)
-
-type Object interface {
-	Kind() ObjectKind
-}
+type Object interface{}
 
 type Integer int
 
-func (i Integer) Kind() ObjectKind {
-	return KindInteger
-}
-
 type Real float64
-
-func (r Real) Kind() ObjectKind {
-	return KindReal
-}
 
 type Boolean bool
 
-func (b Boolean) Kind() ObjectKind {
-	return KindBoolean
-}
-
 type String []byte
-
-func (s String) Kind() ObjectKind {
-	return KindString
-}
 
 type Name string
 
-func (n Name) Kind() ObjectKind {
-	return KindName
-}
-
 type Operator string
-
-func (o Operator) Kind() ObjectKind {
-	return KindOperator
-}
 
 type Array []Object
 
-func (a Array) Kind() ObjectKind {
-	return KindArray
-}
+type Procedure []Object
 
 type Dict map[Name]Object
 
-func (d Dict) Kind() ObjectKind {
-	return KindDict
-}
-
 type mark struct{}
-
-func (m mark) Kind() ObjectKind {
-	return KindMark
-}
 
 var theMark Object = mark{}
 
 type builtin func(*Interpreter) error
-
-func (b builtin) Kind() ObjectKind {
-	return KindBuiltIn
-}
