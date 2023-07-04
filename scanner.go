@@ -146,7 +146,6 @@ func parseNumber(s []byte) (Object, error) {
 		if err == nil && base >= 2 && base <= 36 {
 			z, err := strconv.ParseInt(string(mm[2]), int(base), 0)
 			if err == nil {
-				fmt.Println("Q", string(mm[1]), string(mm[2]), z, 0x1000)
 				return Integer(z), nil
 			}
 		}

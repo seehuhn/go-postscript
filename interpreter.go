@@ -18,6 +18,7 @@ package postscript
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 )
@@ -25,6 +26,7 @@ import (
 type Interpreter struct {
 	Stack     []Object
 	DictStack []Dict
+	Fonts     map[Name]Dict
 
 	scanners []*scanner
 	scanOnly int
@@ -36,6 +38,7 @@ func NewInterpreter() *Interpreter {
 			systemDict,
 			make(Dict), // userdict
 		},
+		Fonts: make(map[Name]Dict),
 	}
 }
 
@@ -61,6 +64,7 @@ func (intp *Interpreter) executeScanner(s *scanner) error {
 		} else if err != nil {
 			return err
 		}
+		// fmt.Println("D", intp.stackString(), "|", o)
 		err = intp.executeOne(o)
 		if err != nil {
 			return err
@@ -135,6 +139,27 @@ func (intp *Interpreter) executeOne(o Object) error {
 		intp.Stack = append(intp.Stack, o)
 	}
 	return nil
+}
+
+func (intp *Interpreter) stackString() string {
+	var ss []string
+	for _, o := range intp.Stack {
+		switch o := o.(type) {
+		case Name:
+			ss = append(ss, "/"+string(o))
+		case Integer:
+			ss = append(ss, fmt.Sprint(o))
+		case Real:
+			ss = append(ss, fmt.Sprint(o))
+		case Dict:
+			ss = append(ss, fmt.Sprintf("<Dict %d>", len(o)))
+		case nil:
+			ss = append(ss, "nil")
+		default:
+			ss = append(ss, fmt.Sprintf("<%T>", o))
+		}
+	}
+	return strings.Join(ss, " ")
 }
 
 var errExit = errors.New("exit")

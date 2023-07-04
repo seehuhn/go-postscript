@@ -16,6 +16,8 @@
 
 package postscript
 
+import "fmt"
+
 type Object interface{}
 
 type Integer int
@@ -26,7 +28,15 @@ type Boolean bool
 
 type String []byte
 
+func (s String) String() string {
+	return fmt.Sprintf("%q", string(s))
+}
+
 type Name string
+
+func (n Name) String() string {
+	return "/" + string(n)
+}
 
 type Operator string
 

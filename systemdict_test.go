@@ -170,6 +170,8 @@ func TestCmdDup(t *testing.T) {
 	}
 }
 
+// TODO(voss): test "eexec"
+
 func TestCmdEnd(t *testing.T) {
 	intp := NewInterpreter()
 	intp.DictStack = append(intp.DictStack, Dict{})
@@ -241,16 +243,42 @@ func TestCmdFor2(t *testing.T) {
 	}
 }
 
+func TestCmdIfElse(t *testing.T) {
+	intp := NewInterpreter()
+	err := intp.ExecuteString("true {1} {2} ifelse")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(intp.Stack) != 1 {
+		t.Fatalf("len(intp.Stack): %d != 1", len(intp.Stack))
+	}
+	if intp.Stack[0] != Integer(1) {
+		t.Fatalf("intp.Stack[0]: %v != 1", intp.Stack[0])
+	}
+	intp.Stack = intp.Stack[:0]
+
+	err = intp.ExecuteString("false {1} {2} ifelse")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(intp.Stack) != 1 {
+		t.Fatalf("len(intp.Stack): %d != 1", len(intp.Stack))
+	}
+	if intp.Stack[0] != Integer(2) {
+		t.Fatalf("intp.Stack[0]: %v != 1", intp.Stack[0])
+	}
+}
+
 func TestCmdIndex(t *testing.T) {
 	intp := NewInterpreter()
-	err := intp.ExecuteString("(a) (b) (c) (d) 0 index")
+	err := intp.ExecuteString("(a) (b) (c) (d) 1 index")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(intp.Stack) != 5 {
 		t.Fatalf("len(intp.Stack): %d != 5", len(intp.Stack))
 	}
-	if d := cmp.Diff(intp.Stack, []Object{String("a"), String("b"), String("c"), String("d"), String("d")}); d != "" {
+	if d := cmp.Diff(intp.Stack, []Object{String("a"), String("b"), String("c"), String("d"), String("c")}); d != "" {
 		t.Fatal(d)
 	}
 }
@@ -269,6 +297,17 @@ func TestCmdIndex2(t *testing.T) {
 	}
 }
 
+func TestCmdPop(t *testing.T) {
+	intp := NewInterpreter()
+	err := intp.ExecuteString("1 2 3 pop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := cmp.Diff(intp.Stack, []Object{Integer(1), Integer(2)}); d != "" {
+		t.Fatal(d)
+	}
+}
+
 func TestCmdPut(t *testing.T) {
 	intp := NewInterpreter()
 	err := intp.ExecuteString("/ar [5 17 3 8] def ar 2 (abcd) put ar")
@@ -280,6 +319,47 @@ func TestCmdPut(t *testing.T) {
 	}
 	ar := intp.Stack[0].(Array)
 	if d := cmp.Diff(ar, Array{Integer(5), Integer(17), String("abcd"), Integer(8)}); d != "" {
+		t.Fatal(d)
+	}
+}
+
+func TestCmdPut2(t *testing.T) {
+	intp := NewInterpreter()
+	err := intp.ExecuteString("/d 5 dict def d /abc 123 put d")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(intp.Stack) != 1 {
+		t.Fatalf("len(intp.Stack): %d != 1", len(intp.Stack))
+	}
+	d := intp.Stack[0].(Dict)
+	if d := cmp.Diff(d, Dict{"abc": Integer(123)}); d != "" {
+		t.Fatal(d)
+	}
+}
+
+func TestCmdPut3(t *testing.T) {
+	intp := NewInterpreter()
+	err := intp.ExecuteString("/st (abc) def st 0 65 put st")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(intp.Stack) != 1 {
+		t.Fatalf("len(intp.Stack): %d != 1", len(intp.Stack))
+	}
+	st := intp.Stack[0].(String)
+	if d := cmp.Diff(st, String("Abc")); d != "" {
+		t.Fatal(d)
+	}
+}
+
+func TestReadstring(t *testing.T) {
+	intp := NewInterpreter()
+	err := intp.ExecuteString("currentfile 3 string readstring A B")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := cmp.Diff(intp.Stack, []Object{String("A B"), Boolean(true)}); d != "" {
 		t.Fatal(d)
 	}
 }

@@ -19,8 +19,30 @@ package postscript
 import (
 	"fmt"
 	"io"
-	"os"
 )
+
+func eexec(intp *Interpreter) error {
+	k := len(intp.DictStack)
+	if len(intp.Stack) < 1 {
+		return fmt.Errorf("stack underflow")
+	}
+	if intp.Stack[len(intp.Stack)-1] != nil {
+		return fmt.Errorf("invalid argument")
+	}
+	intp.Stack = intp.Stack[:len(intp.Stack)-1]
+
+	intp.DictStack = append(intp.DictStack, systemDict)
+	r, err := eexecDecode(intp.scanners[len(intp.scanners)-1])
+	if err != nil {
+		return err
+	}
+	err = intp.Execute(r)
+	if err != nil && err != io.EOF {
+		return err
+	}
+	intp.DictStack = intp.DictStack[:k]
+	return nil
+}
 
 func eexecDecode(s *scanner) (io.Reader, error) {
 	for {
@@ -73,7 +95,7 @@ func (r *eexecReader) Read(p []byte) (int, error) {
 	}
 	for i := range p {
 		b, err := r.nextPlain()
-		os.Stdout.Write([]byte{b})
+		// os.Stdout.Write([]byte{b})
 		if err != nil {
 			return i, err
 		}

@@ -17,7 +17,6 @@
 package postscript
 
 import (
-	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -177,7 +176,7 @@ func TestLineCol(t *testing.T) {
 		} else if err != nil {
 			t.Fatal(err)
 		}
-		fmt.Printf("%d %d %q\n", s.line, s.col, b)
+		// fmt.Printf("%d %d %q\n", s.line, s.col, b)
 		switch b {
 		case '1':
 			if s.col != 1 {
