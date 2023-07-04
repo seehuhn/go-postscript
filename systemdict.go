@@ -19,6 +19,7 @@ package postscript
 import (
 	"errors"
 	"fmt"
+	"io"
 )
 
 var systemDict = Dict{
@@ -87,6 +88,10 @@ var systemDict = Dict{
 		intp.Stack = append(intp.Stack, intp.DictStack[len(intp.DictStack)-1])
 		return nil
 	}),
+	"currentfile": builtin(func(intp *Interpreter) error {
+		intp.Stack = append(intp.Stack, nil)
+		return nil
+	}),
 	"def": builtin(func(intp *Interpreter) error {
 		if len(intp.Stack) < 2 {
 			return errors.New("def: stack underflow")
@@ -121,6 +126,13 @@ var systemDict = Dict{
 		intp.Stack = append(intp.Stack, intp.Stack[len(intp.Stack)-1])
 		return nil
 	}),
+	"eexec": builtin(func(intp *Interpreter) error {
+		r, err := eexecDecode(intp.scanners[len(intp.scanners)-1])
+		if err != nil {
+			return err
+		}
+		return intp.Execute(r)
+	}),
 	"end": builtin(func(intp *Interpreter) error {
 		if len(intp.DictStack) <= 2 {
 			return errors.New("end: dict stack underflow")
@@ -133,6 +145,10 @@ var systemDict = Dict{
 			return errors.New("exch: stack underflow")
 		}
 		intp.Stack[len(intp.Stack)-1], intp.Stack[len(intp.Stack)-2] = intp.Stack[len(intp.Stack)-2], intp.Stack[len(intp.Stack)-1]
+		return nil
+	}),
+	"executeonly": builtin(func(intp *Interpreter) error {
+		// not implemented
 		return nil
 	}),
 	"false": Boolean(false),
@@ -171,6 +187,24 @@ var systemDict = Dict{
 		}
 		return nil
 	}),
+	"ifelse": builtin(func(intp *Interpreter) error {
+		fmt.Println("ifelse", intp.Stack)
+		if len(intp.Stack) < 3 {
+			return errors.New("ifelse: stack underflow")
+		}
+		cond, ok := intp.Stack[len(intp.Stack)-3].(Boolean)
+		if !ok {
+			return errors.New("ifelse: invalid condition")
+		}
+		proc1 := intp.Stack[len(intp.Stack)-2]
+		proc2 := intp.Stack[len(intp.Stack)-1]
+		intp.Stack = intp.Stack[:len(intp.Stack)-3]
+		if cond {
+			return intp.executeOne(proc1)
+		} else {
+			return intp.executeOne(proc2)
+		}
+	}),
 	"index": builtin(func(intp *Interpreter) error {
 		if len(intp.Stack) < 2 {
 			return errors.New("index: stack underflow")
@@ -184,6 +218,17 @@ var systemDict = Dict{
 			return errors.New("index: invalid argument")
 		}
 		intp.Stack = append(intp.Stack, intp.Stack[len(intp.Stack)-int(index)-1])
+		return nil
+	}),
+	"noaccess": builtin(func(intp *Interpreter) error {
+		// not implemented
+		return nil
+	}),
+	"pop": builtin(func(intp *Interpreter) error {
+		if len(intp.Stack) < 1 {
+			return errors.New("pop: stack underflow")
+		}
+		intp.Stack = intp.Stack[:len(intp.Stack)-1]
 		return nil
 	}),
 	"put": builtin(func(intp *Interpreter) error {
@@ -232,8 +277,41 @@ var systemDict = Dict{
 		// not implemented
 		return nil
 	}),
+	"readstring": builtin(func(intp *Interpreter) error {
+		if len(intp.Stack) < 2 {
+			return errors.New("readstring: stack underflow")
+		}
+		buf, ok := intp.Stack[len(intp.Stack)-1].(String)
+		if !ok {
+			return errors.New("readstring: invalid argument")
+		}
+		intp.Stack = intp.Stack[:len(intp.Stack)-2]
+		s := intp.scanners[len(intp.scanners)-1]
+		n, err := s.Read(buf)
+		if err != nil && err != io.EOF {
+			return err
+		}
+		intp.Stack = append(intp.Stack, buf[:n])
+		intp.Stack = append(intp.Stack, Boolean(n == len(buf)))
+		return nil
+	}),
 	"StandardEncoding": StandardEncoding,
-	"true":             Boolean(true),
+	"string": builtin(func(intp *Interpreter) error {
+		if len(intp.Stack) < 1 {
+			return errors.New("string: stack underflow")
+		}
+		size, ok := intp.Stack[len(intp.Stack)-1].(Integer)
+		if !ok {
+			return errors.New("string: invalid argument")
+		}
+		intp.Stack = intp.Stack[:len(intp.Stack)-1]
+		if size < 0 || size > 1<<16 {
+			return errors.New("string: invalid size")
+		}
+		intp.Stack = append(intp.Stack, make(String, size))
+		return nil
+	}),
+	"true": Boolean(true),
 }
 
 var StandardEncoding = Array{

@@ -46,6 +46,17 @@ func newScanner(r io.Reader) *scanner {
 	}
 }
 
+func (s *scanner) Read(p []byte) (int, error) {
+	for n := range p {
+		b, err := s.next()
+		if err != nil {
+			return n, err
+		}
+		p[n] = b
+	}
+	return len(p), nil
+}
+
 func (s *scanner) scanToken() (Object, error) {
 	err := s.skipWhiteSpace()
 	if err != nil {

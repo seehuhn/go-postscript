@@ -17,6 +17,7 @@
 package postscript
 
 import (
+	"os"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -33,5 +34,19 @@ func TestArray(t *testing.T) {
 	}
 	if d := cmp.Diff(intp.Stack[0], Array{Integer(1), Integer(2), Integer(3)}); d != "" {
 		t.Fatal(d)
+	}
+}
+
+func TestXXX(t *testing.T) {
+	intp := NewInterpreter()
+
+	fd, err := os.Open("../type1/cour.pfa")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fd.Close()
+	err = intp.Execute(fd)
+	if err != nil {
+		t.Fatal(err)
 	}
 }

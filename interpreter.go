@@ -26,7 +26,8 @@ type Interpreter struct {
 	Stack     []Object
 	DictStack []Dict
 
-	scanOnly bool
+	scanners []*scanner
+	scanOnly int
 }
 
 func NewInterpreter() *Interpreter {
@@ -44,6 +45,15 @@ func (intp *Interpreter) ExecuteString(code string) error {
 
 func (intp *Interpreter) Execute(r io.Reader) error {
 	s := newScanner(r)
+	return intp.executeScanner(s)
+}
+
+func (intp *Interpreter) executeScanner(s *scanner) error {
+	intp.scanners = append(intp.scanners, s)
+	defer func() {
+		intp.scanners = intp.scanners[:len(intp.scanners)-1]
+	}()
+
 	for {
 		o, err := s.scanToken()
 		if err == io.EOF {
@@ -65,13 +75,13 @@ func (intp *Interpreter) executeOne(o Object) error {
 		op := o
 		switch op {
 		case "{":
-			intp.scanOnly = true
+			intp.scanOnly++
 			fallthrough
 		case "[", "<<":
 			intp.Stack = append(intp.Stack, theMark)
 			return nil
 		case "}":
-			intp.scanOnly = false
+			intp.scanOnly--
 			n := len(intp.Stack)
 			for i := n - 1; i >= 0; i-- {
 				if intp.Stack[i] == theMark {
@@ -97,7 +107,7 @@ func (intp *Interpreter) executeOne(o Object) error {
 			return errors.New("unmatched ']'")
 		}
 
-		if intp.scanOnly {
+		if intp.scanOnly > 0 {
 			intp.Stack = append(intp.Stack, o)
 			return nil
 		}
