@@ -16,7 +16,10 @@
 
 package postscript
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 type Object interface{}
 
@@ -43,6 +46,19 @@ type Operator string
 type Array []Object
 
 type Procedure []Object
+
+func (p Procedure) String() string {
+	var ss []string
+	ss = append(ss, "{")
+	for i, o := range p {
+		if i > 0 {
+			ss = append(ss, " ")
+		}
+		ss = append(ss, fmt.Sprint(o))
+	}
+	ss = append(ss, "}")
+	return strings.Join(ss, "")
+}
 
 type Dict map[Name]Object
 
