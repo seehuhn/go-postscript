@@ -442,7 +442,8 @@ func init() {
 			// not implemented
 			return nil
 		}),
-		"false": Boolean(false),
+		"false":         Boolean(false),
+		"FontDirectory": Dict{},
 		"for": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 4 {
 				return errors.New("for: stack underflow")

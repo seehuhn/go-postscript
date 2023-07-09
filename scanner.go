@@ -42,7 +42,7 @@ type scanner struct {
 func newScanner(r io.Reader) *scanner {
 	return &scanner{
 		r:   r,
-		buf: make([]byte, 512),
+		buf: make([]byte, 256),
 	}
 }
 
