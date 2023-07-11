@@ -62,6 +62,10 @@ func (p Procedure) String() string {
 
 type Dict map[Name]Object
 
+func (d Dict) String() string {
+	return fmt.Sprintf("<Dict %d>", len(d))
+}
+
 type mark struct{}
 
 var theMark Object = mark{}

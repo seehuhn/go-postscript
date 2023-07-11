@@ -28,17 +28,21 @@ type Interpreter struct {
 	DictStack []Dict
 	Fonts     map[Name]Dict
 
+	SystemDict Dict
+
 	scanners []*scanner
 	scanOnly int
 }
 
 func NewInterpreter() *Interpreter {
+	systemDict := makeSystemDict()
 	return &Interpreter{
 		DictStack: []Dict{
 			systemDict,
-			make(Dict), // userdict
+			systemDict["userdict"].(Dict),
 		},
-		Fonts: make(map[Name]Dict),
+		Fonts:      make(map[Name]Dict),
+		SystemDict: systemDict,
 	}
 }
 
@@ -64,7 +68,6 @@ func (intp *Interpreter) executeScanner(s *scanner) error {
 		} else if err != nil {
 			return err
 		}
-		// fmt.Println("D", intp.stackString(), "|", o)
 		err = intp.executeOne(o)
 		if err != nil {
 			return err
@@ -74,6 +77,7 @@ func (intp *Interpreter) executeScanner(s *scanner) error {
 }
 
 func (intp *Interpreter) executeOne(o Object) error {
+	fmt.Println("D", intp.stackString(), "|", o)
 	switch o := o.(type) {
 	case Operator:
 		op := o
@@ -116,13 +120,22 @@ func (intp *Interpreter) executeOne(o Object) error {
 			return nil
 		}
 
+		err := errors.New("unknown operator '" + string(o) + "'")
 		for j := len(intp.DictStack) - 1; j >= 0; j-- {
 			d := intp.DictStack[j]
 			if o, ok := d[Name(op)]; ok {
-				return intp.executeOne(o)
+				err = intp.executeOne(o)
+				break
 			}
 		}
-		return errors.New("unknown operator '" + string(o) + "'")
+		if e2, ok := err.(*postScriptError); ok {
+			errordict := intp.SystemDict["errordict"].(Dict)
+			proc, ok := errordict[e2.tp]
+			if ok {
+				err = intp.executeOne(proc)
+			}
+		}
+		return err
 
 	case builtin:
 		return o(intp)

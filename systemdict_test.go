@@ -170,8 +170,6 @@ func TestCmdDup(t *testing.T) {
 	}
 }
 
-// TODO(voss): test "eexec"
-
 func TestCmdEnd(t *testing.T) {
 	intp := NewInterpreter()
 	intp.DictStack = append(intp.DictStack, Dict{})
@@ -184,6 +182,24 @@ func TestCmdEnd(t *testing.T) {
 	}
 	if len(intp.DictStack) != 2 {
 		t.Fatalf("len(intp.DictStack): %d != 2", len(intp.DictStack))
+	}
+}
+
+func TestCmdEq(t *testing.T) {
+	intp := NewInterpreter()
+	err := intp.ExecuteString(`
+		1 2 eq
+		4.0 4 eq
+		(abc) (abc) eq
+		(abc) /abc eq
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	T := Boolean(true)
+	F := Boolean(false)
+	if d := cmp.Diff(intp.Stack, []Object{F, T, T, T}); d != "" {
+		t.Fatal(d)
 	}
 }
 

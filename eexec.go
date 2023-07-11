@@ -31,7 +31,7 @@ func eexec(intp *Interpreter) error {
 	}
 	intp.Stack = intp.Stack[:len(intp.Stack)-1]
 
-	intp.DictStack = append(intp.DictStack, systemDict)
+	intp.DictStack = append(intp.DictStack, intp.SystemDict)
 	r, err := eexecDecode(intp.scanners[len(intp.scanners)-1])
 	if err != nil {
 		return err
