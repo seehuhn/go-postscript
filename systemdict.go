@@ -85,6 +85,27 @@ func makeSystemDict() Dict {
 			intp.DictStack = append(intp.DictStack, d)
 			return nil
 		}),
+		"bind": builtin(func(intp *Interpreter) error {
+			if len(intp.Stack) < 1 {
+				return errStackunderflow
+			}
+			obj, ok := intp.Stack[len(intp.Stack)-1].(Procedure)
+			if !ok {
+				return errTypecheck
+			}
+			for i, o := range obj {
+				val, err := intp.load(o)
+				if err != nil {
+					continue
+				}
+				b, ok := val.(builtin)
+				if !ok {
+					continue
+				}
+				obj[i] = b
+			}
+			return nil
+		}),
 		"cleartomark": builtin(func(intp *Interpreter) error {
 			for k := len(intp.Stack) - 1; k >= 0; k-- {
 				if intp.Stack[k] == theMark {
@@ -114,6 +135,10 @@ func makeSystemDict() Dict {
 		}),
 		"currentfile": builtin(func(intp *Interpreter) error {
 			intp.Stack = append(intp.Stack, nil)
+			return nil
+		}),
+		"cvx": builtin(func(intp *Interpreter) error {
+			// not implemented
 			return nil
 		}),
 		"def": builtin(func(intp *Interpreter) error {
@@ -171,9 +196,13 @@ func makeSystemDict() Dict {
 				return errStackunderflow
 			}
 			obj := intp.Stack[len(intp.Stack)-1]
+			intp.Stack = intp.Stack[:len(intp.Stack)-1]
+
 			switch obj := obj.(type) {
 			case builtin:
 				return obj(intp)
+			case Procedure:
+				return intp.executeOne(obj, true)
 			default:
 				return fmt.Errorf("exec: not implemented for %T", obj)
 			}
@@ -188,37 +217,23 @@ func makeSystemDict() Dict {
 		}),
 		"eq": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 2 {
-				return errors.New("eq: stack underflow")
+				return errStackunderflow
 			}
-			normalize := func(obj Object) (Object, error) {
-				switch obj := obj.(type) {
-				case Real:
-					return float64(obj), nil
-				case Integer:
-					return float64(obj), nil
-				case String:
-					return string(obj), nil
-				case Name:
-					return string(obj), nil
-				default:
-					return nil, fmt.Errorf("eq: not implemented for %T", obj)
-				}
-			}
-			a, err := normalize(intp.Stack[len(intp.Stack)-2])
-			if err != nil {
-				return err
-			}
-			b, err := normalize(intp.Stack[len(intp.Stack)-1])
-			if err != nil {
-				return err
-			}
+			a := intp.Stack[len(intp.Stack)-2]
+			b := intp.Stack[len(intp.Stack)-1]
 			intp.Stack = intp.Stack[:len(intp.Stack)-2]
-			intp.Stack = append(intp.Stack, Boolean(a == b))
+
+			isEqual, err := equal(a, b)
+			if err != nil {
+				return err
+			}
+
+			intp.Stack = append(intp.Stack, Boolean(isEqual))
 			return nil
 		}),
 		"exch": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 2 {
-				return errors.New("exch: stack underflow")
+				return errStackunderflow
 			}
 			intp.Stack[len(intp.Stack)-1], intp.Stack[len(intp.Stack)-2] = intp.Stack[len(intp.Stack)-2], intp.Stack[len(intp.Stack)-1]
 			return nil
@@ -254,7 +269,7 @@ func makeSystemDict() Dict {
 					break
 				}
 				intp.Stack = append(intp.Stack, val)
-				err := intp.executeOne(proc)
+				err := intp.executeOne(proc, true)
 				if err == errExit {
 					break
 				} else if err != nil {
@@ -273,6 +288,15 @@ func makeSystemDict() Dict {
 			intp.Stack = intp.Stack[:len(intp.Stack)-2]
 			switch obj := obj.(type) {
 			case Array:
+				index, ok := sel.(Integer)
+				if !ok {
+					return errors.New("get: invalid index")
+				}
+				if index < 0 || index >= Integer(len(obj)) {
+					return errors.New("get: index out of bounds")
+				}
+				intp.Stack = append(intp.Stack, obj[index])
+			case Procedure:
 				index, ok := sel.(Integer)
 				if !ok {
 					return errors.New("get: invalid index")
@@ -316,7 +340,7 @@ func makeSystemDict() Dict {
 			proc := intp.Stack[len(intp.Stack)-1]
 			intp.Stack = intp.Stack[:len(intp.Stack)-2]
 			if cond {
-				return intp.executeOne(proc)
+				return intp.executeOne(proc, true)
 			}
 			return nil
 		}),
@@ -332,9 +356,9 @@ func makeSystemDict() Dict {
 			proc2 := intp.Stack[len(intp.Stack)-1]
 			intp.Stack = intp.Stack[:len(intp.Stack)-3]
 			if cond {
-				return intp.executeOne(proc1)
+				return intp.executeOne(proc1, true)
 			} else {
-				return intp.executeOne(proc2)
+				return intp.executeOne(proc2, true)
 			}
 		}),
 		"index": builtin(func(intp *Interpreter) error {
@@ -371,6 +395,27 @@ func makeSystemDict() Dict {
 		}),
 		"mark": builtin(func(intp *Interpreter) error {
 			intp.Stack = append(intp.Stack, mark{})
+			return nil
+		}),
+		"matrix": builtin(func(intp *Interpreter) error {
+			m := Array{Integer(1), Integer(0), Integer(0), Integer(1), Integer(0), Integer(0)}
+			intp.Stack = append(intp.Stack, m)
+			return nil
+		}),
+		"ne": builtin(func(intp *Interpreter) error {
+			if len(intp.Stack) < 2 {
+				return errStackunderflow
+			}
+			a := intp.Stack[len(intp.Stack)-2]
+			b := intp.Stack[len(intp.Stack)-1]
+			intp.Stack = intp.Stack[:len(intp.Stack)-2]
+
+			isEqual, err := equal(a, b)
+			if err != nil {
+				return err
+			}
+
+			intp.Stack = append(intp.Stack, Boolean(!isEqual))
 			return nil
 		}),
 		"noaccess": builtin(func(intp *Interpreter) error {
@@ -415,6 +460,15 @@ func makeSystemDict() Dict {
 				}
 				if index < 0 || index >= Integer(len(obj)) {
 					return errors.New("put: index out of range for Array")
+				}
+				obj[index] = value
+			case Procedure:
+				index, ok := sel.(Integer)
+				if !ok {
+					return errors.New("put: invalid index for Procedure")
+				}
+				if index < 0 || index >= Integer(len(obj)) {
+					return errors.New("put: index out of range for Procedure")
 				}
 				obj[index] = value
 			case Dict:
@@ -481,6 +535,44 @@ func makeSystemDict() Dict {
 			return nil
 		}),
 		"true": Boolean(true),
+		"type": builtin(func(intp *Interpreter) error {
+			if len(intp.Stack) < 1 {
+				return errStackunderflow
+			}
+			obj := intp.Stack[len(intp.Stack)-1]
+			var tp Name
+			switch obj.(type) {
+			case Array, Procedure:
+				tp = "arraytype"
+			case Boolean:
+				tp = "booleantype"
+			case Dict:
+				tp = "dicttype"
+			case nil: // TODO(voss)
+				tp = "filetype"
+			// fonttype
+			// gstatetype (LanguageLevel 2)
+			case Integer:
+				tp = "integertype"
+			case Name, Operator:
+				tp = "nametype"
+			// tp = "nulltype"
+			case builtin:
+				tp = "operatortype"
+			// tp = "packedarraytype" (LanguageLevel 2)
+			case Real:
+				tp = "realtype"
+			// tp = "savetype"
+			case String:
+				tp = "stringtype"
+			case mark:
+				tp = "marktype"
+			default:
+				return fmt.Errorf("type: not implemented for %T", obj)
+			}
+			intp.Stack = append(intp.Stack, tp)
+			return nil
+		}),
 	}
 	systemDict["systemdict"] = systemDict
 	systemDict["userdict"] = Dict{}
