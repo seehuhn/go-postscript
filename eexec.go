@@ -53,7 +53,7 @@ func eexecDecode(s *scanner) (io.Reader, error) {
 		if b != ' ' && b != '\t' && b != '\r' && b != '\n' {
 			break
 		}
-		s.skipByte()
+		s.dropByte()
 	}
 
 	bb, err := s.peekN(4)

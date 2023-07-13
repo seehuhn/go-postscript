@@ -76,7 +76,7 @@ func TestScanString(t *testing.T) {
 \n\r\t\b\f\\\D\105
 %*!&}^)`)
 	s := newScanner(r)
-	o, err := s.scanString()
+	o, err := s.readString()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestScanString(t *testing.T) {
 func TestScanString2(t *testing.T) {
 	r := strings.NewReader("()")
 	s := newScanner(r)
-	o, err := s.scanString()
+	o, err := s.readString()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +101,7 @@ func TestScanString3(t *testing.T) {
 	for _, nl := range []string{"\n", "\r", "\r\n"} {
 		r := strings.NewReader("(A\\" + nl + "B" + nl + "C)")
 		s := newScanner(r)
-		o, err := s.scanString()
+		o, err := s.readString()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -115,7 +115,7 @@ func TestScanString5(t *testing.T) {
 	exp := string([]byte{1, 2, 3, 0, '4', 0o377})
 	r := strings.NewReader(`(\1\02\003\0004\777)`)
 	s := newScanner(r)
-	o, err := s.scanString()
+	o, err := s.readString()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +129,7 @@ func TestScanHexString(t *testing.T) {
 	out := String([]byte{0x90, 0x1f, 0xa0})
 	r := strings.NewReader(in)
 	s := newScanner(r)
-	o, err := s.scanHexString()
+	o, err := s.readHexString()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestScanHexString2(t *testing.T) {
 	out := String([]byte{})
 	r := strings.NewReader(in)
 	s := newScanner(r)
-	o, err := s.scanHexString()
+	o, err := s.readHexString()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +157,7 @@ func TestBase85String(t *testing.T) {
 	in := `<~z!<N?+"T~>`
 	out := String([]byte{0, 0, 0, 0, 1, 2, 3, 4, 5})
 	s := newScanner(strings.NewReader(in))
-	o, err := s.scanBase85String()
+	o, err := s.readBase85String()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,5 +194,32 @@ func TestLineCol(t *testing.T) {
 	}
 	if s.line != 4 {
 		t.Errorf("expected line 4, got %d", s.line)
+	}
+}
+
+func TestLineCol2(t *testing.T) {
+	type testCase struct {
+		in   string
+		line int
+		col  int
+	}
+	cases := []testCase{
+		{"1", 0, 1},
+		{" 1", 0, 2},
+		{"\n1", 1, 1},
+		{"\n\n\n\n1", 4, 1},
+	}
+	for _, c := range cases {
+		s := newScanner(strings.NewReader(c.in))
+		b, err := s.scanToken()
+		if err != nil && err != io.EOF {
+			t.Fatal(err)
+		}
+		if b != Integer(1) {
+			t.Errorf("expected %q, got %q", Integer(1), b)
+		}
+		if s.line != c.line || s.col != c.col {
+			t.Errorf("expected line %d col %d, got %d %d", c.line, c.col, s.line, s.col)
+		}
 	}
 }
