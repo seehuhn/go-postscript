@@ -179,21 +179,21 @@ func TestLineCol(t *testing.T) {
 		// fmt.Printf("%d %d %q\n", s.line, s.col, b)
 		switch b {
 		case '1':
-			if s.col != 1 {
-				t.Errorf("expected col 1, got %d", s.col)
+			if s.Col != 1 {
+				t.Errorf("expected col 1, got %d", s.Col)
 			}
 		case '2':
-			if s.col != 2 {
-				t.Errorf("expected col 2, got %d", s.col)
+			if s.Col != 2 {
+				t.Errorf("expected col 2, got %d", s.Col)
 			}
 		case '3':
-			if s.col != 3 {
-				t.Errorf("expected col 3, got %d", s.col)
+			if s.Col != 3 {
+				t.Errorf("expected col 3, got %d", s.Col)
 			}
 		}
 	}
-	if s.line != 4 {
-		t.Errorf("expected line 4, got %d", s.line)
+	if s.Line != 5 {
+		t.Errorf("expected line 5, got %d", s.Line)
 	}
 }
 
@@ -218,8 +218,33 @@ func TestLineCol2(t *testing.T) {
 		if b != Integer(1) {
 			t.Errorf("expected %q, got %q", Integer(1), b)
 		}
-		if s.line != c.line || s.col != c.col {
-			t.Errorf("expected line %d col %d, got %d %d", c.line, c.col, s.line, s.col)
+		if s.Line != c.line || s.Col != c.col {
+			t.Errorf("expected line %d col %d, got %d %d", c.line, c.col, s.Line, s.Col)
 		}
+	}
+}
+
+func TestDSC(t *testing.T) {
+	in := `%!PS-Adobe-3.0
+%%Creator: (seehuhn.de/go/pdf)
+%%CreationDate: today
+%%+ or tomorrow
+%%EOF`
+	s := newScanner(strings.NewReader(in))
+	b, err := s.scanToken()
+	if err != io.EOF {
+		t.Errorf("expected EOF, got %q", b)
+	}
+	if len(s.DSC) != 3 {
+		t.Errorf("expected 3 comments, got %d", len(s.DSC))
+	}
+	if s.DSC[0].Key != "Creator" || s.DSC[0].Value != "(seehuhn.de/go/pdf)" {
+		t.Errorf("expected Creator, got %q", s.DSC[0])
+	}
+	if s.DSC[1].Key != "CreationDate" || s.DSC[1].Value != "today or tomorrow" {
+		t.Errorf("expected CreationDate, got %q", s.DSC[1])
+	}
+	if s.DSC[2].Key != "EOF" || s.DSC[2].Value != "" {
+		t.Errorf("expected EOF, got %q", s.DSC[2])
 	}
 }

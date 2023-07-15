@@ -509,7 +509,10 @@ func makeSystemDict() Dict {
 			}
 			intp.Stack = intp.Stack[:len(intp.Stack)-2]
 			s := intp.scanners[len(intp.scanners)-1]
-			s.dropByte()
+			_, err := s.next()
+			if err != nil && err != io.EOF {
+				return err
+			}
 			n, err := s.Read(buf)
 			if err != nil && err != io.EOF {
 				return err

@@ -27,6 +27,7 @@ type Interpreter struct {
 	Stack     []Object
 	DictStack []Dict
 	Fonts     map[Name]Dict
+	DSC       []Comment
 
 	SystemDict Dict
 
@@ -52,7 +53,13 @@ func (intp *Interpreter) ExecuteString(code string) error {
 
 func (intp *Interpreter) Execute(r io.Reader) error {
 	s := newScanner(r)
-	return intp.executeScanner(s)
+	err := intp.executeScanner(s)
+	if err != nil {
+		return err
+	}
+
+	intp.DSC = append(intp.DSC, s.DSC...)
+	return nil
 }
 
 func (intp *Interpreter) executeScanner(s *scanner) error {

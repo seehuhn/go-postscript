@@ -18,6 +18,7 @@ package postscript
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -31,12 +32,19 @@ type scanner struct {
 	buf       []byte
 	pos, used int
 
-	line   int // 0-based
-	col    int // 0-based
-	eol    bool
-	CRseen bool
+	Line   int // 0-based
+	Col    int // 0-based
+	crSeen bool
+
+	DSC        []Comment
+	headerDone bool
 
 	err error
+}
+
+type Comment struct {
+	Key   string
+	Value string
 }
 
 func newScanner(r io.Reader) *scanner {
@@ -62,6 +70,7 @@ func (s *scanner) scanToken() (Object, error) {
 	if err != nil {
 		return nil, err
 	}
+	s.headerDone = true
 	b, err := s.peek()
 	if err != nil {
 		return nil, err
@@ -76,8 +85,8 @@ func (s *scanner) scanToken() (Object, error) {
 		}
 		switch bb[1] {
 		case '<': // dict
-			s.dropByte()
-			s.dropByte()
+			s.skipByte()
+			s.skipByte()
 			return Operator("<<"), nil
 		case '~': // base85-encoded string
 			return s.readBase85String()
@@ -86,7 +95,7 @@ func (s *scanner) scanToken() (Object, error) {
 		}
 	case '/':
 		var name []byte
-		s.dropByte()
+		s.skipByte()
 		// TODO(voss): implement "immediate names"
 		for {
 			b, err := s.peek()
@@ -96,12 +105,12 @@ func (s *scanner) scanToken() (Object, error) {
 			if !isRegular(b) {
 				break
 			}
-			s.dropByte()
+			s.skipByte()
 			name = append(name, b)
 		}
 		return Name(name), nil
 	default:
-		s.dropByte()
+		s.skipByte()
 		opBytes := []byte{b}
 		if isRegular(b) {
 			for {
@@ -114,7 +123,7 @@ func (s *scanner) scanToken() (Object, error) {
 				if !isRegular(b) {
 					break
 				}
-				s.dropByte()
+				s.skipByte()
 				opBytes = append(opBytes, b)
 			}
 		}
@@ -155,7 +164,7 @@ func parseNumber(s []byte) (Object, error) {
 }
 
 func (s *scanner) readString() (String, error) {
-	err := s.requiredByte('(')
+	err := s.skipRequiredByte('(')
 	if err != nil {
 		return nil, err
 	}
@@ -220,7 +229,7 @@ func (s *scanner) readString() (String, error) {
 					if b < '0' || b > '7' {
 						break
 					}
-					s.dropByte()
+					s.skipByte()
 					oct = oct*8 + (b - '0')
 				}
 				res = append(res, oct)
@@ -237,7 +246,7 @@ func (s *scanner) readString() (String, error) {
 }
 
 func (s *scanner) readHexString() (String, error) {
-	err := s.requiredByte('<')
+	err := s.skipRequiredByte('<')
 	if err != nil {
 		return nil, err
 	}
@@ -283,7 +292,7 @@ readLoop:
 
 func (s *scanner) readBase85String() (String, error) {
 	for _, b := range []byte{'<', '~'} {
-		err := s.requiredByte(b)
+		err := s.skipRequiredByte(b)
 		if err != nil {
 			return nil, err
 		}
@@ -332,7 +341,7 @@ readLoop:
 		res = append(res, tail[:pos-1]...)
 	}
 
-	err := s.requiredByte('>')
+	err := s.skipRequiredByte('>')
 	if err != nil {
 		return nil, err
 	}
@@ -340,13 +349,41 @@ readLoop:
 	return String(res), nil
 }
 
-// ReadStructuredComment reads the next %% comment into a key-value pair.
-// Handles multi-line values.
+// skipWhiteSpace skips all whitespace and comments.
+func (s *scanner) skipWhiteSpace() error {
+	for {
+		if s.Col == 0 && s.lookingAt("%%") {
+			key, val, err := s.readStructuredComment()
+			if err == nil {
+				s.DSC = append(s.DSC, Comment{key, val})
+				continue
+			}
+		}
+
+		b, err := s.peek()
+		if err != nil {
+			return err
+		}
+		if b <= 32 {
+			s.skipByte()
+		} else if b == '%' {
+			err = s.skipComment()
+			if err != nil {
+				return err
+			}
+		} else {
+			return nil
+		}
+	}
+}
+
+// ReadStructuredComment reads the next structured comment into a key-value pair.
 func (s *scanner) readStructuredComment() (key, value string, err error) {
-	err = s.requiredByte('%')
-	if err != nil {
+	if !s.lookingAt("%%") {
+		err = errors.New("not a structured comment")
 		return
 	}
+	s.skipN(2)
 
 	// Read key
 	key, err = s.readCommentKey()
@@ -363,7 +400,9 @@ func (s *scanner) readCommentKey() (string, error) {
 	var buf bytes.Buffer
 	for {
 		b, err := s.next()
-		if err != nil {
+		if err == io.EOF {
+			break
+		} else if err != nil {
 			return "", err
 		}
 		if b == ':' || b <= 32 {
@@ -371,75 +410,60 @@ func (s *scanner) readCommentKey() (string, error) {
 		}
 		buf.WriteByte(b)
 	}
+	if buf.Len() == 0 {
+		return "", errors.New("empty DSC key")
+	}
 	return buf.String(), nil
 }
 
+// ReadCommentValue reads the value of a structured comment.
+// Multi-line values (using `%%+`) are supported.
+// The method consumes the first EOL after the value.
 func (s *scanner) readCommentValue() (string, error) {
 	var buf bytes.Buffer
 
 	for {
 		for {
 			b, err := s.peek()
-			if err != nil {
+			if err == io.EOF {
+				break
+			} else if err != nil {
 				return "", err
 			}
 			if b == '\n' || b == '\r' || b > 32 {
 				break
 			}
-			s.dropByte()
+			s.skipByte()
 		}
 
 		for {
 			b, err := s.next()
-			if err != nil {
+			if err == io.EOF {
+				break
+			} else if err != nil {
 				return "", err
 			} else if b == 10 { // LF
 				break
 			} else if b == 13 { // CR or CR+LF
-				err = s.optionalByte(10)
-				if err != nil {
-					return "", err
-				}
+				s.skipOptionalByte(10)
 				break
 			}
 			buf.WriteByte(b)
 		}
-		ahead, err := s.peekN(3)
-		if err != nil && err != io.EOF {
-			return "", err
-		}
-		if string(ahead) != "%%+" {
+
+		if !s.lookingAt("%%+") {
 			break
 		}
-		s.dropN(3)
+		s.skipN(3)
 		buf.WriteByte(' ')
 	}
 
 	return buf.String(), nil
 }
 
-func (s *scanner) skipWhiteSpace() error {
-	for {
-		b, err := s.peek()
-		if err != nil {
-			return err
-		}
-		if b <= 32 {
-			s.dropByte()
-		} else if b == '%' {
-			err = s.skipComment()
-			if err != nil {
-				return err
-			}
-		} else {
-			return nil
-		}
-	}
-}
-
-// skipComment skips everything from a % to the end of the line (inclusive).
+// skipComment skips everything from a % to the end of the line (buth inclusive).
 func (s *scanner) skipComment() error {
-	err := s.requiredByte('%')
+	err := s.skipRequiredByte('%')
 	if err != nil {
 		return err
 	}
@@ -450,8 +474,27 @@ func (s *scanner) skipComment() error {
 		} else if b == 10 { // LF
 			return nil
 		} else if b == 13 { // CR or CR+LF
-			return s.optionalByte(10)
+			s.skipOptionalByte(10)
+			return nil
 		}
+	}
+}
+
+func (s *scanner) skipRequiredByte(b byte) error {
+	next, err := s.next()
+	if err != nil {
+		return err
+	}
+	if next != b {
+		return fmt.Errorf("expected %c, got %c", b, next)
+	}
+	return nil
+}
+
+func (s *scanner) skipOptionalByte(b byte) {
+	next, err := s.peek()
+	if err == nil && next == b {
+		s.skipByte()
 	}
 }
 
@@ -473,27 +516,12 @@ func (s *scanner) refill() error {
 	return err
 }
 
-func (s *scanner) dropByte() {
-	if s.pos >= s.used {
-		panic("unreachable")
+func (s *scanner) lookingAt(pat string) bool {
+	ahead, err := s.peekN(len(pat))
+	if err != nil {
+		return false
 	}
-
-	b := s.buf[s.pos]
-
-	if s.eol && !(s.CRseen && b == 10) {
-		s.line++
-		s.col = 0
-	}
-	s.pos++
-	s.col++
-	s.eol = (b == 10 || b == 13)
-	s.CRseen = (b == 13)
-}
-
-func (s *scanner) dropN(n int) {
-	for i := 0; i < n; i++ {
-		s.dropByte()
-	}
+	return string(ahead) == pat
 }
 
 func (s *scanner) peek() (byte, error) {
@@ -521,30 +549,35 @@ func (s *scanner) next() (byte, error) {
 	if err != nil {
 		return 0, err
 	}
-	s.dropByte()
+	s.skipByte()
 	return b, nil
 }
 
-func (s *scanner) requiredByte(b byte) error {
-	next, err := s.next()
-	if err != nil {
-		return err
+// skipByte skips a single byte which has already been peeked.
+func (s *scanner) skipByte() {
+	if s.pos >= s.used {
+		panic("unreachable")
 	}
-	if next != b {
-		return fmt.Errorf("expected %c, got %c", b, next)
+
+	b := s.buf[s.pos]
+	s.pos++
+
+	if s.crSeen && b == 10 {
+		// ignore LF after CR
+	} else if b == 10 || b == 13 {
+		s.Line++
+		s.Col = 0
+	} else {
+		s.Col++
 	}
-	return nil
+	s.crSeen = (b == 13)
 }
 
-func (s *scanner) optionalByte(b byte) error {
-	next, err := s.peek()
-	if err != nil {
-		return err
+// skipN skips N bytes which have already been peeked.
+func (s *scanner) skipN(n int) {
+	for i := 0; i < n; i++ {
+		s.skipByte()
 	}
-	if next == b {
-		s.dropByte()
-	}
-	return nil
 }
 
 func isRegular(b byte) bool {
