@@ -248,3 +248,18 @@ func TestDSC(t *testing.T) {
 		t.Errorf("expected EOF, got %q", s.DSC[2])
 	}
 }
+
+func TestDSC2(t *testing.T) {
+	in := `%%EndComments
+A
+/B
+`
+	s := newScanner(strings.NewReader(in))
+	b, err := s.scanToken()
+	if err != nil {
+		t.Errorf("expected nil, got %q", err)
+	}
+	if b != Operator("A") {
+		t.Errorf("expected A, got %q", b)
+	}
+}

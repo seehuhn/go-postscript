@@ -399,13 +399,17 @@ func (s *scanner) readStructuredComment() (key, value string, err error) {
 func (s *scanner) readCommentKey() (string, error) {
 	var buf bytes.Buffer
 	for {
-		b, err := s.next()
+		b, err := s.peek()
 		if err == io.EOF {
 			break
 		} else if err != nil {
 			return "", err
 		}
-		if b == ':' || b <= 32 {
+		if b <= 32 {
+			break
+		}
+		s.skipByte()
+		if b == ':' {
 			break
 		}
 		buf.WriteByte(b)
@@ -422,6 +426,7 @@ func (s *scanner) readCommentKey() (string, error) {
 func (s *scanner) readCommentValue() (string, error) {
 	var buf bytes.Buffer
 
+commentLineLoop:
 	for {
 		for {
 			b, err := s.peek()
@@ -451,11 +456,13 @@ func (s *scanner) readCommentValue() (string, error) {
 			buf.WriteByte(b)
 		}
 
-		if !s.lookingAt("%%+") {
-			break
+		if s.lookingAt("%%+") {
+			s.skipN(3)
+			buf.WriteByte(' ')
+			continue commentLineLoop
 		}
-		s.skipN(3)
-		buf.WriteByte(' ')
+
+		break
 	}
 
 	return buf.String(), nil
