@@ -17,8 +17,6 @@
 package postscript
 
 import (
-	"fmt"
-	"os"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -46,6 +44,17 @@ func TestProcedures(t *testing.T) {
 	}
 	if d := cmp.Diff(intp.Stack, []Object{Integer(9), Integer(1)}); d != "" {
 		t.Fatal(d)
+	}
+}
+
+func TestIfElse(t *testing.T) {
+	intp := NewInterpreter()
+	err := intp.ExecuteString("[ 1 false {2 ]} {] 2} ifelse")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := cmp.Diff(intp.Stack, []Object{Array{Integer(1)}, Integer(2)}); d != "" {
+		t.Error(d)
 	}
 }
 
@@ -89,42 +98,5 @@ func TestNestedProcedures2(t *testing.T) {
 	}
 	if d := cmp.Diff(intp.Stack, []Object{Array{Integer(1), Integer(2)}, Integer(3)}); d != "" {
 		t.Fatal(d)
-	}
-}
-
-func TestXXX(t *testing.T) {
-	intp := NewInterpreter()
-
-	fd, err := os.Open("../type1/NimbusRoman-Regular.pfa")
-	// fd, err := os.Open("../type1/cour.pfa")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer fd.Close()
-	err = intp.Execute(fd)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for key, font := range intp.Fonts {
-		fmt.Printf("# %s\n\n", key)
-		for key, val := range font {
-			if key == "Private" || key == "FontInfo" {
-				fmt.Println(string(key) + ":")
-				for k2, v2 := range val.(Dict) {
-					valString := fmt.Sprint(v2)
-					if len(valString) > 70 {
-						valString = fmt.Sprintf("<%T>", val)
-					}
-					fmt.Println("  "+string(k2)+":", valString)
-				}
-				continue
-			}
-			valString := fmt.Sprint(val)
-			if len(valString) > 70 {
-				valString = fmt.Sprintf("<%T>", val)
-			}
-			fmt.Println(string(key)+":", valString)
-		}
 	}
 }

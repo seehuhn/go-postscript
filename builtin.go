@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 )
 
 func makeSystemDict() Dict {
@@ -242,6 +243,9 @@ func makeSystemDict() Dict {
 			// not implemented
 			return nil
 		}),
+		"exit": builtin(func(intp *Interpreter) error {
+			return errExit
+		}),
 		"false":         Boolean(false),
 		"FontDirectory": Dict{},
 		"for": builtin(func(intp *Interpreter) error {
@@ -378,7 +382,7 @@ func makeSystemDict() Dict {
 		}),
 		"known": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 2 {
-				return errors.New("known: stack underflow")
+				return errStackunderflow
 			}
 			d, ok := intp.Stack[len(intp.Stack)-2].(Dict)
 			if !ok {
@@ -392,6 +396,21 @@ func makeSystemDict() Dict {
 			_, ok = d[name]
 			intp.Stack = append(intp.Stack, Boolean(ok))
 			return nil
+		}),
+		"loop": builtin(func(intp *Interpreter) error {
+			if len(intp.Stack) < 1 {
+				return errStackunderflow
+			}
+			proc := intp.Stack[len(intp.Stack)-1]
+			intp.Stack = intp.Stack[:len(intp.Stack)-1]
+			for {
+				err := intp.executeOne(proc, true)
+				if err == errExit {
+					return nil
+				} else if err != nil {
+					return err
+				}
+			}
 		}),
 		"mark": builtin(func(intp *Interpreter) error {
 			intp.Stack = append(intp.Stack, mark{})
@@ -521,7 +540,35 @@ func makeSystemDict() Dict {
 			intp.Stack = append(intp.Stack, Boolean(n == len(buf)))
 			return nil
 		}),
+		"repeat": builtin(func(intp *Interpreter) error {
+			if len(intp.Stack) < 2 {
+				return errStackunderflow
+			}
+			count, ok := intp.Stack[len(intp.Stack)-2].(Integer)
+			if !ok {
+				return errTypecheck
+			} else if count < 0 {
+				return errRangecheck
+			}
+			proc, ok := intp.Stack[len(intp.Stack)-1].(Procedure)
+			if !ok {
+				return errTypecheck
+			}
+			intp.Stack = intp.Stack[:len(intp.Stack)-2]
+			for i := Integer(0); i < count; i++ {
+				err := intp.executeOne(proc, true)
+				if err == errStop {
+					break
+				} else if err != nil {
+					return err
+				}
+			}
+			return nil
+		}),
 		"StandardEncoding": StandardEncoding,
+		"stop": builtin(func(intp *Interpreter) error {
+			return errStop
+		}),
 		"string": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 1 {
 				return errors.New("string: stack underflow")
@@ -576,6 +623,25 @@ func makeSystemDict() Dict {
 			intp.Stack = append(intp.Stack, tp)
 			return nil
 		}),
+		"where": builtin(func(intp *Interpreter) error {
+			if len(intp.Stack) < 1 {
+				return errStackunderflow
+			}
+			key, ok := intp.Stack[len(intp.Stack)-1].(Name)
+			if !ok {
+				return errTypecheck
+			}
+			intp.Stack = intp.Stack[:len(intp.Stack)-1]
+			for j := len(intp.DictStack) - 1; j >= 0; j-- {
+				d := intp.DictStack[j]
+				if val, ok := d[key]; ok {
+					intp.Stack = append(intp.Stack, val, Boolean(true))
+					return nil
+				}
+			}
+			intp.Stack = append(intp.Stack, Boolean(false))
+			return nil
+		}),
 	}
 	systemDict["systemdict"] = systemDict
 	systemDict["userdict"] = Dict{}
@@ -592,6 +658,62 @@ func makeSystemDict() Dict {
 	return systemDict
 }
 
+func equal(a, b Object) (bool, error) {
+	_, aIsDict := a.(Dict)
+	_, bIsDict := b.(Dict)
+	if aIsDict && bIsDict {
+		return isSameDict(a.(Dict), b.(Dict)), nil
+	}
+
+	normalize := func(obj Object) (Object, error) {
+		switch obj := obj.(type) {
+		case Real:
+			return float64(obj), nil
+		case Integer:
+			return float64(obj), nil
+		case String:
+			return string(obj), nil
+		case Name:
+			return string(obj), nil
+		default:
+			return nil, fmt.Errorf("equality not implemented for %T", obj)
+		}
+	}
+	a, err := normalize(a)
+	if err != nil {
+		return false, err
+	}
+	b, err = normalize(b)
+	if err != nil {
+		return false, err
+	}
+	return a == b, nil
+}
+
+// don't look!
+func isSameDict(a, b Dict) bool {
+	testKeyInt := 0
+	var testKey Name
+	for {
+		testKey = Name(strconv.Itoa(testKeyInt))
+		_, inA := a[testKey]
+		if !inA {
+			break
+		}
+		testKeyInt++
+	}
+
+	if _, inB := b[testKey]; inB {
+		return false
+	}
+
+	a[testKey] = true
+	_, isSame := b[testKey]
+	delete(a, testKey)
+	return isSame
+}
+
+// TODO(voss): try to carry around fewer copies of the standard encoding
 var StandardEncoding = Array{
 	Name(".notdef"),
 	Name(".notdef"),
@@ -850,3 +972,6 @@ var StandardEncoding = Array{
 	Name(".notdef"),
 	Name(".notdef"),
 }
+
+var errExit = errors.New("exit")
+var errStop = errors.New("stop")

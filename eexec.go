@@ -60,10 +60,10 @@ func eexecDecode(s *scanner) (io.Reader, error) {
 	if err != nil {
 		return nil, err
 	}
-	isHex := true
+	isBinary := false
 	for _, b := range bb {
 		if !('0' <= b && b <= '9' || 'a' <= b && b <= 'f' || 'A' <= b && b <= 'F') {
-			isHex = false
+			isBinary = true
 			break
 		}
 	}
@@ -74,7 +74,7 @@ func eexecDecode(s *scanner) (io.Reader, error) {
 		R:        55665,
 		c1:       52845,
 		c2:       22719,
-		isBinary: !isHex,
+		isBinary: isBinary,
 	}, err
 }
 

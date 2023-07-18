@@ -23,6 +23,9 @@ import (
 	"strings"
 )
 
+// TODO(voss): prevent infinite loops
+// TODO(voss): check for stack overflows
+
 type Interpreter struct {
 	Stack     []Object
 	DictStack []Dict
@@ -31,8 +34,8 @@ type Interpreter struct {
 
 	SystemDict Dict
 
-	scanners []*scanner
-	scanOnly int
+	scanners  []*scanner
+	procStart []int
 }
 
 func NewInterpreter() *Interpreter {
@@ -85,30 +88,36 @@ func (intp *Interpreter) executeScanner(s *scanner) error {
 }
 
 func (intp *Interpreter) executeOne(o Object, execProc bool) error {
+	// if !execProc {
 	// fmt.Println("|-", intp.stackString(), "|", objectString(o))
+	// }
+
+	if o == Operator("}") {
+		if len(intp.procStart) == 0 {
+			return errors.New("unmatched '}'")
+		}
+		a := intp.procStart[len(intp.procStart)-1]
+		intp.procStart = intp.procStart[:len(intp.procStart)-1]
+		b := len(intp.Stack)
+		proc := make(Procedure, b-a)
+		copy(proc, intp.Stack[a:])
+		intp.Stack = append(intp.Stack[:a], proc)
+		return nil
+	} else if o == Operator("{") {
+		intp.procStart = append(intp.procStart, len(intp.Stack))
+		return nil
+	} else if len(intp.procStart) > 0 {
+		intp.Stack = append(intp.Stack, o)
+		return nil
+	}
+
 	switch o := o.(type) {
 	case Operator:
 		op := o
 		switch op {
-		case "{":
-			intp.scanOnly++
-			fallthrough
 		case "[", "<<":
 			intp.Stack = append(intp.Stack, theMark)
 			return nil
-		case "}":
-			intp.scanOnly--
-			n := len(intp.Stack)
-			for i := n - 1; i >= 0; i-- {
-				if intp.Stack[i] == theMark {
-					size := n - i - 1
-					a := make(Procedure, size)
-					copy(a, intp.Stack[i+1:])
-					intp.Stack = append(intp.Stack[:i], a)
-					return nil
-				}
-			}
-			return errors.New("unmatched '}'")
 		case "]":
 			n := len(intp.Stack)
 			for i := n - 1; i >= 0; i-- {
@@ -121,11 +130,6 @@ func (intp *Interpreter) executeOne(o Object, execProc bool) error {
 				}
 			}
 			return errors.New("unmatched ']'")
-		}
-
-		if intp.scanOnly > 0 {
-			intp.Stack = append(intp.Stack, o)
-			return nil
 		}
 
 		val, err := intp.load(Name(o))
@@ -185,32 +189,6 @@ func (intp *Interpreter) stackString() string {
 	return strings.Join(ss, " ")
 }
 
-func equal(a, b Object) (bool, error) {
-	normalize := func(obj Object) (Object, error) {
-		switch obj := obj.(type) {
-		case Real:
-			return float64(obj), nil
-		case Integer:
-			return float64(obj), nil
-		case String:
-			return string(obj), nil
-		case Name:
-			return string(obj), nil
-		default:
-			return nil, fmt.Errorf("equality not implemented for %T", obj)
-		}
-	}
-	a, err := normalize(a)
-	if err != nil {
-		return false, err
-	}
-	b, err = normalize(b)
-	if err != nil {
-		return false, err
-	}
-	return a == b, nil
-}
-
 func objectString(o Object) string {
 	return objectString2(o, false)
 }
@@ -229,6 +207,19 @@ func objectString2(o Object, short bool) string {
 		return "/" + string(o)
 	case Operator:
 		return string(o)
+	case Array:
+		var ss []string
+		l := 1
+		for _, oi := range o {
+			si := objectString2(oi, true)
+			l += 1 + len(si)
+			if short && l > 8 || l > 40 {
+				ss = append(ss, "...")
+				break
+			}
+			ss = append(ss, si)
+		}
+		return "[" + strings.Join(ss, " ") + "]"
 	case Procedure:
 		var ss []string
 		l := 1
@@ -252,5 +243,3 @@ func objectString2(o Object, short bool) string {
 		return fmt.Sprintf("<%T>", o)
 	}
 }
-
-var errExit = errors.New("exit")
