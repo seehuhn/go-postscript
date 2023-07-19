@@ -89,7 +89,7 @@ func (intp *Interpreter) executeScanner(s *scanner) error {
 
 func (intp *Interpreter) executeOne(o Object, execProc bool) error {
 	// if !execProc {
-	// fmt.Println("|-", intp.stackString(), "|", objectString(o))
+	// 	fmt.Println("|-", intp.stackString(), "|", objectString(o))
 	// }
 
 	if o == Operator("}") {

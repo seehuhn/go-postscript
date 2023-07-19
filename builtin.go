@@ -692,6 +692,10 @@ func equal(a, b Object) (bool, error) {
 
 // don't look!
 func isSameDict(a, b Dict) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
 	testKeyInt := 0
 	var testKey Name
 	for {

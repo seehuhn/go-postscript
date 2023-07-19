@@ -57,13 +57,13 @@ func TestScanToken(t *testing.T) {
 	s := newScanner(strings.NewReader(in))
 	var oo []Object
 	for {
-		o, err := s.scanToken()
+		token, err := s.scanToken()
 		if err == io.EOF {
 			break
 		} else if err != nil {
 			t.Fatal(err)
 		}
-		oo = append(oo, o)
+		oo = append(oo, token)
 	}
 	if d := cmp.Diff(exp, oo); d != "" {
 		t.Errorf("unexpected objects: %s", d)
@@ -211,12 +211,12 @@ func TestLineCol2(t *testing.T) {
 	}
 	for _, c := range cases {
 		s := newScanner(strings.NewReader(c.in))
-		b, err := s.scanToken()
+		token, err := s.scanToken()
 		if err != nil && err != io.EOF {
 			t.Fatal(err)
 		}
-		if b != Integer(1) {
-			t.Errorf("expected %q, got %q", Integer(1), b)
+		if token != Integer(1) {
+			t.Errorf("expected %q, got %q", Integer(1), token)
 		}
 		if s.Line != c.line || s.Col != c.col {
 			t.Errorf("expected line %d col %d, got %d %d", c.line, c.col, s.Line, s.Col)
@@ -231,9 +231,9 @@ func TestDSC(t *testing.T) {
 %%+ or tomorrow
 %%EOF`
 	s := newScanner(strings.NewReader(in))
-	b, err := s.scanToken()
+	token, err := s.scanToken()
 	if err != io.EOF {
-		t.Errorf("expected EOF, got %q", b)
+		t.Errorf("expected EOF, got %q", token)
 	}
 	if len(s.DSC) != 3 {
 		t.Errorf("expected 3 comments, got %d", len(s.DSC))
@@ -255,11 +255,25 @@ A
 /B
 `
 	s := newScanner(strings.NewReader(in))
-	b, err := s.scanToken()
+	token, err := s.scanToken()
 	if err != nil {
 		t.Errorf("expected nil, got %q", err)
 	}
-	if b != Operator("A") {
-		t.Errorf("expected A, got %q", b)
+	if token != Operator("A") {
+		t.Errorf("expected A, got %q", token)
+	}
+}
+
+func TestDSC3(t *testing.T) {
+	in := `%% Some text here
+/A
+`
+	s := newScanner(strings.NewReader(in))
+	token, err := s.scanToken()
+	if err != nil {
+		t.Errorf("expected nil, got %q", err)
+	}
+	if token != Name("A") {
+		t.Errorf("expected A, got %q", token)
 	}
 }

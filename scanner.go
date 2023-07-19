@@ -388,6 +388,7 @@ func (s *scanner) readStructuredComment() (key, value string, err error) {
 	// Read key
 	key, err = s.readCommentKey()
 	if err != nil {
+		s.skipToEOL()
 		return
 	}
 
@@ -474,6 +475,10 @@ func (s *scanner) skipComment() error {
 	if err != nil {
 		return err
 	}
+	return s.skipToEOL()
+}
+
+func (s *scanner) skipToEOL() error {
 	for {
 		b, err := s.next()
 		if err != nil {
