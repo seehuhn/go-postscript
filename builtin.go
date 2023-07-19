@@ -20,42 +20,112 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"strconv"
 )
 
 func makeSystemDict() Dict {
 	systemDict := Dict{
+		"[": builtin(func(intp *Interpreter) error {
+			intp.Stack = append(intp.Stack, theMark)
+			return nil
+		}),
+		"]": builtin(func(intp *Interpreter) error {
+			n := len(intp.Stack)
+			for i := n - 1; i >= 0; i-- {
+				if intp.Stack[i] == theMark {
+					size := n - i - 1
+					a := make(Array, size)
+					copy(a, intp.Stack[i+1:])
+					intp.Stack = append(intp.Stack[:i], a)
+					return nil
+				}
+			}
+			return errUnmatchedmark
+		}),
+		"<<": builtin(func(intp *Interpreter) error {
+			intp.Stack = append(intp.Stack, theMark)
+			return nil
+		}),
+		">>": builtin(func(intp *Interpreter) error {
+			n := len(intp.Stack)
+			markPos := -1
+			for i := n - 1; i >= 0; i-- {
+				if intp.Stack[i] == theMark {
+					markPos = i
+					break
+				}
+			}
+			if markPos < 0 {
+				return errUnmatchedmark
+			} else if (n-markPos)%2 != 1 {
+				return errRangecheck
+			}
+			d := make(Dict, (n-markPos-1)/2)
+			for i := markPos + 1; i < n; i += 2 {
+				name, ok := intp.Stack[i].(Name)
+				if !ok {
+					return errTypecheck
+				}
+				d[name] = intp.Stack[i+1]
+			}
+			intp.Stack = append(intp.Stack[:markPos], d)
+			return nil
+		}),
+		"abs": builtin(func(intp *Interpreter) error {
+			if len(intp.Stack) < 1 {
+				return errStackunderflow
+			}
+			x := intp.Stack[len(intp.Stack)-1]
+			intp.Stack = intp.Stack[:len(intp.Stack)-1]
+			switch x := x.(type) {
+			case Integer:
+				if x == math.MinInt {
+					intp.Stack = append(intp.Stack, -Real(x))
+				} else if x < 0 {
+					intp.Stack = append(intp.Stack, -x)
+				} else {
+					intp.Stack = append(intp.Stack, x)
+				}
+			case Real:
+				if x < 0 {
+					intp.Stack = append(intp.Stack, -x)
+				} else {
+					intp.Stack = append(intp.Stack, x)
+				}
+			default:
+				return errTypecheck
+			}
+			return nil
+		}),
 		"add": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 2 {
-				return errors.New("array: stack underflow")
+				return errStackunderflow
 			}
-			a, ok := intp.Stack[len(intp.Stack)-2].(Real)
-			var aIsInt bool
-			if !ok {
-				ai, ok := intp.Stack[len(intp.Stack)-2].(Integer)
-				if !ok {
-					return errors.New("add: invalid argument")
-				}
-				aIsInt = true
-				a = Real(ai)
-			}
-			b, ok := intp.Stack[len(intp.Stack)-1].(Real)
-			var bIsInt bool
-			if !ok {
-				bi, ok := intp.Stack[len(intp.Stack)-1].(Integer)
-				if !ok {
-					return errors.New("add: invalid argument")
-				}
-				bIsInt = true
-				b = Real(bi)
+			ar, aIsReal := intp.Stack[len(intp.Stack)-2].(Real)
+			ai, aIsInt := intp.Stack[len(intp.Stack)-2].(Integer)
+			br, bIsReal := intp.Stack[len(intp.Stack)-1].(Real)
+			bi, bIsInt := intp.Stack[len(intp.Stack)-1].(Integer)
+			if !(aIsReal || aIsInt) || !(bIsReal || bIsInt) {
+				return errTypecheck
 			}
 			intp.Stack = intp.Stack[:len(intp.Stack)-2]
-			c := a + b
-			ci := Integer(c)
-			if aIsInt && bIsInt && Real(ci) == c {
-				intp.Stack = append(intp.Stack, ci)
+			if aIsReal || bIsReal {
+				if aIsInt {
+					ar = Real(ai)
+				}
+				if bIsInt {
+					br = Real(bi)
+				}
+				intp.Stack = append(intp.Stack, ar+br)
 			} else {
-				intp.Stack = append(intp.Stack, c)
+				ci := ai + bi
+				// check for integer overflow
+				if (ai < 0 && bi < 0 && ci >= 0) || (ai > 0 && bi > 0 && ci <= 0) {
+					intp.Stack = append(intp.Stack, Real(ai)+Real(bi))
+				} else {
+					intp.Stack = append(intp.Stack, ci)
+				}
 			}
 			return nil
 		}),

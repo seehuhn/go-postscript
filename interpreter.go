@@ -113,25 +113,6 @@ func (intp *Interpreter) executeOne(o Object, execProc bool) error {
 
 	switch o := o.(type) {
 	case Operator:
-		op := o
-		switch op {
-		case "[", "<<":
-			intp.Stack = append(intp.Stack, theMark)
-			return nil
-		case "]":
-			n := len(intp.Stack)
-			for i := n - 1; i >= 0; i-- {
-				if intp.Stack[i] == theMark {
-					size := n - i - 1
-					a := make(Array, size)
-					copy(a, intp.Stack[i+1:])
-					intp.Stack = append(intp.Stack[:i], a)
-					return nil
-				}
-			}
-			return errors.New("unmatched ']'")
-		}
-
 		val, err := intp.load(Name(o))
 		if err != nil {
 			return err

@@ -80,18 +80,31 @@ func (s *scanner) scanToken() (Object, error) {
 		return s.readString()
 	case '<':
 		bb, err := s.peekN(2)
-		if err != nil {
+		if err != nil && err != io.EOF {
 			return nil, err
 		}
-		switch bb[1] {
-		case '<': // dict
+		switch string(bb) {
+		case "<<": // dict
 			s.skipByte()
 			s.skipByte()
 			return Operator("<<"), nil
-		case '~': // base85-encoded string
+		case "<~": // base85-encoded string
 			return s.readBase85String()
 		default: // hex string
 			return s.readHexString()
+		}
+	case '>':
+		bb, err := s.peekN(2)
+		if err != nil && err != io.EOF {
+			return nil, err
+		}
+		switch string(bb) {
+		case ">>": // end dict
+			s.skipByte()
+			s.skipByte()
+			return Operator(">>"), nil
+		default:
+			return nil, errSyntaxerror
 		}
 	case '/':
 		var name []byte

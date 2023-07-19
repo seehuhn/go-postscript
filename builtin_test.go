@@ -17,22 +17,104 @@
 package postscript
 
 import (
+	"fmt"
+	"math"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 )
 
-func TestCmdAdd(t *testing.T) {
+func run(s string, stackLen int) (*Interpreter, error) {
 	intp := NewInterpreter()
-	err := intp.ExecuteString("1 2.5 add")
+	err := intp.ExecuteString(s)
+	if err == nil && len(intp.Stack) != stackLen {
+		err = fmt.Errorf("stack length is %d, expected %d", len(intp.Stack), stackLen)
+	}
+	return intp, err
+}
+
+func TestArrayLiteral(t *testing.T) {
+	intp, err := run("[1 [] 2]", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(intp.Stack) != 1 {
-		t.Fatalf("len(intp.Stack): %d != 1", len(intp.Stack))
+	if d := cmp.Diff(intp.Stack[0], Array{Integer(1), Array{}, Integer(2)}); d != "" {
+		t.Fatal(d)
 	}
-	if intp.Stack[0] != Real(3.5) {
-		t.Fatalf("intp.Stack[0]: %v != 3.5", intp.Stack[0])
+}
+
+func TestDictLiteral(t *testing.T) {
+	intp, err := run("<< /a 1 /b 2 >>", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := Dict{
+		Name("a"): Integer(1),
+		Name("b"): Integer(2),
+	}
+	if d := cmp.Diff(intp.Stack[0], expected); d != "" {
+		t.Fatal(d)
+	}
+}
+
+func TestCmdAbs(t *testing.T) {
+	type testCase struct {
+		in  Object
+		out Object
+	}
+	cases := []testCase{
+		{Integer(0), Integer(0)},
+		{Integer(1), Integer(1)},
+		{Integer(-1), Integer(1)},
+		{Integer(-100), Integer(100)},
+		{Integer(math.MinInt), -Real(math.MinInt)},
+		{Real(0), Real(0)},
+		{Real(1), Real(1)},
+		{Real(-1), Real(1)},
+		{Real(-100), Real(100)},
+	}
+	for _, c := range cases {
+		intp := NewInterpreter()
+		intp.Stack = []Object{c.in}
+		err := intp.ExecuteString("abs")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(intp.Stack) != 1 {
+			t.Fatalf("len(intp.Stack): %d != 1", len(intp.Stack))
+		}
+		if intp.Stack[0] != c.out {
+			t.Fatalf("intp.Stack[0]: %v != %v", intp.Stack[0], c.out)
+		}
+	}
+}
+
+func TestCmdAdd(t *testing.T) {
+	type testCase struct {
+		a, b Object
+		out  Object
+	}
+	cases := []testCase{
+		{Integer(1), Integer(2), Integer(3)},
+		{Integer(1), Real(2), Real(3)},
+		{Real(1), Integer(2), Real(3)},
+		{Real(1), Real(2), Real(3)},
+		{Integer(math.MaxInt), Integer(1), Real(math.MaxInt + 1)},
+	}
+	for _, c := range cases {
+		intp := NewInterpreter()
+		intp.Stack = []Object{c.a, c.b}
+		err := intp.ExecuteString("add")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(intp.Stack) != 1 {
+			t.Fatalf("len(intp.Stack): %d != 1", len(intp.Stack))
+		}
+		if intp.Stack[0] != c.out {
+			t.Fatalf("intp.Stack[0]: %v (%T) != %v",
+				intp.Stack[0], intp.Stack[0], c.out)
+		}
 	}
 }
 
