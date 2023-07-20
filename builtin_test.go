@@ -118,14 +118,41 @@ func TestCmdAdd(t *testing.T) {
 	}
 }
 
+func TestCmdAnd(t *testing.T) {
+	type testCase struct {
+		a, b Object
+		out  Object
+	}
+	cases := []testCase{
+		{Boolean(false), Boolean(false), Boolean(false)},
+		{Boolean(false), Boolean(true), Boolean(false)},
+		{Boolean(true), Boolean(false), Boolean(false)},
+		{Boolean(true), Boolean(true), Boolean(true)},
+		{Integer(0), Integer(0), Integer(0)},
+		{Integer(99), Integer(1), Integer(1)},
+		{Integer(52), Integer(7), Integer(4)},
+	}
+	for _, c := range cases {
+		intp := NewInterpreter()
+		intp.Stack = []Object{c.a, c.b}
+		err := intp.ExecuteString("and")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(intp.Stack) != 1 {
+			t.Fatalf("len(intp.Stack): %d != 1", len(intp.Stack))
+		}
+		if intp.Stack[0] != c.out {
+			t.Fatalf("intp.Stack[0]: %v (%T) != %v",
+				intp.Stack[0], intp.Stack[0], c.out)
+		}
+	}
+}
+
 func TestCmdArray(t *testing.T) {
-	intp := NewInterpreter()
-	err := intp.ExecuteString("3 array")
+	intp, err := run("3 array", 1)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if len(intp.Stack) != 1 {
-		t.Fatalf("len(intp.Stack): %d != 1", len(intp.Stack))
 	}
 	if d := cmp.Diff(intp.Stack[0], Array{nil, nil, nil}); d != "" {
 		t.Fatal(d)
@@ -133,24 +160,70 @@ func TestCmdArray(t *testing.T) {
 }
 
 func TestCmdBegin(t *testing.T) {
-	intp := NewInterpreter()
-	err := intp.ExecuteString("1 dict dup begin")
+	intp, err := run("1 dict dup begin", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(intp.Stack) != 1 {
-		t.Fatalf("len(intp.Stack): %d != 1", len(intp.Stack))
+	if !isSameDict(intp.Stack[0].(Dict), intp.DictStack[len(intp.DictStack)-1]) {
+		t.Fatal("wrong dict on stack")
 	}
-	if len(intp.DictStack) != 3 {
-		t.Fatalf("len(intp.DictStack): %d != 3", len(intp.DictStack))
-	}
+}
 
-	// make sure the same dict is on the top of each stack
-	a := intp.DictStack[2]
-	b := intp.Stack[0].(Dict)
-	a["test"] = Integer(1234)
-	if d := cmp.Diff(a, b); d != "" {
-		t.Fatal(d)
+func TestCmdBind(t *testing.T) {
+	intp, err := run("{1 add} bind", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proc := intp.Stack[0].(Procedure)
+	if len(proc) != 2 {
+		t.Fatalf("len(p): %d != 2", len(proc))
+	}
+	switch obj := proc[1].(type) {
+	case builtin:
+		// pass
+	case Operator:
+		t.Fatalf("p[1] is an Operator: %v", obj)
+	default:
+		t.Fatal("test is broken")
+	}
+}
+
+// TestCmdBind2 tests whether bind works recursively.
+func TestCmdBind2(t *testing.T) {
+	intp, err := run("{{1 add}} bind", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outer := intp.Stack[0].(Procedure)
+	if len(outer) != 1 {
+		t.Fatalf("len(p): %d != 1", len(outer))
+	}
+	inner := outer[0].(Procedure)
+	if len(inner) != 2 {
+		t.Fatalf("len(p): %d != 2", len(inner))
+	}
+	switch obj := inner[1].(type) {
+	case builtin:
+		// pass
+	case Operator:
+		t.Fatalf("p[1] is an Operator: %v", obj)
+	default:
+		t.Fatal("test is broken")
+	}
+}
+
+// TestCmdBind3 tests whether bind can be trapped in an infinite loop.
+func TestCmdBind3(t *testing.T) {
+	intp, err := run("{{}} dup dup 0 exch put bind", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proc := intp.Stack[0].(Procedure)
+	if len(proc) != 1 {
+		t.Fatalf("len(p): %d != 1", len(proc))
+	}
+	if _, ok := proc[0].(Procedure); !ok {
+		t.Fatalf("p[0] is not a Procedure: %v", proc[0])
 	}
 }
 

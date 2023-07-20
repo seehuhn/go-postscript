@@ -24,15 +24,15 @@ import (
 )
 
 // TODO(voss): prevent infinite loops
-// TODO(voss): check for stack overflows
 
 type Interpreter struct {
 	Stack     []Object
 	DictStack []Dict
-	Fonts     map[Name]Dict
+	Fonts     Dict
 	DSC       []Comment
 
 	SystemDict Dict
+	UserDict   Dict
 
 	scanners  []*scanner
 	procStart []int
@@ -40,13 +40,15 @@ type Interpreter struct {
 
 func NewInterpreter() *Interpreter {
 	systemDict := makeSystemDict()
+	userDict := systemDict["userdict"].(Dict)
 	return &Interpreter{
 		DictStack: []Dict{
 			systemDict,
-			systemDict["userdict"].(Dict),
+			userDict,
 		},
-		Fonts:      make(map[Name]Dict),
+		Fonts:      systemDict["FontDirectory"].(Dict),
 		SystemDict: systemDict,
+		UserDict:   userDict,
 	}
 }
 
@@ -89,8 +91,12 @@ func (intp *Interpreter) executeScanner(s *scanner) error {
 
 func (intp *Interpreter) executeOne(o Object, execProc bool) error {
 	// if !execProc {
-	// 	fmt.Println("|-", intp.stackString(), "|", objectString(o))
+	// 	fmt.Println("|-", intp.stackString(), "|", intp.objectString(o))
 	// }
+
+	if len(intp.Stack) > maxOperandStackDepth {
+		return errStackoverflow
+	}
 
 	if o == Operator("}") {
 		if len(intp.procStart) == 0 {
@@ -113,7 +119,7 @@ func (intp *Interpreter) executeOne(o Object, execProc bool) error {
 
 	switch o := o.(type) {
 	case Operator:
-		val, err := intp.load(Name(o))
+		val, err := intp.load(o)
 		if err != nil {
 			return err
 		}
@@ -149,8 +155,13 @@ func (intp *Interpreter) executeOne(o Object, execProc bool) error {
 }
 
 func (intp *Interpreter) load(key Object) (Object, error) {
-	name, ok := key.(Name)
-	if !ok {
+	var name Name
+	switch key := key.(type) {
+	case Name:
+		name = key
+	case Operator:
+		name = Name(key)
+	default:
 		return nil, errTypecheck
 	}
 	for j := len(intp.DictStack) - 1; j >= 0; j-- {
@@ -165,16 +176,16 @@ func (intp *Interpreter) load(key Object) (Object, error) {
 func (intp *Interpreter) stackString() string {
 	var ss []string
 	for _, o := range intp.Stack {
-		ss = append(ss, objectString2(o, true))
+		ss = append(ss, intp.objectString2(o, true))
 	}
 	return strings.Join(ss, " ")
 }
 
-func objectString(o Object) string {
-	return objectString2(o, false)
+func (intp *Interpreter) objectString(o Object) string {
+	return intp.objectString2(o, false)
 }
 
-func objectString2(o Object, short bool) string {
+func (intp *Interpreter) objectString2(o Object, short bool) string {
 	switch o := o.(type) {
 	case nil:
 		return "currentfile" // TODO(voss)
@@ -192,7 +203,7 @@ func objectString2(o Object, short bool) string {
 		var ss []string
 		l := 1
 		for _, oi := range o {
-			si := objectString2(oi, true)
+			si := intp.objectString2(oi, true)
 			l += 1 + len(si)
 			if short && l > 8 || l > 40 {
 				ss = append(ss, "...")
@@ -204,8 +215,10 @@ func objectString2(o Object, short bool) string {
 	case Procedure:
 		var ss []string
 		l := 1
-		for _, oi := range o {
-			si := objectString2(oi, true)
+		for i, oi := range o {
+			o[i] = nil // protect against infinite loops
+			si := intp.objectString2(oi, true)
+			o[i] = oi
 			l += 1 + len(si)
 			if short && l > 8 || l > 40 {
 				ss = append(ss, "...")
@@ -215,6 +228,11 @@ func objectString2(o Object, short bool) string {
 		}
 		return "{" + strings.Join(ss, " ") + "}"
 	case Dict:
+		if isSameDict(o, intp.SystemDict) {
+			return "*systemdict*"
+		} else if isSameDict(o, intp.UserDict) {
+			return "*userdict*"
+		}
 		return fmt.Sprintf("<Dict %d>", len(o))
 	case builtin:
 		return "<builtin>"
@@ -224,3 +242,9 @@ func objectString2(o Object, short bool) string {
 		return fmt.Sprintf("<%T>", o)
 	}
 }
+
+const (
+	maxArraySize            = 65536
+	maxDictionaryStackDepth = 20
+	maxOperandStackDepth    = 500
+)

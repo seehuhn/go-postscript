@@ -63,7 +63,8 @@ func showInfo(fname string) error {
 
 	for key, font := range intp.Fonts {
 		fmt.Printf("# %s\n", key)
-		for key, val := range font {
+		fontDict := font.(postscript.Dict)
+		for key, val := range fontDict {
 			if key == "Private" || key == "FontInfo" {
 				fmt.Println(string(key) + ":")
 				for k2, v2 := range val.(postscript.Dict) {

@@ -25,6 +25,17 @@ import (
 )
 
 func makeSystemDict() Dict {
+	FontDirectory := Dict{}
+	userDict := Dict{}
+
+	errorDict := Dict{}
+	for _, err := range allErrors {
+		err := err
+		errorDict[err.tp] = builtin(func(intp *Interpreter) error {
+			return errors.New(string(err.tp))
+		})
+	}
+
 	systemDict := Dict{
 		"[": builtin(func(intp *Interpreter) error {
 			intp.Stack = append(intp.Stack, theMark)
@@ -129,28 +140,57 @@ func makeSystemDict() Dict {
 			}
 			return nil
 		}),
+		"and": builtin(func(intp *Interpreter) error {
+			if len(intp.Stack) < 2 {
+				return errStackunderflow
+			}
+			a := intp.Stack[len(intp.Stack)-2]
+			b := intp.Stack[len(intp.Stack)-1]
+			intp.Stack = intp.Stack[:len(intp.Stack)-2]
+			switch a := a.(type) {
+			case Boolean:
+				b, ok := b.(Boolean)
+				if !ok {
+					return errTypecheck
+				}
+				intp.Stack = append(intp.Stack, a && b)
+			case Integer:
+				b, ok := b.(Integer)
+				if !ok {
+					return errTypecheck
+				}
+				intp.Stack = append(intp.Stack, a&b)
+			default:
+				return errTypecheck
+			}
+			return nil
+		}),
 		"array": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 1 {
-				return errors.New("array: stack underflow")
+				return errStackunderflow
 			}
 			size, ok := intp.Stack[len(intp.Stack)-1].(Integer)
 			if !ok {
-				return errors.New("array: invalid argument")
+				return errTypecheck
+			} else if size < 0 {
+				return errRangecheck
+			} else if size > maxArraySize {
+				return errLimitcheck
 			}
 			intp.Stack = intp.Stack[:len(intp.Stack)-1]
-			if size < 0 {
-				return errors.New("array: invalid argument")
-			}
 			intp.Stack = append(intp.Stack, make(Array, size))
 			return nil
 		}),
 		"begin": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 1 {
-				return errors.New("begin: stack underflow")
+				return errStackunderflow
+			}
+			if len(intp.DictStack) >= maxDictionaryStackDepth {
+				return errDictstackoverflow
 			}
 			d, ok := intp.Stack[len(intp.Stack)-1].(Dict)
 			if !ok {
-				return errors.New("begin: invalid argument")
+				return errTypecheck
 			}
 			intp.Stack = intp.Stack[:len(intp.Stack)-1]
 			intp.DictStack = append(intp.DictStack, d)
@@ -164,17 +204,7 @@ func makeSystemDict() Dict {
 			if !ok {
 				return errTypecheck
 			}
-			for i, o := range obj {
-				val, err := intp.load(o)
-				if err != nil {
-					continue
-				}
-				b, ok := val.(builtin)
-				if !ok {
-					continue
-				}
-				obj[i] = b
-			}
+			intp.bindProc(obj)
 			return nil
 		}),
 		"cleartomark": builtin(func(intp *Interpreter) error {
@@ -188,7 +218,7 @@ func makeSystemDict() Dict {
 		}),
 		"closefile": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 1 {
-				return errors.New("closefile: stack underflow")
+				return errStackunderflow
 			}
 			if intp.Stack[len(intp.Stack)-1] != nil {
 				return errors.New("closefile: invalid argument")
@@ -214,7 +244,7 @@ func makeSystemDict() Dict {
 		}),
 		"def": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 2 {
-				return errors.New("def: stack underflow")
+				return errStackunderflow
 			}
 			name, ok := intp.Stack[len(intp.Stack)-2].(Name)
 			if !ok {
@@ -226,7 +256,7 @@ func makeSystemDict() Dict {
 		}),
 		"definefont": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 2 {
-				return errors.New("definefont: stack underflow")
+				return errStackunderflow
 			}
 			name, ok := intp.Stack[len(intp.Stack)-2].(Name)
 			if !ok {
@@ -242,7 +272,7 @@ func makeSystemDict() Dict {
 		}),
 		"dict": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 1 {
-				return errors.New("dict: stack underflow")
+				return errStackunderflow
 			}
 			size, ok := intp.Stack[len(intp.Stack)-1].(Integer)
 			if !ok {
@@ -257,7 +287,7 @@ func makeSystemDict() Dict {
 		}),
 		"dup": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 1 {
-				return errors.New("dup: stack underflow")
+				return errStackunderflow
 			}
 			intp.Stack = append(intp.Stack, intp.Stack[len(intp.Stack)-1])
 			return nil
@@ -281,7 +311,7 @@ func makeSystemDict() Dict {
 		"eexec": builtin(eexec),
 		"end": builtin(func(intp *Interpreter) error {
 			if len(intp.DictStack) <= 2 {
-				return errors.New("end: dict stack underflow")
+				return errDictstackunderflow
 			}
 			intp.DictStack = intp.DictStack[:len(intp.DictStack)-1]
 			return nil
@@ -302,6 +332,7 @@ func makeSystemDict() Dict {
 			intp.Stack = append(intp.Stack, Boolean(isEqual))
 			return nil
 		}),
+		"errordict": errorDict,
 		"exch": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 2 {
 				return errStackunderflow
@@ -316,11 +347,26 @@ func makeSystemDict() Dict {
 		"exit": builtin(func(intp *Interpreter) error {
 			return errExit
 		}),
-		"false":         Boolean(false),
-		"FontDirectory": Dict{},
+		"false": Boolean(false),
+		"findfont": builtin(func(intp *Interpreter) error {
+			if len(intp.Stack) < 1 {
+				return errStackunderflow
+			}
+			name, ok := intp.Stack[len(intp.Stack)-1].(Name)
+			if !ok {
+				return errTypecheck
+			}
+			font, ok := intp.Fonts[name]
+			if !ok {
+				return errInvalidfont
+			}
+			intp.Stack = append(intp.Stack[:len(intp.Stack)-1], font)
+			return nil
+		}),
+		"FontDirectory": FontDirectory,
 		"for": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 4 {
-				return errors.New("for: stack underflow")
+				return errStackunderflow
 			}
 			// TODO(voss): the spec also allows Real values here
 			initial, ok := intp.Stack[len(intp.Stack)-4].(Integer)
@@ -355,7 +401,7 @@ func makeSystemDict() Dict {
 		}),
 		"get": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 2 {
-				return errors.New("get: stack underflow")
+				return errStackunderflow
 			}
 			obj := intp.Stack[len(intp.Stack)-2]
 			sel := intp.Stack[len(intp.Stack)-1]
@@ -405,7 +451,7 @@ func makeSystemDict() Dict {
 		}),
 		"if": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 2 {
-				return errors.New("if: stack underflow")
+				return errStackunderflow
 			}
 			cond, ok := intp.Stack[len(intp.Stack)-2].(Boolean)
 			if !ok {
@@ -420,7 +466,7 @@ func makeSystemDict() Dict {
 		}),
 		"ifelse": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 3 {
-				return errors.New("ifelse: stack underflow")
+				return errStackunderflow
 			}
 			cond, ok := intp.Stack[len(intp.Stack)-3].(Boolean)
 			if !ok {
@@ -437,7 +483,7 @@ func makeSystemDict() Dict {
 		}),
 		"index": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 2 {
-				return errors.New("index: stack underflow")
+				return errStackunderflow
 			}
 			index, ok := intp.Stack[len(intp.Stack)-1].(Integer)
 			if !ok {
@@ -465,6 +511,22 @@ func makeSystemDict() Dict {
 			intp.Stack = intp.Stack[:len(intp.Stack)-2]
 			_, ok = d[name]
 			intp.Stack = append(intp.Stack, Boolean(ok))
+			return nil
+		}),
+		"load": builtin(func(intp *Interpreter) error {
+			if len(intp.Stack) < 1 {
+				return errStackunderflow
+			}
+			name, ok := intp.Stack[len(intp.Stack)-1].(Name)
+			if !ok {
+				return errTypecheck
+			}
+			intp.Stack = intp.Stack[:len(intp.Stack)-1]
+			val, err := intp.load(name)
+			if err != nil {
+				return err
+			}
+			intp.Stack = append(intp.Stack, val)
 			return nil
 		}),
 		"loop": builtin(func(intp *Interpreter) error {
@@ -513,7 +575,7 @@ func makeSystemDict() Dict {
 		}),
 		"not": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 1 {
-				return errors.New("not: stack underflow")
+				return errStackunderflow
 			}
 			obj := intp.Stack[len(intp.Stack)-1]
 			switch obj := obj.(type) {
@@ -528,14 +590,14 @@ func makeSystemDict() Dict {
 		}),
 		"pop": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 1 {
-				return errors.New("pop: stack underflow")
+				return errStackunderflow
 			}
 			intp.Stack = intp.Stack[:len(intp.Stack)-1]
 			return nil
 		}),
 		"put": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 3 {
-				return errors.New("put: stack underflow")
+				return errStackunderflow
 			}
 			obj := intp.Stack[len(intp.Stack)-3]
 			sel := intp.Stack[len(intp.Stack)-2]
@@ -590,7 +652,7 @@ func makeSystemDict() Dict {
 		}),
 		"readstring": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 2 {
-				return errors.New("readstring: stack underflow")
+				return errStackunderflow
 			}
 			buf, ok := intp.Stack[len(intp.Stack)-1].(String)
 			if !ok {
@@ -641,7 +703,7 @@ func makeSystemDict() Dict {
 		}),
 		"string": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 1 {
-				return errors.New("string: stack underflow")
+				return errStackunderflow
 			}
 			size, ok := intp.Stack[len(intp.Stack)-1].(Integer)
 			if !ok {
@@ -693,6 +755,7 @@ func makeSystemDict() Dict {
 			intp.Stack = append(intp.Stack, tp)
 			return nil
 		}),
+		"userdict": userDict,
 		"where": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 1 {
 				return errStackunderflow
@@ -704,8 +767,8 @@ func makeSystemDict() Dict {
 			intp.Stack = intp.Stack[:len(intp.Stack)-1]
 			for j := len(intp.DictStack) - 1; j >= 0; j-- {
 				d := intp.DictStack[j]
-				if val, ok := d[key]; ok {
-					intp.Stack = append(intp.Stack, val, Boolean(true))
+				if _, ok := d[key]; ok {
+					intp.Stack = append(intp.Stack, d, Boolean(true))
 					return nil
 				}
 			}
@@ -714,16 +777,6 @@ func makeSystemDict() Dict {
 		}),
 	}
 	systemDict["systemdict"] = systemDict
-	systemDict["userdict"] = Dict{}
-
-	errorDict := Dict{}
-	for _, err := range allErrors {
-		err := err
-		errorDict[err.tp] = builtin(func(intp *Interpreter) error {
-			return errors.New(string(err.tp))
-		})
-	}
-	systemDict["errordict"] = errorDict
 
 	return systemDict
 }
@@ -758,6 +811,36 @@ func equal(a, b Object) (bool, error) {
 		return false, err
 	}
 	return a == b, nil
+}
+
+func (intp *Interpreter) bindProc(proc Procedure) {
+	for i, elem := range proc {
+		switch obj := elem.(type) {
+		case Name:
+			val, err := intp.load(obj)
+			if err != nil {
+				continue
+			}
+			_, ok := val.(builtin)
+			if ok {
+				proc[i] = val
+			}
+		case Operator:
+			val, err := intp.load(obj)
+			if err != nil {
+				continue
+			}
+			_, ok := val.(builtin)
+			if ok {
+				proc[i] = val
+			}
+		case Procedure:
+			// be careful to avoid infinite loops
+			proc[i] = nil
+			intp.bindProc(obj)
+			proc[i] = obj
+		}
+	}
 }
 
 // don't look!
