@@ -102,9 +102,9 @@ func (intp *Interpreter) executeScanner(s *scanner) error {
 }
 
 func (intp *Interpreter) executeOne(o Object, execProc bool) error {
-	// if !execProc {
-	// 	fmt.Println("|-", intp.stackString(), "|", intp.objectString(o))
-	// }
+	if !execProc {
+		fmt.Println("|-", intp.stackString(), "|", intp.objectString(o))
+	}
 
 	if len(intp.Stack) > maxOperandStackDepth {
 		return errStackoverflow

@@ -106,13 +106,15 @@ func TestCmdAdd(t *testing.T) {
 		intp.Stack = []Object{c.a, c.b}
 		err := intp.ExecuteString("add")
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
+			continue
 		}
 		if len(intp.Stack) != 1 {
-			t.Fatalf("len(intp.Stack): %d != 1", len(intp.Stack))
+			t.Errorf("len(intp.Stack): %d != 1", len(intp.Stack))
+			continue
 		}
 		if intp.Stack[0] != c.out {
-			t.Fatalf("intp.Stack[0]: %v (%T) != %v",
+			t.Errorf("intp.Stack[0]: %v (%T) != %v",
 				intp.Stack[0], intp.Stack[0], c.out)
 		}
 	}
@@ -224,6 +226,37 @@ func TestCmdBind3(t *testing.T) {
 	}
 	if _, ok := proc[0].(Procedure); !ok {
 		t.Fatalf("p[0] is not a Procedure: %v", proc[0])
+	}
+}
+
+func TestCmdCopy(t *testing.T) {
+	intp, err := run(`1 2 3 4 2 copy`, 6)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := cmp.Diff(intp.Stack, []Object{
+		Integer(1), Integer(2), Integer(3), Integer(4),
+		Integer(3), Integer(4)}); d != "" {
+		t.Fatal(d)
+	}
+}
+
+func TestCmdCopy2(t *testing.T) {
+	intp, err := run(`
+		/a [1 2] def
+		/b [3 4 5] def
+		/c a b copy def
+		c 1 6 put
+		a b c`, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := cmp.Diff(intp.Stack, []Object{
+		Array{Integer(1), Integer(2)},
+		Array{Integer(1), Integer(6), Integer(5)},
+		Array{Integer(1), Integer(6)},
+	}); d != "" {
+		t.Fatal(d)
 	}
 }
 
@@ -414,6 +447,70 @@ func TestCmdFor2(t *testing.T) {
 	}
 }
 
+func TestCmdForall(t *testing.T) {
+	type testCase struct {
+		in  string
+		out []Object
+	}
+	cases := []testCase{
+		{
+			"[3 2 1] {} forall",
+			[]Object{Integer(3), Integer(2), Integer(1)},
+		},
+		{
+			"(abc) {} forall",
+			[]Object{Integer(97), Integer(98), Integer(99)},
+		},
+		{
+			"<< /a 1 >> {} forall",
+			[]Object{Name("a"), Integer(1)},
+		},
+		{
+			"0 [1 2 3] {add} forall",
+			[]Object{Integer(6)},
+		},
+		{
+			"[3 2 1] {dup 2 eq {exit} if} forall",
+			[]Object{Integer(3), Integer(2)},
+		},
+	}
+	for _, c := range cases {
+		intp, err := run(c.in, len(c.out))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if d := cmp.Diff(intp.Stack, c.out); d != "" {
+			t.Fatal(d)
+		}
+	}
+}
+
+func TestCmdGetInterval(t *testing.T) {
+	intp, err := run(`
+		/s (abcdef) def
+		s dup 1 3 getinterval
+		dup 1 67 put`, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := cmp.Diff(intp.Stack, []Object{String("abCdef"), String("bCd")}); d != "" {
+		t.Error(d)
+	}
+}
+
+func TestCmdGetInterval2(t *testing.T) {
+	intp, err := run(`
+		[1 2 0 4 5]
+		dup 2 1 getinterval
+		0 3 put`, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := cmp.Diff(intp.Stack[0], Array{Integer(1), Integer(2), Integer(3), Integer(4), Integer(5)}); d != "" {
+		t.Error(d)
+	}
+}
+
 func TestCmdIfElse(t *testing.T) {
 	intp := NewInterpreter()
 	err := intp.ExecuteString("true {1} {2} ifelse")
@@ -465,6 +562,107 @@ func TestCmdIndex2(t *testing.T) {
 	}
 	if d := cmp.Diff(intp.Stack, []Object{String("a"), String("b"), String("c"), String("d"), String("a")}); d != "" {
 		t.Fatal(d)
+	}
+}
+
+func TestCmdLength(t *testing.T) {
+	type testCases struct {
+		in  string
+		out int
+	}
+	cases := []testCases{
+		{"[1 2 4]", 3},
+		{"[]", 0},
+		{"{1 2 [3 4 5]}", 7},
+		{"/ar 20 array def ar", 20},
+		{"/mydict 5 dict def mydict", 0},
+		{"/mydict 5 dict def mydict /firstkey (firstvalue) put mydict", 1},
+		{"(abc)", 3},
+		{`(abc\n)`, 4},
+		{"()", 0},
+		{"/foo", 3},
+	}
+
+	for i, c := range cases {
+		intp := NewInterpreter()
+		err := intp.ExecuteString(c.in)
+		if err != nil || len(intp.Stack) != 1 {
+			t.Fatal("error executing test case: ", i, err, len(intp.Stack))
+		}
+		err = intp.ExecuteString("length")
+		if err != nil {
+			t.Error(err)
+			continue
+		}
+		if len(intp.Stack) != 1 {
+			t.Errorf("%d: len(intp.Stack): %d != 1", i, len(intp.Stack))
+			continue
+		}
+		if intp.Stack[0] != Integer(c.out) {
+			t.Errorf("%d: intp.Stack[0]: %v != %d", i, intp.Stack[0], c.out)
+		}
+	}
+}
+
+func TestCmdMul(t *testing.T) {
+	type testCase struct {
+		a, b Object
+		out  Object
+	}
+	cases := []testCase{
+		{Integer(3), Integer(2), Integer(6)},
+		{Integer(1), Integer(-2), Integer(-2)},
+		{Integer(1), Real(-2), Real(-2)},
+		{Real(1), Integer(-2), Real(-2)},
+		{Real(1), Real(-2), Real(-2)},
+		{Integer(math.MaxInt), Integer(2), Real(math.MaxInt) * 2},
+	}
+	for i, c := range cases {
+		intp := NewInterpreter()
+		intp.Stack = []Object{c.a, c.b}
+		err := intp.ExecuteString("mul")
+		if err != nil {
+			t.Error(err)
+			continue
+		}
+		if len(intp.Stack) != 1 {
+			t.Errorf("len(intp.Stack): %d != 1", len(intp.Stack))
+			continue
+		}
+		if intp.Stack[0] != c.out {
+			t.Errorf("%d: intp.Stack[0]: %v (%T) != %v",
+				i, intp.Stack[0], intp.Stack[0], c.out)
+		}
+	}
+}
+
+func TestCmdOr(t *testing.T) {
+	type testCase struct {
+		a, b Object
+		out  Object
+	}
+	cases := []testCase{
+		{Boolean(false), Boolean(false), Boolean(false)},
+		{Boolean(false), Boolean(true), Boolean(true)},
+		{Boolean(true), Boolean(false), Boolean(true)},
+		{Boolean(true), Boolean(true), Boolean(true)},
+		{Integer(0), Integer(0), Integer(0)},
+		{Integer(17), Integer(5), Integer(21)},
+	}
+	for _, c := range cases {
+		intp := NewInterpreter()
+		intp.Stack = []Object{c.a, c.b}
+		err := intp.ExecuteString("or")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(intp.Stack) != 1 {
+			t.Fatalf("len(intp.Stack): %d != 1", len(intp.Stack))
+		}
+		if intp.Stack[0] != c.out {
+			t.Fatalf("intp.Stack[0]: %v (%T) != %v",
+				intp.Stack[0], intp.Stack[0], c.out)
+		}
 	}
 }
 
@@ -521,6 +719,86 @@ func TestCmdPut3(t *testing.T) {
 	st := intp.Stack[0].(String)
 	if d := cmp.Diff(st, String("Abc")); d != "" {
 		t.Fatal(d)
+	}
+}
+
+func TestCmdPutInterval(t *testing.T) {
+	intp, err := run(`
+		/s (abcdef) def
+		s 1 (xyz) putinterval
+		s`, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := cmp.Diff(intp.Stack[0], String("axyzef")); d != "" {
+		t.Error(d)
+	}
+}
+
+func TestCmdRoll(t *testing.T) {
+	type testCase struct {
+		in  string
+		out []Object
+	}
+	cases := []testCase{
+		{
+			"(a)(b)(c) 3 -1 roll",
+			[]Object{String("b"), String("c"), String("a")},
+		},
+		{
+			"(a)(b)(c) 3 1 roll",
+			[]Object{String("c"), String("a"), String("b")},
+		},
+		{
+			"(a)(b)(c) 3 0 roll",
+			[]Object{String("a"), String("b"), String("c")},
+		},
+		{
+			"1 2 3 4 5 4 5 roll",
+			[]Object{Integer(1), Integer(5), Integer(2), Integer(3), Integer(4)},
+		},
+	}
+	for _, c := range cases {
+		intp, err := run(c.in, len(c.out))
+		if err != nil {
+			t.Error(err)
+			continue
+		}
+		if d := cmp.Diff(intp.Stack, c.out); d != "" {
+			t.Error(d)
+		}
+	}
+}
+
+func TestCmdSub(t *testing.T) {
+	type testCase struct {
+		a, b Object
+		out  Object
+	}
+	cases := []testCase{
+		{Integer(3), Integer(2), Integer(1)},
+		{Integer(1), Integer(-2), Integer(3)},
+		{Integer(1), Real(-2), Real(3)},
+		{Real(1), Integer(-2), Real(3)},
+		{Real(1), Real(-2), Real(3)},
+		{Integer(math.MaxInt), Integer(-1), Real(math.MaxInt + 1)},
+	}
+	for i, c := range cases {
+		intp := NewInterpreter()
+		intp.Stack = []Object{c.a, c.b}
+		err := intp.ExecuteString("sub")
+		if err != nil {
+			t.Error(err)
+			continue
+		}
+		if len(intp.Stack) != 1 {
+			t.Errorf("len(intp.Stack): %d != 1", len(intp.Stack))
+			continue
+		}
+		if intp.Stack[0] != c.out {
+			t.Errorf("%d: intp.Stack[0]: %v (%T) != %v",
+				i, intp.Stack[0], intp.Stack[0], c.out)
+		}
 	}
 }
 

@@ -226,6 +226,62 @@ func makeSystemDict() Dict {
 			intp.Stack = intp.Stack[:len(intp.Stack)-1]
 			return io.EOF
 		}),
+		"copy": builtin(func(intp *Interpreter) error {
+			if len(intp.Stack) < 1 {
+				return errStackunderflow
+			}
+			if n, ok := intp.Stack[len(intp.Stack)-1].(Integer); ok {
+				if n < 0 {
+					return errRangecheck
+				}
+				if len(intp.Stack) < int(n)+1 {
+					return errStackunderflow
+				}
+				intp.Stack = intp.Stack[:len(intp.Stack)-1]
+				intp.Stack = append(intp.Stack, intp.Stack[len(intp.Stack)-int(n):]...)
+				return nil
+			}
+			if len(intp.Stack) < 2 {
+				return errStackunderflow
+			}
+			a := intp.Stack[len(intp.Stack)-2]
+			b := intp.Stack[len(intp.Stack)-1]
+			intp.Stack = intp.Stack[:len(intp.Stack)-2]
+			var res Object
+			switch a := a.(type) {
+			case Array:
+				b, ok := b.(Array)
+				if !ok {
+					return errTypecheck
+				} else if len(b) < len(a) {
+					return errRangecheck
+				}
+				n := copy(b, a)
+				res = b[:n]
+			case Dict:
+				b, ok := b.(Dict)
+				if !ok {
+					return errTypecheck
+				}
+				for k, v := range a {
+					b[k] = v
+				}
+				res = b
+			case String:
+				b, ok := b.(String)
+				if !ok {
+					return errTypecheck
+				} else if len(b) < len(a) {
+					return errRangecheck
+				}
+				n := copy(b, a)
+				res = b[:n]
+			default:
+				return errTypecheck
+			}
+			intp.Stack = append(intp.Stack, res)
+			return nil
+		}),
 		"count": builtin(func(intp *Interpreter) error {
 			intp.Stack = append(intp.Stack, Integer(len(intp.Stack)))
 			return nil
@@ -399,6 +455,51 @@ func makeSystemDict() Dict {
 			}
 			return nil
 		}),
+		"forall": builtin(func(intp *Interpreter) error {
+			if len(intp.Stack) < 2 {
+				return errStackunderflow
+			}
+			obj := intp.Stack[len(intp.Stack)-2]
+			proc := intp.Stack[len(intp.Stack)-1].(Procedure)
+			switch obj := obj.(type) {
+			case Array:
+				intp.Stack = intp.Stack[:len(intp.Stack)-2]
+				for _, val := range obj {
+					intp.Stack = append(intp.Stack, val)
+					err := intp.executeOne(proc, true)
+					if err == errExit {
+						break
+					} else if err != nil {
+						return err
+					}
+				}
+			case String:
+				intp.Stack = intp.Stack[:len(intp.Stack)-2]
+				for _, c := range obj {
+					intp.Stack = append(intp.Stack, Integer(c))
+					err := intp.executeOne(proc, true)
+					if err == errExit {
+						break
+					} else if err != nil {
+						return err
+					}
+				}
+			case Dict:
+				intp.Stack = intp.Stack[:len(intp.Stack)-2]
+				for key, val := range obj {
+					intp.Stack = append(intp.Stack, key, val)
+					err := intp.executeOne(proc, true)
+					if err == errExit {
+						break
+					} else if err != nil {
+						return err
+					}
+				}
+			default:
+				return errTypecheck
+			}
+			return nil
+		}),
 		"get": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 2 {
 				return errStackunderflow
@@ -447,6 +548,43 @@ func makeSystemDict() Dict {
 			default:
 				return errors.New("get: invalid type")
 			}
+			return nil
+		}),
+		"getinterval": builtin(func(intp *Interpreter) error {
+			if len(intp.Stack) < 3 {
+				return errStackunderflow
+			}
+			obj := intp.Stack[len(intp.Stack)-3]
+			var n int
+			switch obj := obj.(type) {
+			case Array:
+				n = len(obj)
+			case String:
+				n = len(obj)
+			default:
+				return errTypecheck
+			}
+			index, ok := intp.Stack[len(intp.Stack)-2].(Integer)
+			if !ok {
+				return errTypecheck
+			} else if index < 0 || index >= Integer(n) {
+				return errRangecheck
+			}
+			count, ok := intp.Stack[len(intp.Stack)-1].(Integer)
+			if !ok {
+				return errTypecheck
+			} else if count < 0 || count > Integer(n)-index {
+				return errRangecheck
+			}
+			intp.Stack = intp.Stack[:len(intp.Stack)-3]
+			var res Object
+			switch obj := obj.(type) {
+			case Array:
+				res = obj[index : index+count]
+			case String:
+				res = obj[index : index+count]
+			}
+			intp.Stack = append(intp.Stack, res)
 			return nil
 		}),
 		"if": builtin(func(intp *Interpreter) error {
@@ -513,6 +651,32 @@ func makeSystemDict() Dict {
 			intp.Stack = append(intp.Stack, Boolean(ok))
 			return nil
 		}),
+		"length": builtin(func(intp *Interpreter) error {
+			if len(intp.Stack) < 1 {
+				return errStackunderflow
+			}
+			obj := intp.Stack[len(intp.Stack)-1]
+			intp.Stack = intp.Stack[:len(intp.Stack)-1]
+			var res int
+			switch obj := obj.(type) {
+			case Array:
+				res = len(obj)
+			case Procedure:
+				res = len(obj)
+			case Dict:
+				res = len(obj)
+			case String:
+				res = len(obj)
+			case Name:
+				res = len(obj)
+			case Operator:
+				res = len(obj)
+			default:
+				return errTypecheck
+			}
+			intp.Stack = append(intp.Stack, Integer(res))
+			return nil
+		}),
 		"load": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 1 {
 				return errStackunderflow
@@ -553,6 +717,37 @@ func makeSystemDict() Dict {
 			intp.Stack = append(intp.Stack, m)
 			return nil
 		}),
+		"mul": builtin(func(intp *Interpreter) error {
+			if len(intp.Stack) < 2 {
+				return errStackunderflow
+			}
+			ar, aIsReal := intp.Stack[len(intp.Stack)-2].(Real)
+			ai, aIsInt := intp.Stack[len(intp.Stack)-2].(Integer)
+			br, bIsReal := intp.Stack[len(intp.Stack)-1].(Real)
+			bi, bIsInt := intp.Stack[len(intp.Stack)-1].(Integer)
+			if !(aIsReal || aIsInt) || !(bIsReal || bIsInt) {
+				return errTypecheck
+			}
+			intp.Stack = intp.Stack[:len(intp.Stack)-2]
+			if aIsReal || bIsReal {
+				if aIsInt {
+					ar = Real(ai)
+				}
+				if bIsInt {
+					br = Real(bi)
+				}
+				intp.Stack = append(intp.Stack, ar*br)
+			} else {
+				ci := ai * bi
+				// check for integer overflow
+				if ai != 0 && ci/ai != bi {
+					intp.Stack = append(intp.Stack, Real(ai)*Real(bi))
+				} else {
+					intp.Stack = append(intp.Stack, ci)
+				}
+			}
+			return nil
+		}),
 		"ne": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 2 {
 				return errStackunderflow
@@ -585,6 +780,31 @@ func makeSystemDict() Dict {
 				intp.Stack[len(intp.Stack)-1] = ^obj
 			default:
 				return errors.New("not: invalid argument")
+			}
+			return nil
+		}),
+		"or": builtin(func(intp *Interpreter) error {
+			if len(intp.Stack) < 2 {
+				return errStackunderflow
+			}
+			a := intp.Stack[len(intp.Stack)-2]
+			b := intp.Stack[len(intp.Stack)-1]
+			intp.Stack = intp.Stack[:len(intp.Stack)-2]
+			switch a := a.(type) {
+			case Boolean:
+				b, ok := b.(Boolean)
+				if !ok {
+					return errTypecheck
+				}
+				intp.Stack = append(intp.Stack, a || b)
+			case Integer:
+				b, ok := b.(Integer)
+				if !ok {
+					return errTypecheck
+				}
+				intp.Stack = append(intp.Stack, a|b)
+			default:
+				return errTypecheck
 			}
 			return nil
 		}),
@@ -646,6 +866,44 @@ func makeSystemDict() Dict {
 			}
 			return nil
 		}),
+		"putinterval": builtin(func(intp *Interpreter) error {
+			if len(intp.Stack) < 3 {
+				return errStackunderflow
+			}
+			dst := intp.Stack[len(intp.Stack)-3]
+			index, ok := intp.Stack[len(intp.Stack)-2].(Integer)
+			if !ok {
+				return errTypecheck
+			} else if index < 0 {
+				return errRangecheck
+			}
+			src := intp.Stack[len(intp.Stack)-1]
+
+			switch dst := dst.(type) {
+			case Array:
+				src, ok := src.(Array)
+				if !ok {
+					return errTypecheck
+				}
+				if int(index)+len(src) > len(dst) {
+					return errRangecheck
+				}
+				copy(dst[index:], src)
+			case String:
+				src, ok := src.(String)
+				if !ok {
+					return errTypecheck
+				}
+				if int(index)+len(src) > len(dst) {
+					return errRangecheck
+				}
+				copy(dst[index:], src)
+			default:
+				return errTypecheck
+			}
+			intp.Stack = intp.Stack[:len(intp.Stack)-3]
+			return nil
+		}),
 		"readonly": builtin(func(intp *Interpreter) error {
 			// not implemented
 			return nil
@@ -697,6 +955,43 @@ func makeSystemDict() Dict {
 			}
 			return nil
 		}),
+		"roll": builtin(func(intp *Interpreter) error {
+			if len(intp.Stack) < 2 {
+				return errStackunderflow
+			}
+			n, ok := intp.Stack[len(intp.Stack)-2].(Integer)
+			if !ok {
+				return errTypecheck
+			}
+			if n < 0 || n > Integer(len(intp.Stack)-2) {
+				return errRangecheck
+			}
+			j, ok := intp.Stack[len(intp.Stack)-1].(Integer)
+			if !ok {
+				return errTypecheck
+			}
+			intp.Stack = intp.Stack[:len(intp.Stack)-2]
+			if n == 0 {
+				return nil
+			}
+			j %= n
+			if j < 0 {
+				j += n
+			}
+
+			// Remove j elements from the top of the stack, and insert these
+			// between the intp.Stack[len(intp.Stack)-n:] and the rest of the
+			// stack.
+			ji := int(j)
+			ni := int(n)
+			data := intp.Stack[len(intp.Stack)-ni:]
+			tmp := make([]Object, j)
+			copy(tmp, data[ni-ji:])
+			copy(data[ji:], data[:ni-ji])
+			copy(data, tmp)
+
+			return nil
+		}),
 		"StandardEncoding": StandardEncoding,
 		"stop": builtin(func(intp *Interpreter) error {
 			return errStop
@@ -714,6 +1009,37 @@ func makeSystemDict() Dict {
 				return errors.New("string: invalid size")
 			}
 			intp.Stack = append(intp.Stack, make(String, size))
+			return nil
+		}),
+		"sub": builtin(func(intp *Interpreter) error {
+			if len(intp.Stack) < 2 {
+				return errStackunderflow
+			}
+			ar, aIsReal := intp.Stack[len(intp.Stack)-2].(Real)
+			ai, aIsInt := intp.Stack[len(intp.Stack)-2].(Integer)
+			br, bIsReal := intp.Stack[len(intp.Stack)-1].(Real)
+			bi, bIsInt := intp.Stack[len(intp.Stack)-1].(Integer)
+			if !(aIsReal || aIsInt) || !(bIsReal || bIsInt) {
+				return errTypecheck
+			}
+			intp.Stack = intp.Stack[:len(intp.Stack)-2]
+			if aIsReal || bIsReal {
+				if aIsInt {
+					ar = Real(ai)
+				}
+				if bIsInt {
+					br = Real(bi)
+				}
+				intp.Stack = append(intp.Stack, ar-br)
+			} else {
+				ci := ai - bi
+				// check for integer overflow
+				if (ai < 0 && bi > 0 && ci >= 0) || (ai > 0 && bi < 0 && ci <= 0) {
+					intp.Stack = append(intp.Stack, Real(ai)-Real(bi))
+				} else {
+					intp.Stack = append(intp.Stack, ci)
+				}
+			}
 			return nil
 		}),
 		"true": Boolean(true),

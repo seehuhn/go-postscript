@@ -128,6 +128,7 @@ func deobfuscate(fname string) error {
 	}
 	r.R = eexecR
 
+	// skip the IV
 	for i := 0; i < eexecN; i++ {
 		_, err := r.nextDecoded()
 		if err != nil {
@@ -135,15 +136,14 @@ func deobfuscate(fname string) error {
 		}
 	}
 
+	// decode the eexec section
 	var line []byte
 	ignoreLF := false
 	for {
 		b, err := r.nextDecoded()
-		os.Stdout.Write([]byte{b})
 		if err == io.EOF {
 			if len(line) > 0 {
-				// fmt.Println(string(line))
-				line = line[:0]
+				fmt.Println(string(line))
 			}
 			return nil
 		} else if err != nil {
@@ -156,7 +156,7 @@ func deobfuscate(fname string) error {
 		}
 		ignoreLF = b == '\r'
 		if b == '\r' || b == '\n' {
-			// fmt.Println(string(line))
+			fmt.Println(string(line))
 			line = line[:0]
 			continue
 		}
@@ -252,4 +252,5 @@ const (
 var (
 	eolRegexp        = regexp.MustCompile(`(\r\n|\r|\n)`)
 	eexecStartRegexp = regexp.MustCompile(`currentfile[ \t\r\n]+eexec[ \t\r\n]`)
+	eexecEndRegexp   = regexp.MustCompile(`currentfile[ \t\r\n]+closefile[ \t\r\n$]`)
 )
