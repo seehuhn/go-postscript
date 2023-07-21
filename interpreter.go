@@ -26,10 +26,11 @@ import (
 // TODO(voss): prevent infinite loops
 
 type Interpreter struct {
-	Stack     []Object
-	DictStack []Dict
-	Fonts     Dict
-	DSC       []Comment
+	Stack      []Object
+	DictStack  []Dict
+	Fonts      Dict
+	DSC        []Comment
+	CheckStart bool
 
 	SystemDict Dict
 	UserDict   Dict
@@ -68,6 +69,17 @@ func (intp *Interpreter) Execute(r io.Reader) error {
 }
 
 func (intp *Interpreter) executeScanner(s *scanner) error {
+	if intp.CheckStart {
+		head, err := s.peekN(2)
+		if err != nil {
+			return err
+		}
+		if string(head) != "%!" {
+			return errors.New("not a PostScript file")
+		}
+		intp.CheckStart = false
+	}
+
 	intp.scanners = append(intp.scanners, s)
 	defer func() {
 		intp.scanners = intp.scanners[:len(intp.scanners)-1]
