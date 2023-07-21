@@ -26,19 +26,19 @@ import (
 	"strconv"
 )
 
-type scanner struct {
-	r io.Reader
+type Scanner struct {
+	Line int // 0-based
+	Col  int // 0-based
+	DSC  []Comment
 
+	r         io.Reader
 	buf       []byte
 	pos, used int
+	crSeen    bool
 
-	Line   int // 0-based
-	Col    int // 0-based
-	crSeen bool
-
-	DSC        []Comment
-	headerDone bool
-
+	// Err is the first error returned by r.Read().
+	// Once an error has been returned, all subsequent calls to .refill() will
+	// return err.
 	err error
 }
 
@@ -47,16 +47,16 @@ type Comment struct {
 	Value string
 }
 
-func newScanner(r io.Reader) *scanner {
-	return &scanner{
+func newScanner(r io.Reader) *Scanner {
+	return &Scanner{
 		r:   r,
 		buf: make([]byte, 256),
 	}
 }
 
-func (s *scanner) Read(p []byte) (int, error) {
+func (s *Scanner) Read(p []byte) (int, error) {
 	for n := range p {
-		b, err := s.next()
+		b, err := s.Next()
 		if err != nil {
 			return n, err
 		}
@@ -65,53 +65,50 @@ func (s *scanner) Read(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func (s *scanner) scanToken() (Object, error) {
-	err := s.skipWhiteSpace()
+func (s *Scanner) ScanToken() (Object, error) {
+	err := s.SkipWhiteSpace()
 	if err != nil {
 		return nil, err
 	}
-	s.headerDone = true
-	b, err := s.peek()
+	b, err := s.Peek()
 	if err != nil {
 		return nil, err
 	}
 	switch b {
 	case '(':
-		return s.readString()
+		return s.ReadString()
 	case '<':
-		bb, err := s.peekN(2)
-		if err != nil && err != io.EOF {
-			return nil, err
-		}
+		bb := s.PeekN(2)
 		switch string(bb) {
 		case "<<": // dict
-			s.skipByte()
-			s.skipByte()
+			s.SkipByte()
+			s.SkipByte()
 			return Operator("<<"), nil
 		case "<~": // base85-encoded string
-			return s.readBase85String()
+			return s.ReadBase85String()
 		default: // hex string
-			return s.readHexString()
+			return s.ReadHexString()
 		}
 	case '>':
-		bb, err := s.peekN(2)
-		if err != nil && err != io.EOF {
-			return nil, err
-		}
+		bb := s.PeekN(2)
 		switch string(bb) {
 		case ">>": // end dict
-			s.skipByte()
-			s.skipByte()
+			s.SkipByte()
+			s.SkipByte()
 			return Operator(">>"), nil
 		default:
-			return nil, errSyntaxerror
+			err := s.err
+			if err == nil {
+				err = &postScriptError{eSyntaxerror, "unexpected '>'"}
+			}
+			return nil, err
 		}
 	case '/':
 		var name []byte
-		s.skipByte()
+		s.SkipByte()
 		// TODO(voss): implement "immediate names"
 		for {
-			b, err := s.peek()
+			b, err := s.Peek()
 			if err == io.EOF {
 				break
 			} else if err != nil {
@@ -120,16 +117,16 @@ func (s *scanner) scanToken() (Object, error) {
 			if !isRegular(b) {
 				break
 			}
-			s.skipByte()
+			s.SkipByte()
 			name = append(name, b)
 		}
 		return Name(name), nil
 	default:
-		s.skipByte()
+		s.SkipByte()
 		opBytes := []byte{b}
 		if isRegular(b) {
 			for {
-				b, err := s.peek()
+				b, err := s.Peek()
 				if err == io.EOF {
 					break
 				} else if err != nil {
@@ -138,7 +135,7 @@ func (s *scanner) scanToken() (Object, error) {
 				if !isRegular(b) {
 					break
 				}
-				s.skipByte()
+				s.SkipByte()
 				opBytes = append(opBytes, b)
 			}
 		}
@@ -152,34 +149,8 @@ func (s *scanner) scanToken() (Object, error) {
 	}
 }
 
-func parseNumber(s []byte) (Object, error) {
-	x, err := strconv.ParseInt(string(s), 10, 0)
-	if err == nil {
-		return Integer(x), nil
-	}
-
-	y, err := strconv.ParseFloat(string(s), 64)
-	// TODO(voss): limitcheck, if err == strconv.ErrRange
-	if err == nil && !math.IsInf(y, 0) && !math.IsNaN(y) {
-		return Real(y), nil
-	}
-
-	mm := radixNumberRe.FindSubmatch(s)
-	if mm != nil {
-		base, err := strconv.ParseInt(string(mm[1]), 10, 0)
-		if err == nil && base >= 2 && base <= 36 {
-			z, err := strconv.ParseInt(string(mm[2]), int(base), 0)
-			if err == nil {
-				return Integer(z), nil
-			}
-		}
-	}
-
-	return nil, fmt.Errorf("invalid number %q", s)
-}
-
-func (s *scanner) readString() (String, error) {
-	err := s.skipRequiredByte('(')
+func (s *Scanner) ReadString() (String, error) {
+	err := s.SkipRequiredByte('(')
 	if err != nil {
 		return nil, err
 	}
@@ -187,7 +158,7 @@ func (s *scanner) readString() (String, error) {
 	bracketLevel := 1
 	ignoreLF := false
 	for {
-		b, err := s.next()
+		b, err := s.Next()
 		if err != nil {
 			return nil, err
 		}
@@ -206,7 +177,7 @@ func (s *scanner) readString() (String, error) {
 			}
 			res = append(res, b)
 		case '\\':
-			b, err = s.next()
+			b, err = s.Next()
 			if err != nil {
 				return nil, err
 			}
@@ -235,7 +206,7 @@ func (s *scanner) readString() (String, error) {
 			case '0', '1', '2', '3', '4', '5', '6', '7':
 				oct := b - '0'
 				for i := 0; i < 2; i++ {
-					b, err = s.peek()
+					b, err = s.Peek()
 					if err == io.EOF {
 						break
 					} else if err != nil {
@@ -244,7 +215,7 @@ func (s *scanner) readString() (String, error) {
 					if b < '0' || b > '7' {
 						break
 					}
-					s.skipByte()
+					s.SkipByte()
 					oct = oct*8 + (b - '0')
 				}
 				res = append(res, oct)
@@ -260,8 +231,8 @@ func (s *scanner) readString() (String, error) {
 	}
 }
 
-func (s *scanner) readHexString() (String, error) {
-	err := s.skipRequiredByte('<')
+func (s *Scanner) ReadHexString() (String, error) {
+	err := s.SkipRequiredByte('<')
 	if err != nil {
 		return nil, err
 	}
@@ -271,7 +242,7 @@ func (s *scanner) readHexString() (String, error) {
 	var hi byte
 readLoop:
 	for {
-		b, err := s.next()
+		b, err := s.Next()
 		if err != nil {
 			return nil, err
 		}
@@ -288,7 +259,7 @@ readLoop:
 		case b >= 'a' && b <= 'f':
 			lo = b - 'a' + 10
 		default:
-			return nil, fmt.Errorf("invalid hex digit %q", b)
+			return nil, &postScriptError{eSyntaxerror, fmt.Sprintf("invalid hex digit %q", b)}
 		}
 		if first {
 			hi = lo << 4
@@ -305,9 +276,9 @@ readLoop:
 	return String(res), nil
 }
 
-func (s *scanner) readBase85String() (String, error) {
+func (s *Scanner) ReadBase85String() (String, error) {
 	for _, b := range []byte{'<', '~'} {
-		err := s.skipRequiredByte(b)
+		err := s.SkipRequiredByte(b)
 		if err != nil {
 			return nil, err
 		}
@@ -318,7 +289,7 @@ func (s *scanner) readBase85String() (String, error) {
 	var val uint32
 readLoop:
 	for {
-		b, err := s.next()
+		b, err := s.Next()
 		if err != nil {
 			return nil, err
 		}
@@ -338,16 +309,14 @@ readLoop:
 				val = 0
 			}
 		default:
-			// TODO(voss): syntaxerror
-			return nil, fmt.Errorf("invalid base85 digit %q", b)
+			return nil, &postScriptError{eSyntaxerror, fmt.Sprintf("invalid base85 digit %q", b)}
 		}
 	}
 	switch pos {
 	case 0:
 		// pass
 	case 1:
-		// TODO(voss): syntaxerror
-		return nil, fmt.Errorf("unexpected end marker in base85 stream")
+		return nil, &postScriptError{eSyntaxerror, "unexpected end of base85 string"}
 	default:
 		for i := pos; i < 5; i++ {
 			val = val*85 + 84
@@ -356,7 +325,7 @@ readLoop:
 		res = append(res, tail[:pos-1]...)
 	}
 
-	err := s.skipRequiredByte('>')
+	err := s.SkipRequiredByte('>')
 	if err != nil {
 		return nil, err
 	}
@@ -364,10 +333,11 @@ readLoop:
 	return String(res), nil
 }
 
-// skipWhiteSpace skips all whitespace and comments.
-func (s *scanner) skipWhiteSpace() error {
+// SkipWhiteSpace skips all input (including comments) until a non-whitespace
+// character is found.
+func (s *Scanner) SkipWhiteSpace() error {
 	for {
-		if s.Col == 0 && s.lookingAt("%%") {
+		if s.Col == 0 && s.LookingAt("%%") {
 			key, val, err := s.readStructuredComment()
 			if err == nil {
 				s.DSC = append(s.DSC, Comment{key, val})
@@ -375,14 +345,14 @@ func (s *scanner) skipWhiteSpace() error {
 			}
 		}
 
-		b, err := s.peek()
+		b, err := s.Peek()
 		if err != nil {
 			return err
 		}
 		if b <= 32 {
-			s.skipByte()
+			s.SkipByte()
 		} else if b == '%' {
-			err = s.skipComment()
+			err = s.SkipComment()
 			if err != nil {
 				return err
 			}
@@ -392,18 +362,18 @@ func (s *scanner) skipWhiteSpace() error {
 	}
 }
 
-// ReadStructuredComment reads the next structured comment into a key-value pair.
-func (s *scanner) readStructuredComment() (key, value string, err error) {
-	if !s.lookingAt("%%") {
+// readStructuredComment reads the next structured comment into a key-value pair.
+func (s *Scanner) readStructuredComment() (key, value string, err error) {
+	if !s.LookingAt("%%") {
 		err = errors.New("not a structured comment")
 		return
 	}
-	s.skipN(2)
+	s.SkipN(2)
 
 	// Read key
 	key, err = s.readCommentKey()
 	if err != nil {
-		s.skipToEOL()
+		s.SkipToEOL()
 		return
 	}
 
@@ -412,10 +382,10 @@ func (s *scanner) readStructuredComment() (key, value string, err error) {
 	return
 }
 
-func (s *scanner) readCommentKey() (string, error) {
+func (s *Scanner) readCommentKey() (string, error) {
 	var buf bytes.Buffer
 	for {
-		b, err := s.peek()
+		b, err := s.Peek()
 		if err == io.EOF {
 			break
 		} else if err != nil {
@@ -424,7 +394,7 @@ func (s *scanner) readCommentKey() (string, error) {
 		if b <= 32 {
 			break
 		}
-		s.skipByte()
+		s.SkipByte()
 		if b == ':' {
 			break
 		}
@@ -439,13 +409,13 @@ func (s *scanner) readCommentKey() (string, error) {
 // ReadCommentValue reads the value of a structured comment.
 // Multi-line values (using `%%+`) are supported.
 // The method consumes the first EOL after the value.
-func (s *scanner) readCommentValue() (string, error) {
+func (s *Scanner) readCommentValue() (string, error) {
 	var buf bytes.Buffer
 
 commentLineLoop:
 	for {
 		for {
-			b, err := s.peek()
+			b, err := s.Peek()
 			if err == io.EOF {
 				break
 			} else if err != nil {
@@ -454,11 +424,11 @@ commentLineLoop:
 			if b == '\n' || b == '\r' || b > 32 {
 				break
 			}
-			s.skipByte()
+			s.SkipByte()
 		}
 
 		for {
-			b, err := s.next()
+			b, err := s.Next()
 			if err == io.EOF {
 				break
 			} else if err != nil {
@@ -466,14 +436,14 @@ commentLineLoop:
 			} else if b == 10 { // LF
 				break
 			} else if b == 13 { // CR or CR+LF
-				s.skipOptionalByte(10)
+				s.SkipOptionalByte(10)
 				break
 			}
 			buf.WriteByte(b)
 		}
 
-		if s.lookingAt("%%+") {
-			s.skipN(3)
+		if s.LookingAt("%%+") {
+			s.SkipN(3)
 			buf.WriteByte(' ')
 			continue commentLineLoop
 		}
@@ -484,74 +454,34 @@ commentLineLoop:
 	return buf.String(), nil
 }
 
-// skipComment skips everything from a % to the end of the line (buth inclusive).
-func (s *scanner) skipComment() error {
-	err := s.skipRequiredByte('%')
+// SkipComment skips everything from a % to the end of the line (buth inclusive).
+func (s *Scanner) SkipComment() error {
+	err := s.SkipRequiredByte('%')
 	if err != nil {
 		return err
 	}
-	return s.skipToEOL()
+	return s.SkipToEOL()
 }
 
-func (s *scanner) skipToEOL() error {
+func (s *Scanner) SkipToEOL() error {
 	for {
-		b, err := s.next()
+		b, err := s.Next()
 		if err != nil {
 			return err
 		} else if b == 10 { // LF
 			return nil
 		} else if b == 13 { // CR or CR+LF
-			s.skipOptionalByte(10)
+			s.SkipOptionalByte(10)
 			return nil
 		}
 	}
 }
 
-func (s *scanner) skipRequiredByte(b byte) error {
-	next, err := s.next()
-	if err != nil {
-		return err
-	}
-	if next != b {
-		return fmt.Errorf("expected %c, got %c", b, next)
-	}
-	return nil
+func (s *Scanner) LookingAt(pat string) bool {
+	return string(s.PeekN(len(pat))) == pat
 }
 
-func (s *scanner) skipOptionalByte(b byte) {
-	next, err := s.peek()
-	if err == nil && next == b {
-		s.skipByte()
-	}
-}
-
-func (s *scanner) refill() error {
-	if s.err != nil {
-		return s.err
-	}
-	s.used = copy(s.buf, s.buf[s.pos:s.used])
-	s.pos = 0
-
-	n, err := s.r.Read(s.buf[s.used:])
-	s.used += n
-	if err != nil {
-		s.err = err
-	}
-	if n > 0 {
-		err = nil
-	}
-	return err
-}
-
-func (s *scanner) lookingAt(pat string) bool {
-	ahead, err := s.peekN(len(pat))
-	if err != nil {
-		return false
-	}
-	return string(ahead) == pat
-}
-
-func (s *scanner) peek() (byte, error) {
+func (s *Scanner) Peek() (byte, error) {
 	for s.pos >= s.used {
 		err := s.refill()
 		if err != nil {
@@ -561,27 +491,8 @@ func (s *scanner) peek() (byte, error) {
 	return s.buf[s.pos], nil
 }
 
-func (s *scanner) peekN(n int) ([]byte, error) {
-	for s.pos+n > s.used {
-		err := s.refill()
-		if err != nil {
-			return nil, err
-		}
-	}
-	return s.buf[s.pos : s.pos+n], nil
-}
-
-func (s *scanner) next() (byte, error) {
-	b, err := s.peek()
-	if err != nil {
-		return 0, err
-	}
-	s.skipByte()
-	return b, nil
-}
-
-// skipByte skips a single byte which has already been peeked.
-func (s *scanner) skipByte() {
+// SkipByte skips a single byte which has already been peeked.
+func (s *Scanner) SkipByte() {
 	if s.pos >= s.used {
 		panic("unreachable")
 	}
@@ -600,11 +511,70 @@ func (s *scanner) skipByte() {
 	s.crSeen = (b == 13)
 }
 
-// skipN skips N bytes which have already been peeked.
-func (s *scanner) skipN(n int) {
-	for i := 0; i < n; i++ {
-		s.skipByte()
+func (s *Scanner) SkipRequiredByte(b byte) error {
+	next, err := s.Next()
+	if err != nil {
+		return err
 	}
+	if next != b {
+		return &postScriptError{eSyntaxerror, fmt.Sprintf("expected %c, got %c", b, next)}
+	}
+	return nil
+}
+
+func (s *Scanner) SkipOptionalByte(b byte) {
+	next, err := s.Peek()
+	if err == nil && next == b {
+		s.SkipByte()
+	}
+}
+
+func (s *Scanner) PeekN(n int) []byte {
+	for s.pos+n > s.used {
+		err := s.refill()
+		if err != nil {
+			break
+		}
+	}
+	end := s.pos + n
+	if end > s.used {
+		end = s.used
+	}
+	return s.buf[s.pos:end]
+}
+
+// SkipN skips N bytes which have already been peeked.
+func (s *Scanner) SkipN(n int) {
+	for i := 0; i < n; i++ {
+		s.SkipByte()
+	}
+}
+
+func (s *Scanner) Next() (byte, error) {
+	b, err := s.Peek()
+	if err != nil {
+		return 0, err
+	}
+	s.SkipByte()
+	return b, nil
+}
+
+func (s *Scanner) refill() error {
+	if s.err != nil {
+		return s.err
+	}
+	s.used = copy(s.buf, s.buf[s.pos:s.used])
+	s.pos = 0
+
+	n, err := s.r.Read(s.buf[s.used:])
+	s.used += n
+	if err != nil {
+		s.err = err
+	}
+	if n > 0 {
+		err = nil
+	}
+	return err
 }
 
 func isRegular(b byte) bool {
@@ -617,6 +587,32 @@ func isRegular(b byte) bool {
 	default:
 		return true
 	}
+}
+
+func parseNumber(s []byte) (Object, error) {
+	x, err := strconv.ParseInt(string(s), 10, 0)
+	if err == nil {
+		return Integer(x), nil
+	}
+
+	y, err := strconv.ParseFloat(string(s), 64)
+	// TODO(voss): limitcheck, if err == strconv.ErrRange
+	if err == nil && !math.IsInf(y, 0) && !math.IsNaN(y) {
+		return Real(y), nil
+	}
+
+	mm := radixNumberRe.FindSubmatch(s)
+	if mm != nil {
+		base, err := strconv.ParseInt(string(mm[1]), 10, 0)
+		if err == nil && base >= 2 && base <= 36 {
+			z, err := strconv.ParseInt(string(mm[2]), int(base), 0)
+			if err == nil {
+				return Integer(z), nil
+			}
+		}
+	}
+
+	return nil, &postScriptError{eSyntaxerror, fmt.Sprintf("invalid number %q", s)}
 }
 
 var radixNumberRe = regexp.MustCompile(`^([0-9]{1,2})#([0-9a-zA-Z]+)$`)

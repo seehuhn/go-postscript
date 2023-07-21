@@ -16,72 +16,83 @@
 
 package postscript
 
+import "fmt"
+
+func defaultErrorHandler(intp *Interpreter) error {
+	return intp.errors[len(intp.errors)-1]
+}
+
+func (intp *Interpreter) E(tp Name, format string, a ...any) error {
+	return &postScriptError{tp, fmt.Sprintf(format, a...)}
+}
+
 type postScriptError struct {
-	tp Name
+	tp  Name
+	msg string
 }
 
 func (err *postScriptError) Error() string {
-	return string(err.tp)
+	return fmt.Sprintf("%s: %s", string(err.tp), err.msg)
 }
 
 var (
-	errConfigurationerror = &postScriptError{Name("configurationerror")}
-	errDictfull           = &postScriptError{Name("dictfull")}
-	errDictstackoverflow  = &postScriptError{Name("dictstackoverflow")}
-	errDictstackunderflow = &postScriptError{Name("dictstackunderflow")}
-	errExecstackoverflow  = &postScriptError{Name("execstackoverflow")}
-	errHandleerror        = &postScriptError{Name("handleerror")}
-	errInterrupt          = &postScriptError{Name("interrupt")}
-	errInvalidaccess      = &postScriptError{Name("invalidaccess")}
-	errInvalidexit        = &postScriptError{Name("invalidexit")}
-	errInvalidfileaccess  = &postScriptError{Name("invalidfileaccess")}
-	errInvalidfont        = &postScriptError{Name("invalidfont")}
-	errInvalidrestore     = &postScriptError{Name("invalidrestore")}
-	errIoerror            = &postScriptError{Name("ioerror")}
-	errLimitcheck         = &postScriptError{Name("limitcheck")}
-	errNocurrentpoint     = &postScriptError{Name("nocurrentpoint")}
-	errRangecheck         = &postScriptError{Name("rangecheck")}
-	errStackoverflow      = &postScriptError{Name("stackoverflow")}
-	errStackunderflow     = &postScriptError{Name("stackunderflow")}
-	errSyntaxerror        = &postScriptError{Name("syntaxerror")}
-	errTimeout            = &postScriptError{Name("timeout")}
-	errTypecheck          = &postScriptError{Name("typecheck")}
-	errUndefined          = &postScriptError{Name("undefined")}
-	errUndefinedfilename  = &postScriptError{Name("undefinedfilename")}
-	errUndefinedresource  = &postScriptError{Name("undefinedresource")}
-	errUndefinedresult    = &postScriptError{Name("undefinedresult")}
-	errUnmatchedmark      = &postScriptError{Name("unmatchedmark")}
-	errUnregistered       = &postScriptError{Name("unregistered")}
-	errVMerror            = &postScriptError{Name("VMerror")}
+	eConfigurationerror = Name("configurationerror")
+	eDictfull           = Name("dictfull")
+	eDictstackoverflow  = Name("dictstackoverflow")
+	eDictstackunderflow = Name("dictstackunderflow")
+	eExecstackoverflow  = Name("execstackoverflow")
+	eHandleerror        = Name("handleerror")
+	eInterrupt          = Name("interrupt")
+	eInvalidaccess      = Name("invalidaccess")
+	eInvalidexit        = Name("invalidexit")
+	eInvalidfileaccess  = Name("invalidfileaccess")
+	eInvalidfont        = Name("invalidfont")
+	eInvalidrestore     = Name("invalidrestore")
+	eIoerror            = Name("ioerror")
+	eLimitcheck         = Name("limitcheck")
+	eNocurrentpoint     = Name("nocurrentpoint")
+	eRangecheck         = Name("rangecheck")
+	eStackoverflow      = Name("stackoverflow")
+	eStackunderflow     = Name("stackunderflow")
+	eSyntaxerror        = Name("syntaxerror")
+	eTimeout            = Name("timeout")
+	eTypecheck          = Name("typecheck")
+	eUndefined          = Name("undefined")
+	eUndefinedfilename  = Name("undefinedfilename")
+	eUndefinedresource  = Name("undefinedresource")
+	eUndefinedresult    = Name("undefinedresult")
+	eUnmatchedmark      = Name("unmatchedmark")
+	eUnregistered       = Name("unregistered")
+	eVMerror            = Name("VMerror")
 )
 
-var allErrors = []*postScriptError{
-	errConfigurationerror,
-	errDictfull,
-	errDictstackoverflow,
-	errDictstackunderflow,
-	errExecstackoverflow,
-	errHandleerror,
-	errInterrupt,
-	errInvalidaccess,
-	errInvalidexit,
-	errInvalidfileaccess,
-	errInvalidfont,
-	errInvalidrestore,
-	errIoerror,
-	errLimitcheck,
-	errNocurrentpoint,
-	errRangecheck,
-	errStackoverflow,
-	errStackunderflow,
-	errSyntaxerror,
-	errTimeout,
-	errTypecheck,
-	errUndefined,
-	errUndefinedfilename,
-	errUndefinedresource,
-	errUndefinedresult,
-	errUnmatchedmark,
-	errUnregistered,
-	errVMerror,
+var allErrors = []Name{
+	eConfigurationerror,
+	eDictfull,
+	eDictstackoverflow,
+	eDictstackunderflow,
+	eExecstackoverflow,
+	eHandleerror,
+	eInterrupt,
+	eInvalidaccess,
+	eInvalidexit,
+	eInvalidfileaccess,
+	eInvalidfont,
+	eInvalidrestore,
+	eIoerror,
+	eLimitcheck,
+	eNocurrentpoint,
+	eRangecheck,
+	eStackoverflow,
+	eStackunderflow,
+	eSyntaxerror,
+	eTimeout,
+	eTypecheck,
+	eUndefined,
+	eUndefinedfilename,
+	eUndefinedresource,
+	eUndefinedresult,
+	eUnmatchedmark,
+	eUnregistered,
+	eVMerror,
 }

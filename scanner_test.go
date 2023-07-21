@@ -57,7 +57,7 @@ func TestScanToken(t *testing.T) {
 	s := newScanner(strings.NewReader(in))
 	var oo []Object
 	for {
-		token, err := s.scanToken()
+		token, err := s.ScanToken()
 		if err == io.EOF {
 			break
 		} else if err != nil {
@@ -76,7 +76,7 @@ func TestScanString(t *testing.T) {
 \n\r\t\b\f\\\D\105
 %*!&}^)`)
 	s := newScanner(r)
-	o, err := s.readString()
+	o, err := s.ReadString()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestScanString(t *testing.T) {
 func TestScanString2(t *testing.T) {
 	r := strings.NewReader("()")
 	s := newScanner(r)
-	o, err := s.readString()
+	o, err := s.ReadString()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +101,7 @@ func TestScanString3(t *testing.T) {
 	for _, nl := range []string{"\n", "\r", "\r\n"} {
 		r := strings.NewReader("(A\\" + nl + "B" + nl + "C)")
 		s := newScanner(r)
-		o, err := s.readString()
+		o, err := s.ReadString()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -115,7 +115,7 @@ func TestScanString5(t *testing.T) {
 	exp := string([]byte{1, 2, 3, 0, '4', 0o377})
 	r := strings.NewReader(`(\1\02\003\0004\777)`)
 	s := newScanner(r)
-	o, err := s.readString()
+	o, err := s.ReadString()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +129,7 @@ func TestScanHexString(t *testing.T) {
 	out := String([]byte{0x90, 0x1f, 0xa0})
 	r := strings.NewReader(in)
 	s := newScanner(r)
-	o, err := s.readHexString()
+	o, err := s.ReadHexString()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestScanHexString2(t *testing.T) {
 	out := String([]byte{})
 	r := strings.NewReader(in)
 	s := newScanner(r)
-	o, err := s.readHexString()
+	o, err := s.ReadHexString()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +157,7 @@ func TestBase85String(t *testing.T) {
 	in := `<~z!<N?+"T~>`
 	out := String([]byte{0, 0, 0, 0, 1, 2, 3, 4, 5})
 	s := newScanner(strings.NewReader(in))
-	o, err := s.readBase85String()
+	o, err := s.ReadBase85String()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +170,7 @@ func TestLineCol(t *testing.T) {
 	r := strings.NewReader("1\n12\r123\r\n\n1\n")
 	s := newScanner(r)
 	for {
-		b, err := s.next()
+		b, err := s.Next()
 		if err == io.EOF {
 			break
 		} else if err != nil {
@@ -211,7 +211,7 @@ func TestLineCol2(t *testing.T) {
 	}
 	for _, c := range cases {
 		s := newScanner(strings.NewReader(c.in))
-		token, err := s.scanToken()
+		token, err := s.ScanToken()
 		if err != nil && err != io.EOF {
 			t.Fatal(err)
 		}
@@ -231,7 +231,7 @@ func TestDSC(t *testing.T) {
 %%+ or tomorrow
 %%EOF`
 	s := newScanner(strings.NewReader(in))
-	token, err := s.scanToken()
+	token, err := s.ScanToken()
 	if err != io.EOF {
 		t.Errorf("expected EOF, got %q", token)
 	}
@@ -255,7 +255,7 @@ A
 /B
 `
 	s := newScanner(strings.NewReader(in))
-	token, err := s.scanToken()
+	token, err := s.ScanToken()
 	if err != nil {
 		t.Errorf("expected nil, got %q", err)
 	}
@@ -269,7 +269,7 @@ func TestDSC3(t *testing.T) {
 /A
 `
 	s := newScanner(strings.NewReader(in))
-	token, err := s.scanToken()
+	token, err := s.ScanToken()
 	if err != nil {
 		t.Errorf("expected nil, got %q", err)
 	}

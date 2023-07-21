@@ -24,10 +24,10 @@ import (
 func eexec(intp *Interpreter) error {
 	k := len(intp.DictStack)
 	if len(intp.Stack) < 1 {
-		return fmt.Errorf("stack underflow")
+		return &postScriptError{eStackunderflow, "eexec"}
 	}
 	if intp.Stack[len(intp.Stack)-1] != nil {
-		return fmt.Errorf("invalid argument")
+		return &postScriptError{eTypecheck, "eexec"}
 	}
 	intp.Stack = intp.Stack[:len(intp.Stack)-1]
 
@@ -44,21 +44,21 @@ func eexec(intp *Interpreter) error {
 	return nil
 }
 
-func eexecDecode(s *scanner) (io.Reader, error) {
+func eexecDecode(s *Scanner) (io.Reader, error) {
 	for {
-		b, err := s.peek()
+		b, err := s.Peek()
 		if err != nil {
 			return nil, err
 		}
 		if b != ' ' && b != '\t' && b != '\r' && b != '\n' {
 			break
 		}
-		s.skipByte()
+		s.SkipByte()
 	}
 
-	bb, err := s.peekN(4)
-	if err != nil {
-		return nil, err
+	bb := s.PeekN(4)
+	if len(bb) < 4 {
+		return nil, s.err
 	}
 	isBinary := false
 	for _, b := range bb {
@@ -75,11 +75,11 @@ func eexecDecode(s *scanner) (io.Reader, error) {
 		c1:       52845,
 		c2:       22719,
 		isBinary: isBinary,
-	}, err
+	}, nil
 }
 
 type eexecReader struct {
-	s         *scanner
+	s         *Scanner
 	n         int
 	R, c1, c2 uint16
 	isBinary  bool
@@ -116,14 +116,14 @@ func (r *eexecReader) nextPlain() (byte, error) {
 
 func (r *eexecReader) nextCipher() (byte, error) {
 	if r.isBinary {
-		return r.s.next()
+		return r.s.Next()
 	}
 
 	i := 0
 	var out byte
 readLoop:
 	for i < 2 {
-		b, err := r.s.next()
+		b, err := r.s.Next()
 		var nibble byte
 		switch {
 		case err != nil:

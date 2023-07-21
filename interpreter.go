@@ -32,17 +32,24 @@ type Interpreter struct {
 	DSC        []Comment
 	CheckStart bool
 
+	NumOps int
+	MaxOps int
+
 	SystemDict Dict
 	UserDict   Dict
+	ErrorDict  Dict
 
-	scanners  []*scanner
+	errors    []*postScriptError
+	scanners  []*Scanner
 	procStart []int
+
+	execStackDepth int
 }
 
 func NewInterpreter() *Interpreter {
 	systemDict := makeSystemDict()
 	userDict := systemDict["userdict"].(Dict)
-	return &Interpreter{
+	intp := &Interpreter{
 		DictStack: []Dict{
 			systemDict,
 			userDict,
@@ -50,7 +57,14 @@ func NewInterpreter() *Interpreter {
 		Fonts:      systemDict["FontDirectory"].(Dict),
 		SystemDict: systemDict,
 		UserDict:   userDict,
+		ErrorDict:  systemDict["errordict"].(Dict),
 	}
+
+	for _, name := range allErrors {
+		intp.ErrorDict[name] = defaultErrorHandler
+	}
+
+	return intp
 }
 
 func (intp *Interpreter) ExecuteString(code string) error {
@@ -60,22 +74,29 @@ func (intp *Interpreter) ExecuteString(code string) error {
 func (intp *Interpreter) Execute(r io.Reader) error {
 	s := newScanner(r)
 	err := intp.executeScanner(s)
+	if err == errExit {
+		err = intp.E(eInvalidexit, "exit outside loop")
+	} else if err == errStop {
+		err = nil
+	}
 	if err != nil {
 		return err
 	}
 
 	intp.DSC = append(intp.DSC, s.DSC...)
+
 	return nil
 }
 
-func (intp *Interpreter) executeScanner(s *scanner) error {
+func (intp *Interpreter) executeScanner(s *Scanner) error {
 	if intp.CheckStart {
-		head, err := s.peekN(2)
-		if err != nil {
-			return err
-		}
+		head := s.PeekN(2)
 		if string(head) != "%!" {
-			return errors.New("not a PostScript file")
+			err := s.err
+			if err == nil || err == io.EOF {
+				err = errors.New("not a PostScript file")
+			}
+			return err
 		}
 		intp.CheckStart = false
 	}
@@ -86,7 +107,7 @@ func (intp *Interpreter) executeScanner(s *scanner) error {
 	}()
 
 	for {
-		o, err := s.scanToken()
+		o, err := s.ScanToken()
 		if err == io.EOF {
 			break
 		} else if err != nil {
@@ -101,18 +122,26 @@ func (intp *Interpreter) executeScanner(s *scanner) error {
 	return nil
 }
 
-func (intp *Interpreter) executeOne(o Object, execProc bool) error {
-	if !execProc {
-		fmt.Println("|-", intp.stackString(), "|", intp.objectString(o))
+func (intp *Interpreter) executeOne(obj Object, execProc bool) error {
+	// if !execProc {
+	// 	fmt.Println("|-", intp.stackString(), "|", intp.objectString(o))
+	// }
+
+	if execProc {
+		if intp.execStackDepth >= 100 {
+			return intp.E(eExecstackoverflow, "exec stack overflow")
+		}
+		intp.execStackDepth++
+		defer func() { intp.execStackDepth-- }()
 	}
 
 	if len(intp.Stack) > maxOperandStackDepth {
-		return errStackoverflow
+		return intp.E(eStackoverflow, "operand stack overflow")
 	}
 
-	if o == Operator("}") {
+	if obj == Operator("}") {
 		if len(intp.procStart) == 0 {
-			return errors.New("unmatched '}'")
+			return intp.E(eSyntaxerror, "unmatched '}'")
 		}
 		a := intp.procStart[len(intp.procStart)-1]
 		intp.procStart = intp.procStart[:len(intp.procStart)-1]
@@ -121,41 +150,59 @@ func (intp *Interpreter) executeOne(o Object, execProc bool) error {
 		copy(proc, intp.Stack[a:])
 		intp.Stack = append(intp.Stack[:a], proc)
 		return nil
-	} else if o == Operator("{") {
+	} else if obj == Operator("{") {
 		intp.procStart = append(intp.procStart, len(intp.Stack))
 		return nil
 	} else if len(intp.procStart) > 0 {
-		intp.Stack = append(intp.Stack, o)
+		intp.Stack = append(intp.Stack, obj)
 		return nil
 	}
 
-	switch o := o.(type) {
+recurseTail:
+	intp.NumOps++
+	if intp.MaxOps > 0 && intp.NumOps > intp.MaxOps {
+		return intp.E(eInterrupt, "operation limit exceeded")
+	}
+
+	switch o := obj.(type) {
 	case Operator:
 		val, err := intp.load(o)
 		if err != nil {
 			return err
 		}
-		err = intp.executeOne(val, true)
+		obj = val
+		execProc = true
+		goto recurseTail
+
+	case builtin:
+		err := o(intp)
 		if e2, ok := err.(*postScriptError); ok {
-			errordict := intp.SystemDict["errordict"].(Dict)
-			proc, ok := errordict[e2.tp]
-			if ok {
-				err = intp.executeOne(proc, true)
+			level := len(intp.errors)
+			if level < 5 {
+				intp.errors = append(intp.errors, e2)
+				if proc, ok := intp.ErrorDict[e2.tp]; ok {
+					err = intp.executeOne(proc, true)
+				}
+				intp.errors = intp.errors[:level]
 			}
 		}
 		return err
 
-	case builtin:
-		return o(intp)
-
 	case Procedure:
 		if execProc {
-			for _, token := range o {
+			if len(o) == 0 {
+				return nil
+			}
+
+			// use tail recursion
+			for _, token := range o[:len(o)-1] {
 				err := intp.executeOne(token, false)
 				if err != nil {
 					return err
 				}
 			}
+			obj = o[len(o)-1]
+			goto recurseTail
 		} else {
 			intp.Stack = append(intp.Stack, o)
 		}
@@ -174,7 +221,7 @@ func (intp *Interpreter) load(key Object) (Object, error) {
 	case Operator:
 		name = Name(key)
 	default:
-		return nil, errTypecheck
+		return nil, intp.E(eTypecheck, "load: expected name or operator, got %T", key)
 	}
 	for j := len(intp.DictStack) - 1; j >= 0; j-- {
 		d := intp.DictStack[j]
@@ -182,7 +229,7 @@ func (intp *Interpreter) load(key Object) (Object, error) {
 			return val, nil
 		}
 	}
-	return nil, errUndefined
+	return nil, intp.E(eUndefined, "load: %s not defined", name)
 }
 
 func (intp *Interpreter) stackString() string {
@@ -224,6 +271,12 @@ func (intp *Interpreter) objectString2(o Object, short bool) string {
 			ss = append(ss, si)
 		}
 		return "[" + strings.Join(ss, " ") + "]"
+	case String:
+		s := o.PS()
+		if short && len(s) > 13 {
+			s = s[:5] + "..." + s[len(s)-5:]
+		}
+		return s
 	case Procedure:
 		var ss []string
 		l := 1

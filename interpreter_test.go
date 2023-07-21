@@ -17,9 +17,12 @@
 package postscript
 
 import (
+	"io"
+	"sort"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"golang.org/x/exp/maps"
 )
 
 func TestArray(t *testing.T) {
@@ -99,4 +102,33 @@ func TestNestedProcedures2(t *testing.T) {
 	if d := cmp.Diff(intp.Stack, []Object{Array{Integer(1), Integer(2)}, Integer(3)}); d != "" {
 		t.Fatal(d)
 	}
+}
+
+func FuzzInterpreter(f *testing.F) {
+	f.Add("1 2 add")
+	f.Add("12 array dup 5 6 put")
+	f.Add("/a {{1 2} {3 4} ifelse} def false a")
+	f.Add("0 1 1 4 {add} for")
+	f.Add("0 1 1 4 {add} for")
+	f.Add("<< /a 1 >> {} forall")
+	builtins := maps.Keys(makeSystemDict())
+	sort.Slice(builtins, func(i, j int) bool { return builtins[i] < builtins[j] })
+	for _, name := range builtins {
+		f.Add("1 [2 3] (four) " + string(name))
+	}
+
+	f.Fuzz(func(t *testing.T, a string) {
+		// Just check that the interpreter does not crash or hang.
+		intp := NewInterpreter()
+		intp.MaxOps = 1000000
+		err := intp.ExecuteString(a)
+		if err == nil || err == io.EOF {
+			return
+		}
+		_, ok := err.(*postScriptError)
+		if ok {
+			return
+		}
+		t.Errorf("%#v", err)
+	})
 }

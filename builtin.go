@@ -27,14 +27,7 @@ import (
 func makeSystemDict() Dict {
 	FontDirectory := Dict{}
 	userDict := Dict{}
-
 	errorDict := Dict{}
-	for _, err := range allErrors {
-		err := err
-		errorDict[err.tp] = builtin(func(intp *Interpreter) error {
-			return errors.New(string(err.tp))
-		})
-	}
 
 	systemDict := Dict{
 		"[": builtin(func(intp *Interpreter) error {
@@ -52,7 +45,7 @@ func makeSystemDict() Dict {
 					return nil
 				}
 			}
-			return errUnmatchedmark
+			return intp.E(eUnmatchedmark, "]: missing '['")
 		}),
 		"<<": builtin(func(intp *Interpreter) error {
 			intp.Stack = append(intp.Stack, theMark)
@@ -68,15 +61,15 @@ func makeSystemDict() Dict {
 				}
 			}
 			if markPos < 0 {
-				return errUnmatchedmark
+				return intp.E(eUnmatchedmark, ">>: missing '<<'")
 			} else if (n-markPos)%2 != 1 {
-				return errRangecheck
+				return intp.E(eRangecheck, "dict literal: odd length")
 			}
 			d := make(Dict, (n-markPos-1)/2)
 			for i := markPos + 1; i < n; i += 2 {
 				name, ok := intp.Stack[i].(Name)
 				if !ok {
-					return errTypecheck
+					return intp.E(eTypecheck, "dict literal: keys must be Name, not %T", intp.Stack[i])
 				}
 				d[name] = intp.Stack[i+1]
 			}
@@ -85,7 +78,7 @@ func makeSystemDict() Dict {
 		}),
 		"abs": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 1 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "abs: not enough arguments")
 			}
 			x := intp.Stack[len(intp.Stack)-1]
 			intp.Stack = intp.Stack[:len(intp.Stack)-1]
@@ -105,20 +98,20 @@ func makeSystemDict() Dict {
 					intp.Stack = append(intp.Stack, x)
 				}
 			default:
-				return errTypecheck
+				return intp.E(eTypecheck, "abs: needs a number")
 			}
 			return nil
 		}),
 		"add": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 2 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "add: not enough arguments")
 			}
 			ar, aIsReal := intp.Stack[len(intp.Stack)-2].(Real)
 			ai, aIsInt := intp.Stack[len(intp.Stack)-2].(Integer)
 			br, bIsReal := intp.Stack[len(intp.Stack)-1].(Real)
 			bi, bIsInt := intp.Stack[len(intp.Stack)-1].(Integer)
 			if !(aIsReal || aIsInt) || !(bIsReal || bIsInt) {
-				return errTypecheck
+				return intp.E(eTypecheck, "add: needs numbers")
 			}
 			intp.Stack = intp.Stack[:len(intp.Stack)-2]
 			if aIsReal || bIsReal {
@@ -142,7 +135,7 @@ func makeSystemDict() Dict {
 		}),
 		"and": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 2 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "and: not enough arguments")
 			}
 			a := intp.Stack[len(intp.Stack)-2]
 			b := intp.Stack[len(intp.Stack)-1]
@@ -151,31 +144,31 @@ func makeSystemDict() Dict {
 			case Boolean:
 				b, ok := b.(Boolean)
 				if !ok {
-					return errTypecheck
+					return intp.E(eTypecheck, "and: mismatched argument types")
 				}
 				intp.Stack = append(intp.Stack, a && b)
 			case Integer:
 				b, ok := b.(Integer)
 				if !ok {
-					return errTypecheck
+					return intp.E(eTypecheck, "and: mismatched argument types")
 				}
 				intp.Stack = append(intp.Stack, a&b)
 			default:
-				return errTypecheck
+				return intp.E(eTypecheck, "and: invalid argument type %T", a)
 			}
 			return nil
 		}),
 		"array": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 1 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "array: not enough arguments")
 			}
 			size, ok := intp.Stack[len(intp.Stack)-1].(Integer)
 			if !ok {
-				return errTypecheck
+				return intp.E(eTypecheck, "array: need an integer")
 			} else if size < 0 {
-				return errRangecheck
+				return intp.E(eRangecheck, "array: invalid size %d", size)
 			} else if size > maxArraySize {
-				return errLimitcheck
+				return intp.E(eLimitcheck, "array: invalid size %d", size)
 			}
 			intp.Stack = intp.Stack[:len(intp.Stack)-1]
 			intp.Stack = append(intp.Stack, make(Array, size))
@@ -183,14 +176,14 @@ func makeSystemDict() Dict {
 		}),
 		"begin": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 1 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "begin: not enough arguments")
 			}
 			if len(intp.DictStack) >= maxDictionaryStackDepth {
-				return errDictstackoverflow
+				return intp.E(eDictstackoverflow, "begin")
 			}
 			d, ok := intp.Stack[len(intp.Stack)-1].(Dict)
 			if !ok {
-				return errTypecheck
+				return intp.E(eTypecheck, "begin: needs a dictionary")
 			}
 			intp.Stack = intp.Stack[:len(intp.Stack)-1]
 			intp.DictStack = append(intp.DictStack, d)
@@ -198,11 +191,11 @@ func makeSystemDict() Dict {
 		}),
 		"bind": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 1 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "bind: not enough arguments")
 			}
 			obj, ok := intp.Stack[len(intp.Stack)-1].(Procedure)
 			if !ok {
-				return errTypecheck
+				return intp.E(eTypecheck, "bind: needs a procedure, not %T", obj)
 			}
 			intp.bindProc(obj)
 			return nil
@@ -214,35 +207,35 @@ func makeSystemDict() Dict {
 					return nil
 				}
 			}
-			return errors.New("cleartomark: no mark found")
+			return intp.E(eUnmatchedmark, "cleartomark: no mark found")
 		}),
 		"closefile": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 1 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "closefile: not enough arguments")
 			}
-			if intp.Stack[len(intp.Stack)-1] != nil {
-				return errors.New("closefile: invalid argument")
+			if x := intp.Stack[len(intp.Stack)-1]; x != nil {
+				return intp.E(eTypecheck, "closefile: needs a file, not %T", x)
 			}
 			intp.Stack = intp.Stack[:len(intp.Stack)-1]
 			return io.EOF
 		}),
 		"copy": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 1 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "copy: not enough arguments")
 			}
 			if n, ok := intp.Stack[len(intp.Stack)-1].(Integer); ok {
 				if n < 0 {
-					return errRangecheck
+					return intp.E(eRangecheck, "copy: invalid count %d", n)
 				}
 				if len(intp.Stack) < int(n)+1 {
-					return errStackunderflow
+					return intp.E(eStackunderflow, "copy: not enough arguments")
 				}
 				intp.Stack = intp.Stack[:len(intp.Stack)-1]
 				intp.Stack = append(intp.Stack, intp.Stack[len(intp.Stack)-int(n):]...)
 				return nil
 			}
 			if len(intp.Stack) < 2 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "copy: not enough arguments")
 			}
 			a := intp.Stack[len(intp.Stack)-2]
 			b := intp.Stack[len(intp.Stack)-1]
@@ -252,16 +245,16 @@ func makeSystemDict() Dict {
 			case Array:
 				b, ok := b.(Array)
 				if !ok {
-					return errTypecheck
+					return intp.E(eTypecheck, "copy: mismatched argument types")
 				} else if len(b) < len(a) {
-					return errRangecheck
+					return intp.E(eRangecheck, "copy: not enough space in destination")
 				}
 				n := copy(b, a)
 				res = b[:n]
 			case Dict:
 				b, ok := b.(Dict)
 				if !ok {
-					return errTypecheck
+					return intp.E(eTypecheck, "copy: mismatched argument types")
 				}
 				for k, v := range a {
 					b[k] = v
@@ -270,14 +263,14 @@ func makeSystemDict() Dict {
 			case String:
 				b, ok := b.(String)
 				if !ok {
-					return errTypecheck
+					return intp.E(eTypecheck, "copy: mismatched argument types")
 				} else if len(b) < len(a) {
-					return errRangecheck
+					return intp.E(eRangecheck, "copy: not enough space in destination")
 				}
 				n := copy(b, a)
 				res = b[:n]
 			default:
-				return errTypecheck
+				return intp.E(eTypecheck, "copy: invalid type %T", a)
 			}
 			intp.Stack = append(intp.Stack, res)
 			return nil
@@ -300,11 +293,11 @@ func makeSystemDict() Dict {
 		}),
 		"def": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 2 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "def: not enough arguments")
 			}
 			name, ok := intp.Stack[len(intp.Stack)-2].(Name)
 			if !ok {
-				return errors.New("def: invalid argument")
+				return intp.E(eTypecheck, "def: needs name, not %T", intp.Stack[len(intp.Stack)-2])
 			}
 			intp.DictStack[len(intp.DictStack)-1][name] = intp.Stack[len(intp.Stack)-1]
 			intp.Stack = intp.Stack[:len(intp.Stack)-2]
@@ -312,15 +305,15 @@ func makeSystemDict() Dict {
 		}),
 		"definefont": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 2 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "definefont: not enough arguments")
 			}
 			name, ok := intp.Stack[len(intp.Stack)-2].(Name)
 			if !ok {
-				return errors.New("definefont: invalid argument")
+				return intp.E(eTypecheck, "definefont: needs name, not %T", intp.Stack[len(intp.Stack)-2])
 			}
 			font, ok := intp.Stack[len(intp.Stack)-1].(Dict)
 			if !ok {
-				return errors.New("definefont: invalid argument")
+				return intp.E(eTypecheck, "definefont: needs font, not %T", intp.Stack[len(intp.Stack)-1])
 			}
 			intp.Fonts[name] = font
 			intp.Stack = append(intp.Stack[:len(intp.Stack)-2], font)
@@ -328,29 +321,28 @@ func makeSystemDict() Dict {
 		}),
 		"dict": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 1 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "dict: not enough arguments")
 			}
 			size, ok := intp.Stack[len(intp.Stack)-1].(Integer)
 			if !ok {
-				return errors.New("dict: invalid argument")
+				return intp.E(eTypecheck, "dict: needs an integer, not %T", intp.Stack[len(intp.Stack)-1])
+			} else if size < 0 {
+				return intp.E(eRangecheck, "dict: invalid size %d", size)
 			}
 			intp.Stack = intp.Stack[:len(intp.Stack)-1]
-			if size < 0 {
-				return errors.New("dict: invalid argument")
-			}
 			intp.Stack = append(intp.Stack, make(Dict, size))
 			return nil
 		}),
 		"dup": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 1 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "dup: not enough arguments")
 			}
 			intp.Stack = append(intp.Stack, intp.Stack[len(intp.Stack)-1])
 			return nil
 		}),
 		"exec": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 1 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "exec: not enough arguments")
 			}
 			obj := intp.Stack[len(intp.Stack)-1]
 			intp.Stack = intp.Stack[:len(intp.Stack)-1]
@@ -361,20 +353,20 @@ func makeSystemDict() Dict {
 			case Procedure:
 				return intp.executeOne(obj, true)
 			default:
-				return fmt.Errorf("exec: not implemented for %T", obj)
+				return intp.E(eTypecheck, "exec: not implemented for %T", obj)
 			}
 		}),
 		"eexec": builtin(eexec),
 		"end": builtin(func(intp *Interpreter) error {
 			if len(intp.DictStack) <= 2 {
-				return errDictstackunderflow
+				return intp.E(eDictstackunderflow, "end: dictionary stack is empty")
 			}
 			intp.DictStack = intp.DictStack[:len(intp.DictStack)-1]
 			return nil
 		}),
 		"eq": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 2 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "eq: not enough arguments")
 			}
 			a := intp.Stack[len(intp.Stack)-2]
 			b := intp.Stack[len(intp.Stack)-1]
@@ -391,7 +383,7 @@ func makeSystemDict() Dict {
 		"errordict": errorDict,
 		"exch": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 2 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "exch: not enough arguments")
 			}
 			intp.Stack[len(intp.Stack)-1], intp.Stack[len(intp.Stack)-2] = intp.Stack[len(intp.Stack)-2], intp.Stack[len(intp.Stack)-1]
 			return nil
@@ -406,15 +398,15 @@ func makeSystemDict() Dict {
 		"false": Boolean(false),
 		"findfont": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 1 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "findfont: not enough arguments")
 			}
 			name, ok := intp.Stack[len(intp.Stack)-1].(Name)
 			if !ok {
-				return errTypecheck
+				return intp.E(eTypecheck, "findfont: needs a name, not %T", intp.Stack[len(intp.Stack)-1])
 			}
 			font, ok := intp.Fonts[name]
 			if !ok {
-				return errInvalidfont
+				return intp.E(eInvalidfont, "font %q not found", name)
 			}
 			intp.Stack = append(intp.Stack[:len(intp.Stack)-1], font)
 			return nil
@@ -422,20 +414,20 @@ func makeSystemDict() Dict {
 		"FontDirectory": FontDirectory,
 		"for": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 4 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "for: not enough arguments")
 			}
 			// TODO(voss): the spec also allows Real values here
 			initial, ok := intp.Stack[len(intp.Stack)-4].(Integer)
 			if !ok {
-				return errors.New("for: invalid initial argument")
+				return intp.E(eTypecheck, "for: invalid start")
 			}
 			increment, ok := intp.Stack[len(intp.Stack)-3].(Integer)
 			if !ok {
-				return errors.New("for: invalid increment argument")
+				return intp.E(eTypecheck, "for: invalid increment")
 			}
 			limit, ok := intp.Stack[len(intp.Stack)-2].(Integer)
 			if !ok {
-				return errors.New("for: invalid limit argument")
+				return intp.E(eTypecheck, "for: invalid limit")
 			}
 			proc := intp.Stack[len(intp.Stack)-1]
 			intp.Stack = intp.Stack[:len(intp.Stack)-4]
@@ -457,10 +449,13 @@ func makeSystemDict() Dict {
 		}),
 		"forall": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 2 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "forall: not enough arguments")
 			}
 			obj := intp.Stack[len(intp.Stack)-2]
-			proc := intp.Stack[len(intp.Stack)-1].(Procedure)
+			proc, ok := intp.Stack[len(intp.Stack)-1].(Procedure)
+			if !ok {
+				return intp.E(eTypecheck, "forall: invalid argument")
+			}
 			switch obj := obj.(type) {
 			case Array:
 				intp.Stack = intp.Stack[:len(intp.Stack)-2]
@@ -496,13 +491,13 @@ func makeSystemDict() Dict {
 					}
 				}
 			default:
-				return errTypecheck
+				return intp.E(eTypecheck, "forall: invalid type %T", obj)
 			}
 			return nil
 		}),
 		"get": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 2 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "get: not enough arguments")
 			}
 			obj := intp.Stack[len(intp.Stack)-2]
 			sel := intp.Stack[len(intp.Stack)-1]
@@ -511,48 +506,48 @@ func makeSystemDict() Dict {
 			case Array:
 				index, ok := sel.(Integer)
 				if !ok {
-					return errors.New("get: invalid index")
+					return intp.E(eTypecheck, "get: invalid index")
 				}
 				if index < 0 || index >= Integer(len(obj)) {
-					return errors.New("get: index out of bounds")
+					return intp.E(eRangecheck, "get: index out of bounds")
 				}
 				intp.Stack = append(intp.Stack, obj[index])
 			case Procedure:
 				index, ok := sel.(Integer)
 				if !ok {
-					return errors.New("get: invalid index")
+					return intp.E(eTypecheck, "get: invalid index")
 				}
 				if index < 0 || index >= Integer(len(obj)) {
-					return errors.New("get: index out of bounds")
+					return intp.E(eRangecheck, "get: index out of bounds")
 				}
 				intp.Stack = append(intp.Stack, obj[index])
 			case Dict:
 				name, ok := sel.(Name)
 				if !ok {
-					return errors.New("get: invalid name")
+					return intp.E(eTypecheck, "get: invalid dict key")
 				}
 				val, ok := obj[name]
 				if !ok {
-					return fmt.Errorf("name %q not found", name)
+					return intp.E(eUndefined, "get: missing dict key %q", name)
 				}
 				intp.Stack = append(intp.Stack, val)
 			case String:
 				index, ok := sel.(Integer)
 				if !ok {
-					return errors.New("get: invalid index")
+					return intp.E(eTypecheck, "get: invalid index")
 				}
 				if index < 0 || index >= Integer(len(obj)) {
-					return errors.New("get: index out of bounds")
+					return intp.E(eRangecheck, "get: index out of bounds")
 				}
 				intp.Stack = append(intp.Stack, obj[index])
 			default:
-				return errors.New("get: invalid type")
+				return intp.E(eTypecheck, "get: invalid argument type %T", obj)
 			}
 			return nil
 		}),
 		"getinterval": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 3 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "getinterval: not enough arguments")
 			}
 			obj := intp.Stack[len(intp.Stack)-3]
 			var n int
@@ -562,19 +557,19 @@ func makeSystemDict() Dict {
 			case String:
 				n = len(obj)
 			default:
-				return errTypecheck
+				return intp.E(eTypecheck, "getinterval: invalid argument type %T", obj)
 			}
 			index, ok := intp.Stack[len(intp.Stack)-2].(Integer)
 			if !ok {
-				return errTypecheck
+				return intp.E(eTypecheck, "getinterval: invalid index")
 			} else if index < 0 || index >= Integer(n) {
-				return errRangecheck
+				return intp.E(eRangecheck, "getinterval: index %d out of bounds", index)
 			}
 			count, ok := intp.Stack[len(intp.Stack)-1].(Integer)
 			if !ok {
-				return errTypecheck
+				return intp.E(eTypecheck, "getinterval: invalid count")
 			} else if count < 0 || count > Integer(n)-index {
-				return errRangecheck
+				return intp.E(eRangecheck, "getinterval: count %d out of bounds", count)
 			}
 			intp.Stack = intp.Stack[:len(intp.Stack)-3]
 			var res Object
@@ -589,11 +584,11 @@ func makeSystemDict() Dict {
 		}),
 		"if": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 2 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "if: not enough arguments")
 			}
 			cond, ok := intp.Stack[len(intp.Stack)-2].(Boolean)
 			if !ok {
-				return errors.New("if: invalid condition")
+				return intp.E(eTypecheck, "if: invalid condition")
 			}
 			proc := intp.Stack[len(intp.Stack)-1]
 			intp.Stack = intp.Stack[:len(intp.Stack)-2]
@@ -604,11 +599,11 @@ func makeSystemDict() Dict {
 		}),
 		"ifelse": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 3 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "ifelse: not enough arguments")
 			}
 			cond, ok := intp.Stack[len(intp.Stack)-3].(Boolean)
 			if !ok {
-				return errors.New("ifelse: invalid condition")
+				return intp.E(eTypecheck, "ifelse: invalid condition")
 			}
 			proc1 := intp.Stack[len(intp.Stack)-2]
 			proc2 := intp.Stack[len(intp.Stack)-1]
@@ -621,30 +616,30 @@ func makeSystemDict() Dict {
 		}),
 		"index": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 2 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "index: not enough arguments")
 			}
 			index, ok := intp.Stack[len(intp.Stack)-1].(Integer)
 			if !ok {
-				return errors.New("index: invalid argument")
+				return intp.E(eTypecheck, "index: invalid argument")
 			}
 			intp.Stack = intp.Stack[:len(intp.Stack)-1]
 			if index < 0 || index >= Integer(len(intp.Stack)) {
-				return errors.New("index: invalid argument")
+				return intp.E(eRangecheck, "index: index out of bounds")
 			}
 			intp.Stack = append(intp.Stack, intp.Stack[len(intp.Stack)-int(index)-1])
 			return nil
 		}),
 		"known": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 2 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "known: not enough arguments")
 			}
 			d, ok := intp.Stack[len(intp.Stack)-2].(Dict)
 			if !ok {
-				return errors.New("known: invalid argument")
+				return intp.E(eTypecheck, "known: invalid argument")
 			}
 			name, ok := intp.Stack[len(intp.Stack)-1].(Name)
 			if !ok {
-				return errors.New("known: invalid argument")
+				return intp.E(eTypecheck, "known: invalid argument")
 			}
 			intp.Stack = intp.Stack[:len(intp.Stack)-2]
 			_, ok = d[name]
@@ -653,7 +648,7 @@ func makeSystemDict() Dict {
 		}),
 		"length": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 1 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "length: not enough arguments")
 			}
 			obj := intp.Stack[len(intp.Stack)-1]
 			intp.Stack = intp.Stack[:len(intp.Stack)-1]
@@ -672,18 +667,18 @@ func makeSystemDict() Dict {
 			case Operator:
 				res = len(obj)
 			default:
-				return errTypecheck
+				return intp.E(eTypecheck, "length: invalid argument type %T", obj)
 			}
 			intp.Stack = append(intp.Stack, Integer(res))
 			return nil
 		}),
 		"load": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 1 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "load: not enough arguments")
 			}
 			name, ok := intp.Stack[len(intp.Stack)-1].(Name)
 			if !ok {
-				return errTypecheck
+				return intp.E(eTypecheck, "load: invalid argument")
 			}
 			intp.Stack = intp.Stack[:len(intp.Stack)-1]
 			val, err := intp.load(name)
@@ -695,7 +690,7 @@ func makeSystemDict() Dict {
 		}),
 		"loop": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 1 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "loop: not enough arguments")
 			}
 			proc := intp.Stack[len(intp.Stack)-1]
 			intp.Stack = intp.Stack[:len(intp.Stack)-1]
@@ -719,14 +714,14 @@ func makeSystemDict() Dict {
 		}),
 		"mul": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 2 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "mul: not enough arguments")
 			}
 			ar, aIsReal := intp.Stack[len(intp.Stack)-2].(Real)
 			ai, aIsInt := intp.Stack[len(intp.Stack)-2].(Integer)
 			br, bIsReal := intp.Stack[len(intp.Stack)-1].(Real)
 			bi, bIsInt := intp.Stack[len(intp.Stack)-1].(Integer)
 			if !(aIsReal || aIsInt) || !(bIsReal || bIsInt) {
-				return errTypecheck
+				return intp.E(eTypecheck, "mul: needs numbers as arguments")
 			}
 			intp.Stack = intp.Stack[:len(intp.Stack)-2]
 			if aIsReal || bIsReal {
@@ -750,7 +745,7 @@ func makeSystemDict() Dict {
 		}),
 		"ne": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 2 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "ne: not enough arguments")
 			}
 			a := intp.Stack[len(intp.Stack)-2]
 			b := intp.Stack[len(intp.Stack)-1]
@@ -770,7 +765,7 @@ func makeSystemDict() Dict {
 		}),
 		"not": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 1 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "not: not enough arguments")
 			}
 			obj := intp.Stack[len(intp.Stack)-1]
 			switch obj := obj.(type) {
@@ -779,13 +774,13 @@ func makeSystemDict() Dict {
 			case Integer:
 				intp.Stack[len(intp.Stack)-1] = ^obj
 			default:
-				return errors.New("not: invalid argument")
+				return intp.E(eTypecheck, "not: invalid argument type %T", obj)
 			}
 			return nil
 		}),
 		"or": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 2 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "or: not enough arguments")
 			}
 			a := intp.Stack[len(intp.Stack)-2]
 			b := intp.Stack[len(intp.Stack)-1]
@@ -794,30 +789,30 @@ func makeSystemDict() Dict {
 			case Boolean:
 				b, ok := b.(Boolean)
 				if !ok {
-					return errTypecheck
+					return intp.E(eTypecheck, "or: mismatched argument types")
 				}
 				intp.Stack = append(intp.Stack, a || b)
 			case Integer:
 				b, ok := b.(Integer)
 				if !ok {
-					return errTypecheck
+					return intp.E(eTypecheck, "or: mismatched argument types")
 				}
 				intp.Stack = append(intp.Stack, a|b)
 			default:
-				return errTypecheck
+				return intp.E(eTypecheck, "or: invalid argument type %T", a)
 			}
 			return nil
 		}),
 		"pop": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 1 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "pop: not enough arguments")
 			}
 			intp.Stack = intp.Stack[:len(intp.Stack)-1]
 			return nil
 		}),
 		"put": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 3 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "put: not enough arguments")
 			}
 			obj := intp.Stack[len(intp.Stack)-3]
 			sel := intp.Stack[len(intp.Stack)-2]
@@ -827,55 +822,55 @@ func makeSystemDict() Dict {
 			case Array:
 				index, ok := sel.(Integer)
 				if !ok {
-					return errors.New("put: invalid index for Array")
+					return intp.E(eTypecheck, "put: invalid index")
 				}
 				if index < 0 || index >= Integer(len(obj)) {
-					return errors.New("put: index out of range for Array")
+					return intp.E(eRangecheck, "put: index %d out of range", index)
 				}
 				obj[index] = value
 			case Procedure:
 				index, ok := sel.(Integer)
 				if !ok {
-					return errors.New("put: invalid index for Procedure")
+					return intp.E(eTypecheck, "put: invalid index")
 				}
 				if index < 0 || index >= Integer(len(obj)) {
-					return errors.New("put: index out of range for Procedure")
+					return intp.E(eRangecheck, "put: index %d out of range", index)
 				}
 				obj[index] = value
 			case Dict:
 				key, ok := sel.(Name)
 				if !ok {
-					return errors.New("put: invalid key for Dict")
+					return intp.E(eTypecheck, "put: invalid dict key")
 				}
 				obj[key] = value
 			case String:
 				index, ok := sel.(Integer)
 				if !ok {
-					return errors.New("put: invalid index for String")
+					return intp.E(eTypecheck, "put: invalid index")
 				}
 				if index < 0 || index >= Integer(len(obj)) {
-					return errors.New("put: index out of range for String")
+					return intp.E(eRangecheck, "put: index %d out of range", index)
 				}
 				c, ok := value.(Integer)
 				if !ok {
-					return errors.New("put: invalid value for String")
+					return intp.E(eTypecheck, "put: invalid value")
 				}
 				obj[index] = byte(c)
 			default:
-				return fmt.Errorf("put: invalid argument %T", obj)
+				return intp.E(eTypecheck, "put: invalid argument type %T", obj)
 			}
 			return nil
 		}),
 		"putinterval": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 3 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "putinterval: not enough arguments")
 			}
 			dst := intp.Stack[len(intp.Stack)-3]
 			index, ok := intp.Stack[len(intp.Stack)-2].(Integer)
 			if !ok {
-				return errTypecheck
+				return intp.E(eTypecheck, "putinterval: invalid index")
 			} else if index < 0 {
-				return errRangecheck
+				return intp.E(eRangecheck, "putinterval: index out of range")
 			}
 			src := intp.Stack[len(intp.Stack)-1]
 
@@ -883,23 +878,23 @@ func makeSystemDict() Dict {
 			case Array:
 				src, ok := src.(Array)
 				if !ok {
-					return errTypecheck
+					return intp.E(eTypecheck, "putinterval: mismatched argument types")
 				}
 				if int(index)+len(src) > len(dst) {
-					return errRangecheck
+					return intp.E(eRangecheck, "putinterval: index out of range")
 				}
 				copy(dst[index:], src)
 			case String:
 				src, ok := src.(String)
 				if !ok {
-					return errTypecheck
+					return intp.E(eTypecheck, "putinterval: mismatched argument types")
 				}
 				if int(index)+len(src) > len(dst) {
-					return errRangecheck
+					return intp.E(eRangecheck, "putinterval: index out of range")
 				}
 				copy(dst[index:], src)
 			default:
-				return errTypecheck
+				return intp.E(eTypecheck, "putinterval: invalid argument type %T", dst)
 			}
 			intp.Stack = intp.Stack[:len(intp.Stack)-3]
 			return nil
@@ -910,15 +905,15 @@ func makeSystemDict() Dict {
 		}),
 		"readstring": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 2 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "readstring: not enough arguments")
 			}
 			buf, ok := intp.Stack[len(intp.Stack)-1].(String)
 			if !ok {
-				return errors.New("readstring: invalid argument")
+				return intp.E(eTypecheck, "readstring: invalid argument")
 			}
 			intp.Stack = intp.Stack[:len(intp.Stack)-2]
 			s := intp.scanners[len(intp.scanners)-1]
-			_, err := s.next()
+			_, err := s.Next()
 			if err != nil && err != io.EOF {
 				return err
 			}
@@ -932,17 +927,17 @@ func makeSystemDict() Dict {
 		}),
 		"repeat": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 2 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "repeat: not enough arguments")
 			}
 			count, ok := intp.Stack[len(intp.Stack)-2].(Integer)
 			if !ok {
-				return errTypecheck
+				return intp.E(eTypecheck, "repeat: invalid argument")
 			} else if count < 0 {
-				return errRangecheck
+				return intp.E(eRangecheck, "repeat: negative count")
 			}
 			proc, ok := intp.Stack[len(intp.Stack)-1].(Procedure)
 			if !ok {
-				return errTypecheck
+				return intp.E(eTypecheck, "repeat: invalid argument")
 			}
 			intp.Stack = intp.Stack[:len(intp.Stack)-2]
 			for i := Integer(0); i < count; i++ {
@@ -957,18 +952,18 @@ func makeSystemDict() Dict {
 		}),
 		"roll": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 2 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "roll: not enough arguments")
 			}
 			n, ok := intp.Stack[len(intp.Stack)-2].(Integer)
 			if !ok {
-				return errTypecheck
+				return intp.E(eTypecheck, "roll: invalid argument")
 			}
 			if n < 0 || n > Integer(len(intp.Stack)-2) {
-				return errRangecheck
+				return intp.E(eRangecheck, "roll: length %d out of bounds", n)
 			}
 			j, ok := intp.Stack[len(intp.Stack)-1].(Integer)
 			if !ok {
-				return errTypecheck
+				return intp.E(eTypecheck, "roll: count %d out of bounds", j)
 			}
 			intp.Stack = intp.Stack[:len(intp.Stack)-2]
 			if n == 0 {
@@ -998,29 +993,29 @@ func makeSystemDict() Dict {
 		}),
 		"string": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 1 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "string: not enough arguments")
 			}
 			size, ok := intp.Stack[len(intp.Stack)-1].(Integer)
 			if !ok {
-				return errors.New("string: invalid argument")
+				return intp.E(eTypecheck, "string: invalid argument")
 			}
 			intp.Stack = intp.Stack[:len(intp.Stack)-1]
 			if size < 0 || size > 1<<16 {
-				return errors.New("string: invalid size")
+				return intp.E(eRangecheck, "string: invalid size %d", size)
 			}
 			intp.Stack = append(intp.Stack, make(String, size))
 			return nil
 		}),
 		"sub": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 2 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "sub: not enough arguments")
 			}
 			ar, aIsReal := intp.Stack[len(intp.Stack)-2].(Real)
 			ai, aIsInt := intp.Stack[len(intp.Stack)-2].(Integer)
 			br, bIsReal := intp.Stack[len(intp.Stack)-1].(Real)
 			bi, bIsInt := intp.Stack[len(intp.Stack)-1].(Integer)
 			if !(aIsReal || aIsInt) || !(bIsReal || bIsInt) {
-				return errTypecheck
+				return intp.E(eTypecheck, "sub: needs numbers as arguments")
 			}
 			intp.Stack = intp.Stack[:len(intp.Stack)-2]
 			if aIsReal || bIsReal {
@@ -1045,7 +1040,7 @@ func makeSystemDict() Dict {
 		"true": Boolean(true),
 		"type": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 1 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "type: not enough arguments")
 			}
 			obj := intp.Stack[len(intp.Stack)-1]
 			var tp Name
@@ -1076,7 +1071,7 @@ func makeSystemDict() Dict {
 			case mark:
 				tp = "marktype"
 			default:
-				return fmt.Errorf("type: not implemented for %T", obj)
+				return intp.E(eTypecheck, "type: not implemented for %T", obj)
 			}
 			intp.Stack = append(intp.Stack, tp)
 			return nil
@@ -1084,11 +1079,11 @@ func makeSystemDict() Dict {
 		"userdict": userDict,
 		"where": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 1 {
-				return errStackunderflow
+				return intp.E(eStackunderflow, "where: not enough arguments")
 			}
 			key, ok := intp.Stack[len(intp.Stack)-1].(Name)
 			if !ok {
-				return errTypecheck
+				return intp.E(eTypecheck, "where: invalid argument")
 			}
 			intp.Stack = intp.Stack[:len(intp.Stack)-1]
 			for j := len(intp.DictStack) - 1; j >= 0; j-- {
@@ -1125,7 +1120,7 @@ func equal(a, b Object) (bool, error) {
 		case Name:
 			return string(obj), nil
 		default:
-			return nil, fmt.Errorf("equality not implemented for %T", obj)
+			return nil, &postScriptError{eTypecheck, fmt.Sprintf("equality not implemented for %T", obj)}
 		}
 	}
 	a, err := normalize(a)

@@ -107,7 +107,7 @@ func deobfuscate(fname string) error {
 		}
 	}
 	fmt.Println("% currentfile eexec")
-	fmt.Println("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
+	fmt.Println("%% start of eexec section %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
 
 	// check whether the eexec section is binary or hex-encoded
 	for r.used < r.start+eexecN {
@@ -157,14 +157,44 @@ func deobfuscate(fname string) error {
 		ignoreLF = b == '\r'
 		if b == '\r' || b == '\n' {
 			fmt.Println(string(line))
+			if eexecEndRegexp.Match(line) {
+				break
+			}
 			line = line[:0]
 			continue
 		}
 		line = append(line, b)
 	}
+	fmt.Println("%% end of eexec section %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
 
-	fmt.Println("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
-	return errors.New("not implemented")
+	// Now copy everything until the end of the file.
+	for {
+		err := r.refill()
+		if err == io.EOF {
+			if r.used > 0 {
+				fmt.Println(string(r.buf[r.start:r.used]))
+			}
+			return nil
+		} else if err != nil {
+			return err
+		}
+
+		end := r.used
+
+		// print buf[start:end], fixing up the line endings
+		lloc := eolRegexp.FindAllIndex(r.buf[:end], -1)
+		for _, loc := range lloc {
+			if loc[0] == end-1 {
+				// don't mistake \r\n which spans two buffers for a single \r
+				break
+			}
+			fmt.Println(string(r.buf[r.start:loc[0]]))
+			r.start = loc[1]
+		}
+		if r.start == 0 && r.used == len(r.buf) {
+			return errors.New("line too long")
+		}
+	}
 }
 
 type reader struct {
@@ -182,7 +212,7 @@ func (r *reader) refill() error {
 	r.start = 0
 	r.used = n
 	n, err := r.r.Read(r.buf[r.used:])
-	if err != nil {
+	if n == 0 && err != nil {
 		return err
 	}
 	r.used += n
@@ -252,5 +282,5 @@ const (
 var (
 	eolRegexp        = regexp.MustCompile(`(\r\n|\r|\n)`)
 	eexecStartRegexp = regexp.MustCompile(`currentfile[ \t\r\n]+eexec[ \t\r\n]`)
-	eexecEndRegexp   = regexp.MustCompile(`currentfile[ \t\r\n]+closefile[ \t\r\n$]`)
+	eexecEndRegexp   = regexp.MustCompile(`.*currentfile[ \t\r\n]+closefile([ \t\r\n].*|$)`)
 )
