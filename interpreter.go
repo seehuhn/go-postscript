@@ -17,35 +17,57 @@
 package postscript
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"strings"
 )
 
-// TODO(voss): prevent infinite loops
-
+// Interpreter represents one instance of the PostScript interpreter.
 type Interpreter struct {
-	Stack      []Object
-	DictStack  []Dict
-	Fonts      Dict
-	DSC        []Comment
+	// CheckStart can be set to true to make the interpreter check that the
+	// first two input bytes are "%!"; otherwise, ErrNoPostscript is returned.
+	// This flag must be set before the first call to Execute.
 	CheckStart bool
 
-	NumOps int
+	// MaxOps can be set to a positive value to limit the number of executed
+	// operations.  If this limit is exceeded, ErrExecutionLimitExceeded is
+	// returned.
 	MaxOps int
 
+	// Stack is the PostScript operand stack.
+	Stack []Object
+
+	// DictStack is the PostScript dictionary stack.
+	DictStack []Dict
+
+	// NumOps is the number of executed operations so far.
+	NumOps int
+
+	// SystemDict is the PostScript system dictionary.
 	SystemDict Dict
-	UserDict   Dict
-	ErrorDict  Dict
+
+	// UserDict is the PostScript user dictionary.
+	UserDict Dict
+
+	// ErrorDict is the PostScript error dictionary.
+	ErrorDict Dict
+
+	// FontDirectory is the PostScript font directory.
+	// The `definefont` PostScript operator adds fonts to this dictionary.
+	FontDirectory Dict
+
+	// DSC contains all DSC comments found in the input so far.
+	// These are comments of the form "%%key: value" or "%%key".
+	DSC []Comment
 
 	errors    []*postScriptError
-	scanners  []*Scanner
+	scanners  []*scanner
 	procStart []int
 
 	execStackDepth int
 }
 
+// NewInterpreter creates a new instance of the PostScript interpreter.
 func NewInterpreter() *Interpreter {
 	systemDict := makeSystemDict()
 	userDict := systemDict["userdict"].(Dict)
@@ -54,10 +76,10 @@ func NewInterpreter() *Interpreter {
 			systemDict,
 			userDict,
 		},
-		Fonts:      systemDict["FontDirectory"].(Dict),
-		SystemDict: systemDict,
-		UserDict:   userDict,
-		ErrorDict:  systemDict["errordict"].(Dict),
+		FontDirectory: systemDict["FontDirectory"].(Dict),
+		SystemDict:    systemDict,
+		UserDict:      userDict,
+		ErrorDict:     systemDict["errordict"].(Dict),
 	}
 
 	for _, name := range allErrors {
@@ -67,15 +89,17 @@ func NewInterpreter() *Interpreter {
 	return intp
 }
 
+// ExecuteString executes the PostScript code in the given string.
 func (intp *Interpreter) ExecuteString(code string) error {
 	return intp.Execute(strings.NewReader(code))
 }
 
+// Execute executes the PostScript code in the given reader.
 func (intp *Interpreter) Execute(r io.Reader) error {
 	s := newScanner(r)
 	err := intp.executeScanner(s)
 	if err == errExit {
-		err = intp.E(eInvalidexit, "exit outside loop")
+		err = intp.e(eInvalidexit, "exit outside loop")
 	} else if err == errStop {
 		err = nil
 	}
@@ -88,13 +112,13 @@ func (intp *Interpreter) Execute(r io.Reader) error {
 	return nil
 }
 
-func (intp *Interpreter) executeScanner(s *Scanner) error {
+func (intp *Interpreter) executeScanner(s *scanner) error {
 	if intp.CheckStart {
 		head := s.PeekN(2)
 		if string(head) != "%!" {
 			err := s.err
 			if err == nil || err == io.EOF {
-				err = errors.New("not a PostScript file")
+				err = ErrNoPostscript
 			}
 			return err
 		}
@@ -129,19 +153,19 @@ func (intp *Interpreter) executeOne(obj Object, execProc bool) error {
 
 	if execProc {
 		if intp.execStackDepth >= 100 {
-			return intp.E(eExecstackoverflow, "exec stack overflow")
+			return intp.e(eExecstackoverflow, "exec stack overflow")
 		}
 		intp.execStackDepth++
 		defer func() { intp.execStackDepth-- }()
 	}
 
 	if len(intp.Stack) > maxOperandStackDepth {
-		return intp.E(eStackoverflow, "operand stack overflow")
+		return intp.e(eStackoverflow, "operand stack overflow")
 	}
 
 	if obj == Operator("}") {
 		if len(intp.procStart) == 0 {
-			return intp.E(eSyntaxerror, "unmatched '}'")
+			return intp.e(eSyntaxerror, "unmatched '}'")
 		}
 		a := intp.procStart[len(intp.procStart)-1]
 		intp.procStart = intp.procStart[:len(intp.procStart)-1]
@@ -161,7 +185,7 @@ func (intp *Interpreter) executeOne(obj Object, execProc bool) error {
 recurseTail:
 	intp.NumOps++
 	if intp.MaxOps > 0 && intp.NumOps > intp.MaxOps {
-		return intp.E(eInterrupt, "operation limit exceeded")
+		return ErrExecutionLimitExceeded
 	}
 
 	switch o := obj.(type) {
@@ -221,7 +245,7 @@ func (intp *Interpreter) load(key Object) (Object, error) {
 	case Operator:
 		name = Name(key)
 	default:
-		return nil, intp.E(eTypecheck, "load: expected name or operator, got %T", key)
+		return nil, intp.e(eTypecheck, "load: expected name or operator, got %T", key)
 	}
 	for j := len(intp.DictStack) - 1; j >= 0; j-- {
 		d := intp.DictStack[j]
@@ -229,7 +253,7 @@ func (intp *Interpreter) load(key Object) (Object, error) {
 			return val, nil
 		}
 	}
-	return nil, intp.E(eUndefined, "load: %s not defined", name)
+	return nil, intp.e(eUndefined, "load: %s not defined", name)
 }
 
 func (intp *Interpreter) stackString() string {
@@ -309,7 +333,9 @@ func (intp *Interpreter) objectString2(o Object, short bool) string {
 }
 
 const (
-	maxArraySize            = 65536
-	maxDictionaryStackDepth = 20
-	maxOperandStackDepth    = 500
+	maxArraySize         = 65536
+	maxDictSize          = 65536
+	maxDictStackDepth    = 20
+	maxOperandStackDepth = 500
+	maxStringSize        = 65536
 )

@@ -61,7 +61,7 @@ func showInfo(fname string) error {
 		return err
 	}
 
-	for key, font := range intp.Fonts {
+	for key, font := range intp.FontDirectory {
 		fmt.Printf("# %s\n", key)
 		fontDict := font.(postscript.Dict)
 		for key, val := range fontDict {

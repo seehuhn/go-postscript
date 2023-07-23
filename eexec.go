@@ -45,7 +45,7 @@ func eexec(intp *Interpreter) error {
 	return nil
 }
 
-func (s *Scanner) BeginEexec(ivLen int) error {
+func (s *scanner) BeginEexec(ivLen int) error {
 	if s.eexec != 0 {
 		return &postScriptError{eInvalidaccess, "nested eexec not supported"}
 	}
@@ -77,7 +77,7 @@ func (s *Scanner) BeginEexec(ivLen int) error {
 	} else {
 		s.eexec = 1 // hex
 	}
-	s.R = eexecR
+	s.r = eexecR
 
 	// skip the IV
 	s.regurgitate = true
@@ -92,14 +92,13 @@ func (s *Scanner) BeginEexec(ivLen int) error {
 	return nil
 }
 
-func (s *Scanner) EndEexec() error {
+func (s *scanner) EndEexec() {
 	s.eexec = 0
-	return nil
 }
 
-func (s *Scanner) eexecDecode(b byte) byte {
-	out := b ^ byte(s.R>>8)
-	s.R = (uint16(b)+s.R)*eexecC1 + eexecC2
+func (s *scanner) eexecDecode(b byte) byte {
+	out := b ^ byte(s.r>>8)
+	s.r = (uint16(b)+s.r)*eexecC1 + eexecC2
 	return out
 }
 

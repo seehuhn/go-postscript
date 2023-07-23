@@ -149,7 +149,6 @@ func TestScanHexString2(t *testing.T) {
 		t.Fatal(err)
 	}
 	if string(o) != string(out) {
-		// TODO(voss): syntaxerror
 		t.Errorf("expected %q, got %q", out, o)
 	}
 }

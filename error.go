@@ -16,13 +16,16 @@
 
 package postscript
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 func defaultErrorHandler(intp *Interpreter) error {
 	return intp.errors[len(intp.errors)-1]
 }
 
-func (intp *Interpreter) E(tp Name, format string, a ...any) error {
+func (intp *Interpreter) e(tp Name, format string, a ...any) error {
 	return &postScriptError{tp, fmt.Sprintf(format, a...)}
 }
 
@@ -96,3 +99,8 @@ var allErrors = []Name{
 	eUnregistered,
 	eVMerror,
 }
+
+var (
+	ErrExecutionLimitExceeded = &postScriptError{eInterrupt, "execution limit exceeded"}
+	ErrNoPostscript           = errors.New("not a PostScript file")
+)

@@ -110,7 +110,12 @@ func FuzzInterpreter(f *testing.F) {
 	f.Add("/a {{1 2} {3 4} ifelse} def false a")
 	f.Add("0 1 1 4 {add} for")
 	f.Add("0 1 1 4 {add} for")
+	f.Add("[1 2 3] 1 get")
+	f.Add("[1 2 3] dup 1 9 put")
 	f.Add("<< /a 1 >> {} forall")
+	f.Add("/a {a} def a")
+	f.Add("/a {{}} def userdict /a get dup 0 exch put a")
+	f.Add("/a {{} {}} def userdict /a get dup 0 exch put userdict /a get dup 1 exch put a")
 	builtins := maps.Keys(makeSystemDict())
 	sort.Slice(builtins, func(i, j int) bool { return builtins[i] < builtins[j] })
 	for _, name := range builtins {
