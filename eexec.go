@@ -16,13 +16,9 @@
 
 package postscript
 
-import (
-	"fmt"
-	"io"
-)
+import "io"
 
 func eexec(intp *Interpreter) error {
-	k := len(intp.DictStack)
 	if len(intp.Stack) < 1 {
 		return &postScriptError{eStackunderflow, "eexec"}
 	}
@@ -31,34 +27,42 @@ func eexec(intp *Interpreter) error {
 	}
 	intp.Stack = intp.Stack[:len(intp.Stack)-1]
 
+	k := len(intp.DictStack)
 	intp.DictStack = append(intp.DictStack, intp.SystemDict)
-	r, err := eexecDecode(intp.scanners[len(intp.scanners)-1])
+
+	s := intp.scanners[len(intp.scanners)-1]
+	err := s.BeginEexec(eexecN)
 	if err != nil {
 		return err
 	}
-	err = intp.Execute(r)
+	err = intp.executeScanner(s)
 	if err != nil && err != io.EOF {
 		return err
 	}
+	s.EndEexec()
+
 	intp.DictStack = intp.DictStack[:k]
 	return nil
 }
 
-func eexecDecode(s *Scanner) (io.Reader, error) {
+func (s *Scanner) BeginEexec(ivLen int) error {
+	if s.eexec != 0 {
+		return &postScriptError{eInvalidaccess, "nested eexec not supported"}
+	}
+
 	for {
 		b, err := s.Peek()
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if b != ' ' && b != '\t' && b != '\r' && b != '\n' {
 			break
 		}
 		s.SkipByte()
 	}
-
-	bb := s.PeekN(4)
-	if len(bb) < 4 {
-		return nil, s.err
+	bb := s.PeekN(ivLen)
+	if len(bb) < ivLen {
+		return s.err
 	}
 	isBinary := false
 	for _, b := range bb {
@@ -68,84 +72,40 @@ func eexecDecode(s *Scanner) (io.Reader, error) {
 		}
 	}
 
-	return &eexecReader{
-		s:        s,
-		n:        4,
-		R:        55665,
-		c1:       52845,
-		c2:       22719,
-		isBinary: isBinary,
-	}, nil
-}
+	if isBinary {
+		s.eexec = 2 // binary
+	} else {
+		s.eexec = 1 // hex
+	}
+	s.R = eexecR
 
-type eexecReader struct {
-	s         *Scanner
-	n         int
-	R, c1, c2 uint16
-	isBinary  bool
-}
-
-func (r *eexecReader) Read(p []byte) (int, error) {
-	for r.n > 0 {
-		_, err := r.nextPlain()
+	// skip the IV
+	s.regurgitate = true
+	for i := 0; i < eexecN; i++ {
+		_, err := s.Next()
 		if err != nil {
-			return 0, err
+			return err
 		}
-		r.n--
 	}
-	for i := range p {
-		b, err := r.nextPlain()
-		// os.Stdout.Write([]byte{b})
-		if err != nil {
-			return i, err
-		}
-		p[i] = b
-	}
-	return len(p), nil
+	s.regurgitate = false
+
+	return nil
 }
 
-func (r *eexecReader) nextPlain() (byte, error) {
-	cipher, err := r.nextCipher()
-	if err != nil {
-		return 0, err
-	}
-	plain := cipher ^ byte(r.R>>8)
-	r.R = (uint16(cipher)+r.R)*r.c1 + r.c2
-	return plain, nil
+func (s *Scanner) EndEexec() error {
+	s.eexec = 0
+	return nil
 }
 
-func (r *eexecReader) nextCipher() (byte, error) {
-	if r.isBinary {
-		return r.s.Next()
-	}
-
-	i := 0
-	var out byte
-readLoop:
-	for i < 2 {
-		b, err := r.s.Next()
-		var nibble byte
-		switch {
-		case err != nil:
-			return 0, err
-		case b <= 32:
-			continue readLoop
-		case b >= '0' && b <= '9':
-			nibble = b - '0'
-		case b >= 'A' && b <= 'F':
-			nibble = b - 'A' + 10
-		case b >= 'a' && b <= 'f':
-			nibble = b - 'a' + 10
-		default:
-			return 0, fmt.Errorf("invalid hex digit %q", b)
-		}
-		out = out<<4 | nibble
-		i++
-	}
-	return out, nil
+func (s *Scanner) eexecDecode(b byte) byte {
+	out := b ^ byte(s.R>>8)
+	s.R = (uint16(b)+s.R)*eexecC1 + eexecC2
+	return out
 }
 
 const (
-	n = 4
-	R = 55665
+	eexecN  = 4
+	eexecR  = 55665
+	eexecC1 = 52845
+	eexecC2 = 22719
 )

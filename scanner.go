@@ -31,10 +31,15 @@ type Scanner struct {
 	Col  int // 0-based
 	DSC  []Comment
 
-	r         io.Reader
-	buf       []byte
-	pos, used int
-	crSeen    bool
+	r           io.Reader
+	buf         []byte
+	pos, used   int
+	crSeen      bool
+	peek        []byte
+	regurgitate bool
+
+	eexec int // 0 = off, 1 = ascii, 2 = binary
+	R     uint16
 
 	// Err is the first error returned by r.Read().
 	// Once an error has been returned, all subsequent calls to .refill() will
@@ -50,7 +55,7 @@ type Comment struct {
 func newScanner(r io.Reader) *Scanner {
 	return &Scanner{
 		r:   r,
-		buf: make([]byte, 256),
+		buf: make([]byte, 512),
 	}
 }
 
@@ -337,14 +342,6 @@ readLoop:
 // character is found.
 func (s *Scanner) SkipWhiteSpace() error {
 	for {
-		if s.Col == 0 && s.LookingAt("%%") {
-			key, val, err := s.readStructuredComment()
-			if err == nil {
-				s.DSC = append(s.DSC, Comment{key, val})
-				continue
-			}
-		}
-
 		b, err := s.Peek()
 		if err != nil {
 			return err
@@ -352,9 +349,17 @@ func (s *Scanner) SkipWhiteSpace() error {
 		if b <= 32 {
 			s.SkipByte()
 		} else if b == '%' {
-			err = s.SkipComment()
-			if err != nil {
-				return err
+			if s.Col == 0 && s.LookingAt("%%") {
+				key, val, err := s.readStructuredComment()
+				if err == nil {
+					s.DSC = append(s.DSC, Comment{key, val})
+					continue
+				}
+			} else {
+				err = s.SkipComment()
+				if err != nil {
+					return err
+				}
 			}
 		} else {
 			return nil
@@ -433,9 +438,9 @@ commentLineLoop:
 				break
 			} else if err != nil {
 				return "", err
-			} else if b == 10 { // LF
+			} else if b == '\n' { // LF
 				break
-			} else if b == 13 { // CR or CR+LF
+			} else if b == '\r' { // CR or CR+LF
 				s.SkipOptionalByte(10)
 				break
 			}
@@ -481,24 +486,72 @@ func (s *Scanner) LookingAt(pat string) bool {
 	return string(s.PeekN(len(pat))) == pat
 }
 
+// SkipByte skips a single byte of input
+func (s *Scanner) SkipByte() {
+	s.Next()
+}
+
+func (s *Scanner) SkipRequiredByte(expected byte) error {
+	seen, err := s.Next()
+	if err != nil {
+		return err
+	}
+	if seen != expected {
+		return &postScriptError{eSyntaxerror, fmt.Sprintf("expected %q, got %q", expected, seen)}
+	}
+	return nil
+}
+
+func (s *Scanner) SkipOptionalByte(b byte) {
+	next, err := s.Peek()
+	if err == nil && next == b {
+		s.Next()
+	}
+}
+
+// SkipN skips N bytes which have already been peeked.
+func (s *Scanner) SkipN(n int) {
+	for i := 0; i < n; i++ {
+		s.Next()
+	}
+}
+
 func (s *Scanner) Peek() (byte, error) {
-	for s.pos >= s.used {
-		err := s.refill()
+	for len(s.peek) == 0 {
+		b, err := s.readByte()
+		if err != nil {
+			return 0, err
+		}
+		s.peek = append(s.peek, b)
+	}
+	return s.peek[0], nil
+}
+
+func (s *Scanner) PeekN(n int) []byte {
+	for len(s.peek) < n {
+		b, err := s.readByte()
+		if err != nil {
+			return s.peek
+		}
+		s.peek = append(s.peek, b)
+	}
+	return s.peek[:n]
+}
+
+func (s *Scanner) Next() (byte, error) {
+	var b byte
+
+	if len(s.peek) > 0 && !s.regurgitate {
+		b = s.peek[0]
+		copy(s.peek, s.peek[1:])
+		s.peek = s.peek[:len(s.peek)-1]
+	} else {
+		var err error
+		b, err = s.readByte()
 		if err != nil {
 			return 0, err
 		}
 	}
-	return s.buf[s.pos], nil
-}
-
-// SkipByte skips a single byte which has already been peeked.
-func (s *Scanner) SkipByte() {
-	if s.pos >= s.used {
-		panic("unreachable")
-	}
-
-	b := s.buf[s.pos]
-	s.pos++
 
 	if s.crSeen && b == 10 {
 		// ignore LF after CR
@@ -509,53 +562,71 @@ func (s *Scanner) SkipByte() {
 		s.Col++
 	}
 	s.crSeen = (b == 13)
+
+	return b, nil
 }
 
-func (s *Scanner) SkipRequiredByte(b byte) error {
-	next, err := s.Next()
-	if err != nil {
-		return err
+func (s *Scanner) readByte() (byte, error) {
+	if s.eexec == 0 {
+		return s.readByteRaw()
 	}
-	if next != b {
-		return &postScriptError{eSyntaxerror, fmt.Sprintf("expected %c, got %c", b, next)}
-	}
-	return nil
-}
 
-func (s *Scanner) SkipOptionalByte(b byte) {
-	next, err := s.Peek()
-	if err == nil && next == b {
-		s.SkipByte()
-	}
-}
-
-func (s *Scanner) PeekN(n int) []byte {
-	for s.pos+n > s.used {
-		err := s.refill()
-		if err != nil {
-			break
-		}
-	}
-	end := s.pos + n
-	if end > s.used {
-		end = s.used
-	}
-	return s.buf[s.pos:end]
-}
-
-// SkipN skips N bytes which have already been peeked.
-func (s *Scanner) SkipN(n int) {
-	for i := 0; i < n; i++ {
-		s.SkipByte()
-	}
-}
-
-func (s *Scanner) Next() (byte, error) {
-	b, err := s.Peek()
+	b, err := s.readByteEexec()
 	if err != nil {
 		return 0, err
 	}
-	s.SkipByte()
+	return s.eexecDecode(b), nil
+}
+
+func (s *Scanner) readByteEexec() (byte, error) {
+	if s.eexec == 2 { // binary eexec
+		return s.readByteRaw()
+	}
+
+	i := 0
+	var out byte
+readLoop:
+	for i < 2 {
+		b, err := s.readByteRaw()
+		var nibble byte
+		switch {
+		case err != nil:
+			return 0, err
+		case b <= 32:
+			continue readLoop
+		case b >= '0' && b <= '9':
+			nibble = b - '0'
+		case b >= 'A' && b <= 'F':
+			nibble = b - 'A' + 10
+		case b >= 'a' && b <= 'f':
+			nibble = b - 'a' + 10
+		default:
+			return 0, fmt.Errorf("invalid hex digit %q", b)
+		}
+		out = out<<4 | nibble
+		i++
+	}
+	return out, nil
+}
+
+func (s *Scanner) readByteRaw() (byte, error) {
+	if s.regurgitate && len(s.peek) > 0 {
+		b := s.peek[0]
+		copy(s.peek, s.peek[1:])
+		s.peek = s.peek[:len(s.peek)-1]
+		return b, nil
+	}
+
+	for s.pos >= s.used {
+		err := s.refill()
+		if err != nil {
+			return 0, err
+		}
+	}
+
+	b := s.buf[s.pos]
+	s.pos++
+
 	return b, nil
 }
 

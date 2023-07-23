@@ -124,7 +124,7 @@ func (intp *Interpreter) executeScanner(s *Scanner) error {
 
 func (intp *Interpreter) executeOne(obj Object, execProc bool) error {
 	// if !execProc {
-	// 	fmt.Println("|-", intp.stackString(), "|", intp.objectString(o))
+	// 	fmt.Println("|-", intp.stackString(), "|", intp.objectString(obj))
 	// }
 
 	if execProc {

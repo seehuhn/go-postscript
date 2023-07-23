@@ -119,14 +119,14 @@ func deobfuscate(fname string) error {
 			return err
 		}
 	}
-	r.isBinary = false
+	r.eexecBinary = false
 	for _, b := range r.buf[r.start : r.start+eexecN] {
 		if !('0' <= b && b <= '9' || 'a' <= b && b <= 'f' || 'A' <= b && b <= 'F') {
-			r.isBinary = true
+			r.eexecBinary = true
 			break
 		}
 	}
-	r.R = eexecR
+	r.eexecR = eexecR
 
 	// skip the IV
 	for i := 0; i < eexecN; i++ {
@@ -203,8 +203,8 @@ type reader struct {
 	start int
 	used  int
 
-	R        uint16
-	isBinary bool
+	eexecR      uint16
+	eexecBinary bool
 }
 
 func (r *reader) refill() error {
@@ -224,13 +224,13 @@ func (r *reader) nextDecoded() (byte, error) {
 	if err != nil {
 		return 0, err
 	}
-	plain := cipher ^ byte(r.R>>8)
-	r.R = (uint16(cipher)+r.R)*eexecC1 + eexecC2
+	plain := cipher ^ byte(r.eexecR>>8)
+	r.eexecR = (uint16(cipher)+r.eexecR)*eexecC1 + eexecC2
 	return plain, nil
 }
 
 func (r *reader) nextObfuscated() (byte, error) {
-	if r.isBinary {
+	if r.eexecBinary {
 		return r.nextRaw()
 	}
 

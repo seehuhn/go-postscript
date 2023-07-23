@@ -17,6 +17,7 @@
 package postscript
 
 import (
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -236,7 +237,8 @@ func TestDSC(t *testing.T) {
 		t.Errorf("expected EOF, got %q", token)
 	}
 	if len(s.DSC) != 3 {
-		t.Errorf("expected 3 comments, got %d", len(s.DSC))
+		fmt.Println(s.DSC)
+		t.Fatalf("expected 3 comments, got %d", len(s.DSC))
 	}
 	if s.DSC[0].Key != "Creator" || s.DSC[0].Value != "(seehuhn.de/go/pdf)" {
 		t.Errorf("expected Creator, got %q", s.DSC[0])
