@@ -21,6 +21,8 @@ import (
 	"io"
 )
 
+// Decode decodes a PFB file.
+// The function automatically detects whether the eexec data is hex encoded or binary.
 func Decode(r io.Reader) io.Reader {
 	return &pfbReader{r: r}
 }

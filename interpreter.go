@@ -148,6 +148,7 @@ func (intp *Interpreter) executeScanner(s *scanner) error {
 
 func (intp *Interpreter) executeOne(obj Object, execProc bool) error {
 	// if !execProc {
+	//  // TODO(voss): also print the commands reached by tail recursion
 	// 	fmt.Println("|-", intp.stackString(), "|", intp.objectString(obj))
 	// }
 
