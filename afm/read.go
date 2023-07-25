@@ -172,5 +172,6 @@ func Read(fd io.Reader) (*type1.Font, error) {
 		}
 	}
 
+	res.UnitsPerEm = 1000 // TODO(voss): is there a better way?
 	return res, nil
 }

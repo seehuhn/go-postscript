@@ -176,10 +176,8 @@ func (f *Font) Write(w io.Writer, opt *WriterOptions) error {
 }
 
 // WritePDF writes the font in the format required for embedding in a PDF file.
-func (f *Font) WritePDF(w io.Writer, opt *WriterOptions) (int, int, int, error) {
-	if opt == nil {
-		opt = defaultWriterOptions
-	}
+func (f *Font) WritePDF(w io.Writer) (int, int, int, error) {
+	opt := &WriterOptions{Format: FormatBinary}
 	info := f.makeTemplateData(opt)
 
 	wc := &countingWriter{w: w}
