@@ -51,8 +51,8 @@ type Font struct {
 
 // NumGlyphs returns the number of glyphs in the font (including the .notdef glyph).
 func (f *Font) NumGlyphs() int {
-	n := len(f.Outlines)
-	if _, ok := f.Outlines[".notdef"]; !ok {
+	n := len(f.GlyphInfo)
+	if _, ok := f.GlyphInfo[".notdef"]; !ok {
 		n++
 	}
 	return n
@@ -67,6 +67,7 @@ func (f *Font) GlyphList() []string {
 	if _, ok := f.GlyphInfo[".notdef"]; !ok {
 		glyphNames = append(glyphNames, ".notdef")
 	}
+
 	order := make(map[string]int, len(glyphNames))
 	for _, name := range glyphNames {
 		order[name] = 256
