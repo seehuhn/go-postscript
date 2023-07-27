@@ -26,6 +26,7 @@ import (
 
 	"seehuhn.de/go/postscript"
 	"seehuhn.de/go/postscript/funit"
+	"seehuhn.de/go/postscript/psenc"
 )
 
 type FileFormat int
@@ -320,8 +321,7 @@ func isStandardEncoding(encoding []string) bool {
 		return false
 	}
 	for i, s := range encoding {
-		ss := postscript.Name(s)
-		if ss != postscript.StandardEncoding[i] && ss != ".notdef" {
+		if s != psenc.StandardEncoding[i] && s != ".notdef" {
 			return false
 		}
 	}

@@ -24,13 +24,14 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"seehuhn.de/go/postscript/funit"
+	"seehuhn.de/go/postscript/psenc"
 )
 
 func TestWrite(t *testing.T) {
 	for _, useStdEnc := range []bool{false, true} {
 		encoding := makeEmptyEncoding()
 		if useStdEnc {
-			encoding[StandardEncoding["A"]] = "A"
+			encoding[psenc.StandardEncodingRev["A"]] = "A"
 		} else {
 			encoding[1] = "A"
 		}

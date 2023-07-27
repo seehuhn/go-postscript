@@ -49,10 +49,13 @@ type Font struct {
 	Kern      []*KernPair
 }
 
-// NumGlyphs returns the number of glyphs in the font.
+// NumGlyphs returns the number of glyphs in the font (including the .notdef glyph).
 func (f *Font) NumGlyphs() int {
-	// TODO(voss): should we add 1, if there is no ".notdef" glyph?
-	return len(f.Outlines)
+	n := len(f.Outlines)
+	if _, ok := f.Outlines[".notdef"]; !ok {
+		n++
+	}
+	return n
 }
 
 // GlyphList returns a list of all glyph names in the font.
@@ -85,6 +88,13 @@ func (f *Font) GlyphList() []string {
 	return glyphNames
 }
 
+// Glyph represents a glyph in a Type 1 font.
+type Glyph struct {
+	Cmds  []GlyphOp
+	HStem []funit.Int16
+	VStem []funit.Int16
+}
+
 func (f *Font) NewGlyph(name string, width funit.Int16) *Glyph {
 	g := &Glyph{}
 	gi := &GlyphInfo{
@@ -93,13 +103,6 @@ func (f *Font) NewGlyph(name string, width funit.Int16) *Glyph {
 	f.Outlines[name] = g
 	f.GlyphInfo[name] = gi
 	return g
-}
-
-// Glyph represents a glyph in a Type 1 font.
-type Glyph struct {
-	Cmds  []GlyphOp
-	HStem []funit.Int16
-	VStem []funit.Int16
 }
 
 // MoveTo starts a new sub-path and moves the current point to (x, y).
