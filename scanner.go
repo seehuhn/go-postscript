@@ -457,7 +457,7 @@ commentLineLoop:
 	return buf.String(), nil
 }
 
-// SkipComment skips everything from a % to the end of the line (buth inclusive).
+// SkipComment skips everything from a % to the end of the line (both inclusive).
 func (s *scanner) SkipComment() {
 	err := s.SkipRequiredByte('%')
 	if err == nil {
