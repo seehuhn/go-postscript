@@ -52,9 +52,15 @@ type Interpreter struct {
 	// ErrorDict is the PostScript error dictionary.
 	ErrorDict Dict
 
+	// Resources is a Dict of Dicts, which contains the resources
+	// for each category.
+	Resources Dict
+
 	// FontDirectory is the PostScript font directory.
 	// The `definefont` PostScript operator adds fonts to this dictionary.
 	FontDirectory Dict
+
+	CMapDirectory Dict
 
 	// DSC contains all DSC comments found in the input so far.
 	// These are comments of the form "%%key: value" or "%%key".
@@ -65,18 +71,36 @@ type Interpreter struct {
 	procStart []int
 
 	execStackDepth int
+
+	// cmap holds data for the CMap dictionary being constructed, while
+	// a `begincmap` ... `endcmap` block is being executed.
+	cmap *cmapInfo
 }
 
 // NewInterpreter creates a new instance of the PostScript interpreter.
 func NewInterpreter() *Interpreter {
 	systemDict := makeSystemDict()
 	userDict := systemDict["userdict"].(Dict)
+
+	fontDirectory := systemDict["FontDirectory"].(Dict)
+	cmapDirectory := Dict{}
+	resources := Dict{
+		"Font":    fontDirectory,
+		"CIDFont": Dict{},
+		"CMap":    cmapDirectory,
+		"ProcSet": Dict{
+			"CIDInit": CIDInit,
+		},
+	}
+
 	intp := &Interpreter{
 		DictStack: []Dict{
 			systemDict,
 			userDict,
 		},
-		FontDirectory: systemDict["FontDirectory"].(Dict),
+		FontDirectory: fontDirectory,
+		CMapDirectory: cmapDirectory,
+		Resources:     resources,
 		SystemDict:    systemDict,
 		UserDict:      userDict,
 		ErrorDict:     systemDict["errordict"].(Dict),

@@ -326,6 +326,28 @@ func makeSystemDict() Dict {
 			intp.Stack = append(intp.Stack[:len(intp.Stack)-2], font)
 			return nil
 		}),
+		"defineresource": builtin(func(intp *Interpreter) error {
+			// TODO(voss): implement the behaviour described in section 3.9 of PLRM.
+			if len(intp.Stack) < 3 {
+				return intp.e(eStackunderflow, "defineresource: not enough arguments")
+			}
+			key, ok := intp.Stack[len(intp.Stack)-3].(Name)
+			if !ok {
+				return intp.e(eTypecheck, "defineresource: needs name, not %T", intp.Stack[len(intp.Stack)-3])
+			}
+			instance := intp.Stack[len(intp.Stack)-2]
+			class, ok := intp.Stack[len(intp.Stack)-1].(Name)
+			if !ok {
+				return intp.e(eTypecheck, "defineresource: needs name, not %T", intp.Stack[len(intp.Stack)-1])
+			}
+			classDict, ok := intp.Resources[class].(Dict)
+			if !ok {
+				return intp.e(eUndefined, "defineresource: undefined resource class %q", class)
+			}
+			classDict[key] = instance
+			intp.Stack = append(intp.Stack[:len(intp.Stack)-3], instance)
+			return nil
+		}),
 		"dict": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 1 {
 				return intp.e(eStackunderflow, "dict: not enough arguments")
@@ -418,6 +440,36 @@ func makeSystemDict() Dict {
 				return intp.e(eInvalidfont, "font %q not found", name)
 			}
 			intp.Stack = append(intp.Stack[:len(intp.Stack)-1], font)
+			return nil
+		}),
+		"findresource": builtin(func(intp *Interpreter) error {
+			if len(intp.Stack) < 2 {
+				return intp.e(eStackunderflow, "findresource: not enough arguments")
+			}
+			catName, ok := intp.Stack[len(intp.Stack)-1].(Name)
+			if !ok {
+				return intp.e(eTypecheck, "findresource: needs a name, not %T", intp.Stack[len(intp.Stack)-2])
+			}
+			cat, ok := intp.Resources[catName]
+			if !ok {
+				return intp.e(eUndefined, "resource category %q not found", catName)
+			}
+			keyObj := intp.Stack[len(intp.Stack)-2]
+			var key Name
+			switch keyObj := keyObj.(type) {
+			case Name:
+				key = keyObj
+			case String:
+				key = Name(keyObj)
+			default:
+				return intp.e(eUndefinedresource, "findresource: needs a name or string, not %T", keyObj)
+			}
+			catDict := cat.(Dict)
+			obj, ok := catDict[key]
+			if !ok {
+				return intp.e(eUndefinedresource, "resource %q not found in category %q", key, catName)
+			}
+			intp.Stack = append(intp.Stack[:len(intp.Stack)-2], obj)
 			return nil
 		}),
 		"FontDirectory": FontDirectory,

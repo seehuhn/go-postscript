@@ -419,14 +419,20 @@ func TestCmdFalse(t *testing.T) {
 	}
 }
 
-func TestCmdFor(t *testing.T) {
-	intp := NewInterpreter()
-	err := intp.ExecuteString("1 1 3 {} for")
+func TestFindResource(t *testing.T) {
+	intp, err := run("/CIDInit /ProcSet findresource", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(intp.Stack) != 3 {
-		t.Fatalf("len(intp.Stack): %d != 3", len(intp.Stack))
+	if !isSameDict(intp.Stack[0].(Dict), CIDInit) {
+		t.Fatalf("intp.Stack[0]: %v != CIDInit", intp.Stack[0])
+	}
+}
+
+func TestCmdFor(t *testing.T) {
+	intp, err := run("1 1 3 {} for", 3)
+	if err != nil {
+		t.Fatal(err)
 	}
 	if d := cmp.Diff(intp.Stack, []Object{Integer(1), Integer(2), Integer(3)}); d != "" {
 		t.Fatal(d)
