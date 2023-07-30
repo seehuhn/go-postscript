@@ -16,12 +16,35 @@
 
 package postscript
 
+import (
+	"bytes"
+	"sort"
+)
+
 var CIDInit = Dict{
 	"begincmap": builtin(func(intp *Interpreter) error {
-		intp.cmap = &cmapInfo{}
+		intp.cmap = &CmapInfo{}
 		return nil
 	}),
 	"endcmap": builtin(func(intp *Interpreter) error {
+		if len(intp.DictStack) < 1 {
+			return intp.e(eStackunderflow, "endcmap: cmap dictionary not found")
+		}
+		sort.Slice(intp.cmap.CodeSpaceRanges, func(i, j int) bool {
+			if len(intp.cmap.CodeSpaceRanges[i].Low) != len(intp.cmap.CodeSpaceRanges[j].Low) {
+				return len(intp.cmap.CodeSpaceRanges[i].Low) < len(intp.cmap.CodeSpaceRanges[j].Low)
+			}
+			return bytes.Compare(intp.cmap.CodeSpaceRanges[i].Low, intp.cmap.CodeSpaceRanges[j].Low) < 0
+		})
+		sort.Slice(intp.cmap.Chars, func(i, j int) bool {
+			return bytes.Compare(intp.cmap.Chars[i].Src, intp.cmap.Chars[j].Src) < 0
+		})
+		sort.Slice(intp.cmap.Ranges, func(i, j int) bool {
+			return bytes.Compare(intp.cmap.Ranges[i].Low, intp.cmap.Ranges[j].Low) < 0
+		})
+		dict := intp.DictStack[len(intp.DictStack)-1]
+		dict["CodeMap"] = intp.cmap
+		intp.cmap = nil
 		return nil
 	}),
 	"begincodespacerange": builtin(func(intp *Interpreter) error {
@@ -38,7 +61,7 @@ var CIDInit = Dict{
 			return intp.e(eRangecheck, "begincodespacerange: invalid length %d", n)
 		}
 		intp.Stack = intp.Stack[:len(intp.Stack)-1]
-		intp.cmap.tmpCodeSpaceRanges = make([]codeSpaceRange, n)
+		intp.cmap.tmpCodeSpaceRanges = make([]CodeSpaceRange, n)
 		return nil
 	}),
 	"endcodespacerange": builtin(func(intp *Interpreter) error {
@@ -61,10 +84,10 @@ var CIDInit = Dict{
 			if len(lo) != len(hi) {
 				return intp.e(eRangecheck, "endcodespacerange: expected strings of equal length, got %d and %d", len(lo), len(hi))
 			}
-			intp.cmap.tmpCodeSpaceRanges[i] = codeSpaceRange{lo, hi}
+			intp.cmap.tmpCodeSpaceRanges[i] = CodeSpaceRange{lo, hi}
 		}
 		intp.Stack = intp.Stack[:base]
-		intp.cmap.codeSpaceRanges = append(intp.cmap.codeSpaceRanges, intp.cmap.tmpCodeSpaceRanges...)
+		intp.cmap.CodeSpaceRanges = append(intp.cmap.CodeSpaceRanges, intp.cmap.tmpCodeSpaceRanges...)
 		intp.cmap.tmpCodeSpaceRanges = nil
 		return nil
 	}),
@@ -82,7 +105,7 @@ var CIDInit = Dict{
 			return intp.e(eRangecheck, "beginbfchar: invalid length %d", n)
 		}
 		intp.Stack = intp.Stack[:len(intp.Stack)-1]
-		intp.cmap.tmpChars = make([]bfChar, n)
+		intp.cmap.tmpChars = make([]BfChar, n)
 		return nil
 	}),
 	"endbfchar": builtin(func(intp *Interpreter) error {
@@ -102,10 +125,10 @@ var CIDInit = Dict{
 			if !isStringOrName(val) {
 				return intp.e(eTypecheck, "endbfchar: expected string or name, got %T", val)
 			}
-			intp.cmap.tmpChars[i] = bfChar{code, val}
+			intp.cmap.tmpChars[i] = BfChar{code, val}
 		}
 		intp.Stack = intp.Stack[:base]
-		intp.cmap.chars = append(intp.cmap.chars, intp.cmap.tmpChars...)
+		intp.cmap.Chars = append(intp.cmap.Chars, intp.cmap.tmpChars...)
 		intp.cmap.tmpChars = nil
 		return nil
 	}),
@@ -123,7 +146,7 @@ var CIDInit = Dict{
 			return intp.e(eRangecheck, "beginbfrange: invalid length %d", n)
 		}
 		intp.Stack = intp.Stack[:len(intp.Stack)-1]
-		intp.cmap.tmpRanges = make([]bfRange, n)
+		intp.cmap.tmpRanges = make([]BfRange, n)
 		return nil
 	}),
 	"endbfrange": builtin(func(intp *Interpreter) error {
@@ -150,12 +173,12 @@ var CIDInit = Dict{
 			if !isStringOrArray(val) {
 				return intp.e(eTypecheck, "endbfrange: expected string or array of names, got %T", val)
 			}
-			intp.cmap.tmpRanges[i].low = lo
-			intp.cmap.tmpRanges[i].high = hi
-			intp.cmap.tmpRanges[i].value = val
+			intp.cmap.tmpRanges[i].Low = lo
+			intp.cmap.tmpRanges[i].High = hi
+			intp.cmap.tmpRanges[i].Dst = val
 		}
 		intp.Stack = intp.Stack[:base]
-		intp.cmap.ranges = append(intp.cmap.ranges, intp.cmap.tmpRanges...)
+		intp.cmap.Ranges = append(intp.cmap.Ranges, intp.cmap.tmpRanges...)
 		intp.cmap.tmpRanges = nil
 		return nil
 	}),
@@ -179,25 +202,25 @@ func isStringOrArray(o Object) bool {
 	}
 }
 
-type cmapInfo struct {
-	codeSpaceRanges    []codeSpaceRange
-	tmpCodeSpaceRanges []codeSpaceRange
-	chars              []bfChar
-	tmpChars           []bfChar
-	ranges             []bfRange
-	tmpRanges          []bfRange
+type CmapInfo struct {
+	CodeSpaceRanges    []CodeSpaceRange
+	tmpCodeSpaceRanges []CodeSpaceRange
+	Chars              []BfChar
+	tmpChars           []BfChar
+	Ranges             []BfRange
+	tmpRanges          []BfRange
 }
 
-type codeSpaceRange struct {
-	low, high []byte
+type CodeSpaceRange struct {
+	Low, High []byte
 }
 
-type bfChar struct {
-	src []byte
-	dst Object
+type BfChar struct {
+	Src []byte
+	Dst Object
 }
 
-type bfRange struct {
-	low, high []byte
-	value     Object
+type BfRange struct {
+	Low, High []byte
+	Dst       Object
 }
