@@ -27,7 +27,7 @@ var CIDInit = Dict{
 		return nil
 	}),
 	"endcmap": builtin(func(intp *Interpreter) error {
-		if len(intp.DictStack) < 1 {
+		if len(intp.DictStack) < 1 || intp.cmap == nil {
 			return intp.e(eStackunderflow, "endcmap: cmap dictionary not found")
 		}
 		sort.Slice(intp.cmap.CodeSpaceRanges, func(i, j int) bool {

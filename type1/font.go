@@ -58,6 +58,21 @@ func (f *Font) NumGlyphs() int {
 	return n
 }
 
+func (f *Font) BBox() (bbox funit.Rect16) {
+	first := true
+	for _, glyph := range f.GlyphInfo {
+		if glyph.Extent.IsZero() {
+			continue
+		}
+		if first {
+			bbox = glyph.Extent
+		} else {
+			bbox.Extend(glyph.Extent)
+		}
+	}
+	return bbox
+}
+
 // GlyphList returns a list of all glyph names in the font.
 // The list starts with the ".notdef" glyph, followed by the glyphs in the
 // Encoding vector, followed by the remaining glyphs in alphabetical order
