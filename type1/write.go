@@ -177,7 +177,7 @@ func (f *Font) Write(w io.Writer, opt *WriterOptions) error {
 }
 
 // WritePDF writes the font in the format required for embedding in a PDF file.
-func (f *Font) WritePDF(w io.Writer) (int, int, int, error) {
+func (f *Font) WritePDF(w io.Writer) (int, int, error) {
 	opt := &WriterOptions{Format: FormatBinary}
 	info := f.makeTemplateData(opt)
 
@@ -185,27 +185,25 @@ func (f *Font) WritePDF(w io.Writer) (int, int, int, error) {
 
 	err := tmpl.ExecuteTemplate(wc, "SectionA", info)
 	if err != nil {
-		return 0, 0, 0, err
+		return 0, 0, err
 	}
 	length1 := wc.n
 
 	we, err := newEExecWriter(wc)
 	if err != nil {
-		return 0, 0, 0, err
+		return 0, 0, err
 	}
 	err = tmpl.ExecuteTemplate(we, "SectionB", info)
 	if err != nil {
-		return 0, 0, 0, err
+		return 0, 0, err
 	}
 	err = we.Close()
 	if err != nil {
-		return 0, 0, 0, err
+		return 0, 0, err
 	}
 	length2 := wc.n - length1
 
-	length3 := 0
-
-	return length1, length2, length3, nil
+	return length1, length2, nil
 }
 
 type countingWriter struct {
