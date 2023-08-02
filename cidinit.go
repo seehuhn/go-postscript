@@ -23,7 +23,7 @@ import (
 
 var CIDInit = Dict{
 	"begincmap": builtin(func(intp *Interpreter) error {
-		intp.cmap = &CmapInfo{}
+		intp.cmap = &CMapInfo{}
 		return nil
 	}),
 	"endcmap": builtin(func(intp *Interpreter) error {
@@ -166,8 +166,8 @@ var CIDInit = Dict{
 			if !ok {
 				return intp.e(eTypecheck, "endbfrange: expected string, got %T", intp.Stack[base+3*i+1])
 			}
-			if len(lo) != len(hi) {
-				return intp.e(eRangecheck, "endbfrange: expected strings of equal length, got %d and %d", len(lo), len(hi))
+			if len(lo) != len(hi) || bytes.Compare(lo, hi) > 0 {
+				return intp.e(eRangecheck, "endbfrange: invalid range <%x> <%x>", lo, hi)
 			}
 			val := intp.Stack[base+3*i+2]
 			if !isStringOrArray(val) {
@@ -202,7 +202,7 @@ func isStringOrArray(o Object) bool {
 	}
 }
 
-type CmapInfo struct {
+type CMapInfo struct {
 	CodeSpaceRanges    []CodeSpaceRange
 	tmpCodeSpaceRanges []CodeSpaceRange
 	Chars              []BfChar

@@ -74,7 +74,7 @@ type Interpreter struct {
 
 	// cmap holds data for the CMap dictionary being constructed, while
 	// a `begincmap` ... `endcmap` block is being executed.
-	cmap *CmapInfo
+	cmap *CMapInfo
 }
 
 // NewInterpreter creates a new instance of the PostScript interpreter.

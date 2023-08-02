@@ -344,6 +344,16 @@ func makeSystemDict() Dict {
 			if !ok {
 				return intp.e(eUndefined, "defineresource: undefined resource class %q", class)
 			}
+
+			switch class {
+			case "CMap":
+				if d, ok := instance.(Dict); !ok {
+					return intp.e(eTypecheck, "defineresource: needs dict, not %T", instance)
+				} else if _, ok := d["CodeMap"].(*CMapInfo); !ok {
+					return intp.e(eTypecheck, "defineresource: not a CMap")
+				}
+			}
+
 			classDict[key] = instance
 			intp.Stack = append(intp.Stack[:len(intp.Stack)-3], instance)
 			return nil
