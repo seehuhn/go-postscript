@@ -29,6 +29,7 @@ import (
 func Read(fd io.Reader) (*type1.Font, error) {
 	res := &type1.Font{
 		Info:      &type1.FontInfo{},
+		Private:   &type1.PrivateDict{},
 		GlyphInfo: make(map[string]*type1.GlyphInfo),
 	}
 
