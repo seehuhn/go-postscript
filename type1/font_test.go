@@ -41,7 +41,7 @@ func FuzzFont(f *testing.F) {
 	encoding[65] = "A"
 	F := &Font{
 		CreationDate: time.Now(),
-		Info: &FontInfo{
+		FontInfo: &FontInfo{
 			FontName:           "Test",
 			Version:            "1.000",
 			Notice:             "Notice",

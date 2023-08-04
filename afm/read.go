@@ -28,7 +28,7 @@ import (
 
 func Read(fd io.Reader) (*type1.Font, error) {
 	res := &type1.Font{
-		Info:      &type1.FontInfo{},
+		FontInfo:  &type1.FontInfo{},
 		Private:   &type1.PrivateDict{},
 		GlyphInfo: make(map[string]*type1.GlyphInfo),
 	}
@@ -127,9 +127,9 @@ func Read(fd io.Reader) (*type1.Font, error) {
 		}
 		switch fields[0] {
 		case "FontName":
-			res.Info.FontName = fields[1]
+			res.FontInfo.FontName = fields[1]
 		case "FullName":
-			res.Info.FullName = strings.Join(fields[1:], " ")
+			res.FontInfo.FullName = strings.Join(fields[1:], " ")
 		case "CapHeight":
 			x, _ := strconv.Atoi(fields[1])
 			res.CapHeight = funit.Int16(x)
@@ -144,15 +144,15 @@ func Read(fd io.Reader) (*type1.Font, error) {
 			res.Descent = funit.Int16(x)
 		case "UnderlinePosition":
 			x, _ := strconv.ParseFloat(fields[1], 64)
-			res.Info.UnderlinePosition = funit.Float64(x)
+			res.FontInfo.UnderlinePosition = funit.Float64(x)
 		case "UnderlineThickness":
 			x, _ := strconv.ParseFloat(fields[1], 64)
-			res.Info.UnderlineThickness = funit.Float64(x)
+			res.FontInfo.UnderlineThickness = funit.Float64(x)
 		case "ItalicAngle":
 			x, _ := strconv.ParseFloat(fields[1], 64)
-			res.Info.ItalicAngle = x
+			res.FontInfo.ItalicAngle = x
 		case "IsFixedPitch":
-			res.Info.IsFixedPitch = fields[1] == "true"
+			res.FontInfo.IsFixedPitch = fields[1] == "true"
 		case "StartCharMetrics":
 			charMetrics = true
 		case "StartKernPairs":

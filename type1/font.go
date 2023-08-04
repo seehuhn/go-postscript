@@ -41,8 +41,8 @@ type Font struct {
 	CapHeight funit.Int16
 	XHeight   funit.Int16
 
-	Info    *FontInfo
-	Private *PrivateDict
+	FontInfo *FontInfo
+	Private  *PrivateDict
 
 	Outlines  map[string]*Glyph
 	GlyphInfo map[string]*GlyphInfo

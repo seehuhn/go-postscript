@@ -348,7 +348,7 @@ creationDateLoop:
 		CreationDate: creationDate,
 		UnitsPerEm:   1000, // TODO(voss)
 
-		Info:      fi,
+		FontInfo:  fi,
 		Private:   private,
 		Outlines:  glyphs,
 		GlyphInfo: glyphInfo,

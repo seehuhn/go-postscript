@@ -38,7 +38,7 @@ func TestWrite(t *testing.T) {
 		F := &Font{
 			CreationDate: time.Now().Round(time.Second),
 			UnitsPerEm:   1000,
-			Info: &FontInfo{
+			FontInfo: &FontInfo{
 				FontName:           "Test",
 				Version:            "1.000",
 				Notice:             "Notice",

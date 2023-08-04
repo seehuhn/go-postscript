@@ -218,7 +218,7 @@ func (w *countingWriter) Write(p []byte) (n int, err error) {
 }
 
 func (f *Font) makeTemplateData(opt *WriterOptions) *fontInfo {
-	fontMatrix := f.Info.FontMatrix
+	fontMatrix := f.FontInfo.FontMatrix
 	if len(fontMatrix) != 6 {
 		fontMatrix = []float64{0.001, 0, 0, 0.001, 0, 0}
 	}
@@ -229,22 +229,22 @@ func (f *Font) makeTemplateData(opt *WriterOptions) *fontInfo {
 		BlueShift:          f.Private.BlueShift,
 		BlueValues:         f.Private.BlueValues,
 		CharStrings:        f.encodeCharstrings(),
-		Copyright:          f.Info.Copyright,
+		Copyright:          f.FontInfo.Copyright,
 		CreationDate:       f.CreationDate,
 		Encoding:           f.Encoding,
-		FamilyName:         f.Info.FamilyName,
+		FamilyName:         f.FontInfo.FamilyName,
 		FontMatrix:         fontMatrix,
-		FontName:           f.Info.FontName,
+		FontName:           f.FontInfo.FontName,
 		ForceBold:          f.Private.ForceBold,
-		FullName:           f.Info.FullName,
-		IsFixedPitch:       f.Info.IsFixedPitch,
-		ItalicAngle:        f.Info.ItalicAngle,
-		Notice:             f.Info.Notice,
+		FullName:           f.FontInfo.FullName,
+		IsFixedPitch:       f.FontInfo.IsFixedPitch,
+		ItalicAngle:        f.FontInfo.ItalicAngle,
+		Notice:             f.FontInfo.Notice,
 		OtherBlues:         f.Private.OtherBlues,
-		UnderlinePosition:  float64(f.Info.UnderlinePosition),
-		UnderlineThickness: float64(f.Info.UnderlineThickness),
-		Version:            f.Info.Version,
-		Weight:             f.Info.Weight,
+		UnderlinePosition:  float64(f.FontInfo.UnderlinePosition),
+		UnderlineThickness: float64(f.FontInfo.UnderlineThickness),
+		Version:            f.FontInfo.Version,
+		Weight:             f.FontInfo.Weight,
 		EExec:              opt.Format != FormatNoEExec,
 	}
 	if f.Private.StdHW != 0 {
