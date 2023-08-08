@@ -97,7 +97,7 @@ func Read(fd io.Reader) (*type1.Font, error) {
 
 			res.GlyphInfo[name] = &type1.GlyphInfo{
 				WidthX:    width,
-				Extent:    BBox,
+				BBox:      BBox,
 				Ligatures: ligTmp,
 			}
 			continue

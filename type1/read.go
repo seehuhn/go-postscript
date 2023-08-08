@@ -334,7 +334,7 @@ creationDateLoop:
 		glyphInfo[seac.name] = &GlyphInfo{
 			WidthX: baseI.WidthX,
 			WidthY: baseI.WidthY,
-			Extent: g.computeExt(),
+			BBox:   g.computeExt(),
 		}
 	}
 

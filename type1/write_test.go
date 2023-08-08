@@ -78,7 +78,7 @@ func TestWrite(t *testing.T) {
 		g.LineTo(100, 110)
 		g.ClosePath()
 		for name, gi := range F.GlyphInfo {
-			gi.Extent = F.Outlines[name].computeExt()
+			gi.BBox = F.Outlines[name].computeExt()
 		}
 
 		buf := &bytes.Buffer{}

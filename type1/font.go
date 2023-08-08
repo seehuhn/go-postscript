@@ -60,13 +60,13 @@ func (f *Font) NumGlyphs() int {
 func (f *Font) BBox() (bbox funit.Rect16) {
 	first := true
 	for _, glyph := range f.GlyphInfo {
-		if glyph.Extent.IsZero() {
+		if glyph.BBox.IsZero() {
 			continue
 		}
 		if first {
-			bbox = glyph.Extent
+			bbox = glyph.BBox
 		} else {
-			bbox.Extend(glyph.Extent)
+			bbox.Extend(glyph.BBox)
 		}
 	}
 	return bbox
@@ -236,7 +236,7 @@ func (c GlyphOp) String() string {
 type GlyphInfo struct {
 	WidthX    funit.Int16
 	WidthY    funit.Int16
-	Extent    funit.Rect16
+	BBox      funit.Rect16
 	Ligatures map[string]string
 }
 

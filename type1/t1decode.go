@@ -450,7 +450,7 @@ glyphLoop:
 		rClosePath()
 	}
 
-	resI.Extent = resG.computeExt()
+	resI.BBox = resG.computeExt()
 	return resG, resI, nil
 }
 
