@@ -91,6 +91,97 @@ var CIDInit = Dict{
 		intp.cmap.tmpCodeSpaceRanges = nil
 		return nil
 	}),
+	"begincidchar": builtin(func(intp *Interpreter) error {
+		if intp.cmap == nil {
+			return intp.e(eUndefined, "begincidchar: not in cmap block")
+		}
+		if len(intp.Stack) < 1 {
+			return intp.e(eStackunderflow, "begincidchar: not enough arguments")
+		}
+		n, ok := intp.Stack[len(intp.Stack)-1].(Integer)
+		if !ok {
+			return intp.e(eTypecheck, "begincidchar: expected integer, got %T", intp.Stack[len(intp.Stack)-1])
+		} else if n < 0 || n > 100 {
+			return intp.e(eRangecheck, "begincidchar: invalid length %d", n)
+		}
+		intp.Stack = intp.Stack[:len(intp.Stack)-1]
+		intp.cmap.tmpChars = make([]CharMap, n)
+		return nil
+	}),
+	"endcidchar": builtin(func(intp *Interpreter) error {
+		if intp.cmap == nil {
+			return intp.e(eUndefined, "endcidchar: not in cmap block")
+		}
+		base := len(intp.Stack) - 2*len(intp.cmap.tmpChars)
+		if base < 0 {
+			return intp.e(eStackunderflow, "endcidchar: not enough arguments")
+		}
+		for i := range intp.cmap.tmpChars {
+			code, ok := intp.Stack[base+2*i].(String)
+			if !ok {
+				return intp.e(eTypecheck, "endcidchar: expected string, got %T", intp.Stack[base+2*i])
+			}
+			val := intp.Stack[base+2*i+1]
+			if _, ok := val.(Integer); !ok {
+				return intp.e(eTypecheck, "endcidchar: expected integer, got %T", val)
+			}
+			intp.cmap.tmpChars[i] = CharMap{code, val}
+		}
+		intp.Stack = intp.Stack[:base]
+		intp.cmap.Chars = append(intp.cmap.Chars, intp.cmap.tmpChars...)
+		intp.cmap.tmpChars = nil
+		return nil
+	}),
+	"begincidrange": builtin(func(intp *Interpreter) error {
+		if intp.cmap == nil {
+			return intp.e(eUndefined, "begincidrange: not in cmap block")
+		}
+		if len(intp.Stack) < 1 {
+			return intp.e(eStackunderflow, "begincidrange: not enough arguments")
+		}
+		n, ok := intp.Stack[len(intp.Stack)-1].(Integer)
+		if !ok {
+			return intp.e(eTypecheck, "begincidrange: expected integer, got %T", intp.Stack[len(intp.Stack)-1])
+		} else if n < 0 || n > 100 {
+			return intp.e(eRangecheck, "begincidrange: invalid length %d", n)
+		}
+		intp.Stack = intp.Stack[:len(intp.Stack)-1]
+		intp.cmap.tmpRanges = make([]RangeMap, n)
+		return nil
+	}),
+	"endcidrange": builtin(func(intp *Interpreter) error {
+		if intp.cmap == nil {
+			return intp.e(eUndefined, "endcidrange: not in cmap block")
+		}
+		base := len(intp.Stack) - 3*len(intp.cmap.tmpRanges)
+		if base < 0 {
+			return intp.e(eStackunderflow, "endcidrange: not enough arguments")
+		}
+		for i := range intp.cmap.tmpRanges {
+			lo, ok := intp.Stack[base+3*i].(String)
+			if !ok {
+				return intp.e(eTypecheck, "endcidrange: expected string, got %T", intp.Stack[base+3*i])
+			}
+			hi, ok := intp.Stack[base+3*i+1].(String)
+			if !ok {
+				return intp.e(eTypecheck, "endcidrange: expected string, got %T", intp.Stack[base+3*i+1])
+			}
+			if len(lo) != len(hi) || bytes.Compare(lo, hi) > 0 {
+				return intp.e(eRangecheck, "endcidrange: invalid range <%x> <%x>", lo, hi)
+			}
+			val := intp.Stack[base+3*i+2]
+			if _, ok := val.(Integer); !ok {
+				return intp.e(eTypecheck, "endcidrange: expected integer, got %T", val)
+			}
+			intp.cmap.tmpRanges[i].Low = lo
+			intp.cmap.tmpRanges[i].High = hi
+			intp.cmap.tmpRanges[i].Dst = val
+		}
+		intp.Stack = intp.Stack[:base]
+		intp.cmap.Ranges = append(intp.cmap.Ranges, intp.cmap.tmpRanges...)
+		intp.cmap.tmpRanges = nil
+		return nil
+	}),
 	"beginbfchar": builtin(func(intp *Interpreter) error {
 		if intp.cmap == nil {
 			return intp.e(eUndefined, "beginbfchar: not in cmap block")
@@ -105,7 +196,7 @@ var CIDInit = Dict{
 			return intp.e(eRangecheck, "beginbfchar: invalid length %d", n)
 		}
 		intp.Stack = intp.Stack[:len(intp.Stack)-1]
-		intp.cmap.tmpChars = make([]BfChar, n)
+		intp.cmap.tmpChars = make([]CharMap, n)
 		return nil
 	}),
 	"endbfchar": builtin(func(intp *Interpreter) error {
@@ -125,7 +216,7 @@ var CIDInit = Dict{
 			if !isStringOrName(val) {
 				return intp.e(eTypecheck, "endbfchar: expected string or name, got %T", val)
 			}
-			intp.cmap.tmpChars[i] = BfChar{code, val}
+			intp.cmap.tmpChars[i] = CharMap{code, val}
 		}
 		intp.Stack = intp.Stack[:base]
 		intp.cmap.Chars = append(intp.cmap.Chars, intp.cmap.tmpChars...)
@@ -146,7 +237,7 @@ var CIDInit = Dict{
 			return intp.e(eRangecheck, "beginbfrange: invalid length %d", n)
 		}
 		intp.Stack = intp.Stack[:len(intp.Stack)-1]
-		intp.cmap.tmpRanges = make([]BfRange, n)
+		intp.cmap.tmpRanges = make([]RangeMap, n)
 		return nil
 	}),
 	"endbfrange": builtin(func(intp *Interpreter) error {
@@ -205,22 +296,22 @@ func isStringOrArray(o Object) bool {
 type CMapInfo struct {
 	CodeSpaceRanges    []CodeSpaceRange
 	tmpCodeSpaceRanges []CodeSpaceRange
-	Chars              []BfChar
-	tmpChars           []BfChar
-	Ranges             []BfRange
-	tmpRanges          []BfRange
+	Chars              []CharMap
+	tmpChars           []CharMap
+	Ranges             []RangeMap
+	tmpRanges          []RangeMap
 }
 
 type CodeSpaceRange struct {
 	Low, High []byte
 }
 
-type BfChar struct {
+type CharMap struct {
 	Src []byte
 	Dst Object
 }
 
-type BfRange struct {
+type RangeMap struct {
 	Low, High []byte
 	Dst       Object
 }
