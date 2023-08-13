@@ -149,7 +149,7 @@ func (g *Glyph) ClosePath() {
 	g.Cmds = append(g.Cmds, GlyphOp{Op: OpClosePath})
 }
 
-func (g *Glyph) computeExt() funit.Rect16 {
+func (g *Glyph) computeBBox() funit.Rect16 {
 	var left, right, top, bottom float64
 	first := true
 cmdLoop:
