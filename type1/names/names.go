@@ -28,6 +28,11 @@ import (
 // ToUnicode maps a Type1 Glyph name to a sequence of unicode characters.
 // This implements the algorithm documented at
 // https://github.com/adobe-type-tools/agl-specification .
+//
+// For the ".notdef" glyph, an empty slice is returned.
+//
+// TODO(voss): get rid of the dingbats parameter, and implement a
+// separate function for dingbats.
 func ToUnicode(name string, dingbats bool) []rune {
 	var res []rune
 
