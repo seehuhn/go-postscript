@@ -29,6 +29,7 @@ import (
 // Font represents a Type 1 font.
 //
 // TODO(voss): make this more similar to cff.Font
+// TODO(voss): remove kerning and ligature information from here
 type Font struct {
 	CreationDate time.Time
 	UnitsPerEm   uint16
