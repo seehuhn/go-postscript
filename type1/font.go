@@ -29,6 +29,7 @@ import (
 // Font represents a Type 1 font.
 //
 // TODO(voss): make this more similar to cff.Font
+//
 // TODO(voss): remove kerning and ligature information from here
 type Font struct {
 	CreationDate time.Time
@@ -58,6 +59,8 @@ func (f *Font) NumGlyphs() int {
 	return n
 }
 
+// BBox returns the font bounding box.
+// This is the smallest rectangle enclosing all glyphs in the font.
 func (f *Font) BBox() (bbox funit.Rect16) {
 	first := true
 	for _, glyph := range f.GlyphInfo {
@@ -111,6 +114,7 @@ type Glyph struct {
 	VStem []funit.Int16
 }
 
+// NewGlyph creates a new glyph with the given name and width.
 func (f *Font) NewGlyph(name string, width funit.Int16) *Glyph {
 	g := &Glyph{}
 	gi := &GlyphInfo{
@@ -146,6 +150,7 @@ func (g *Glyph) CurveTo(x1, y1, x2, y2, x3, y3 float64) {
 	})
 }
 
+// ClosePath closes the current sub-path.
 func (g *Glyph) ClosePath() {
 	g.Cmds = append(g.Cmds, GlyphOp{Op: OpClosePath})
 }
@@ -234,6 +239,7 @@ func (c GlyphOp) String() string {
 	return fmt.Sprint("cmd", c.Args, c.Op)
 }
 
+// GlyphInfo contains information about a glyph in a Type 1 font.
 type GlyphInfo struct {
 	WidthX    funit.Int16
 	WidthY    funit.Int16
@@ -241,6 +247,7 @@ type GlyphInfo struct {
 	Ligatures map[string]string
 }
 
+// KernPair represents a kerning pair.
 type KernPair struct {
 	Left, Right string
 	Adjust      funit.Int16 // negative = move glyphs closer together

@@ -130,9 +130,8 @@ func (g *Glyph) encodeCharString(wx, wy funit.Int16) []byte {
 func appendOp(buf []byte, op t1op) []byte {
 	if op < 256 {
 		return append(buf, byte(op))
-	} else {
-		return append(buf, byte(op>>8), byte(op))
 	}
+	return append(buf, byte(op>>8), byte(op))
 }
 
 func appendInt(buf []byte, x int32) []byte {

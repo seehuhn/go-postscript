@@ -29,17 +29,20 @@ import (
 	"seehuhn.de/go/postscript/psenc"
 )
 
+// FileFormat specifies the on-disk format of a font file.
 type FileFormat int
 
+// List of supported file formats.
 const (
-	FormatPFA     FileFormat = iota // hex eexec
-	FormatPFB                       // hex eexec, pfb wrapper
-	FormatBinary                    // binary eexec
-	FormatNoEExec                   // no eexec
+	FormatPFA     FileFormat = iota + 1 // hex eexec
+	FormatPFB                           // hex eexec, pfb wrapper
+	FormatBinary                        // binary eexec
+	FormatNoEExec                       // no eexec
 )
 
+// WriterOptions contains options for writing a font.
 type WriterOptions struct {
-	Format FileFormat
+	Format FileFormat // which file format to write (default: FormatPFA)
 }
 
 var defaultWriterOptions = &WriterOptions{
@@ -51,10 +54,14 @@ func (f *Font) Write(w io.Writer, opt *WriterOptions) error {
 	if opt == nil {
 		opt = defaultWriterOptions
 	}
+	format := opt.Format
+	if format == 0 {
+		format = FormatPFA
+	}
 
 	info := f.makeTemplateData(opt)
 
-	switch opt.Format {
+	switch format {
 	case FormatPFA:
 		err := tmpl.ExecuteTemplate(w, "SectionA", info)
 		if err != nil {

@@ -22,6 +22,7 @@ import (
 	"seehuhn.de/go/postscript/funit"
 )
 
+// FontInfo contains information about a font.
 type FontInfo struct {
 	// PostScript language name (FontName or CIDFontName) of the font.
 	FontName string
