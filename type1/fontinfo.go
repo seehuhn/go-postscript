@@ -97,7 +97,8 @@ type PrivateDict struct {
 
 // CIDSystemInfo describes a character collection covered by a PostScript font.
 // A character collection implies an encoding which maps Character IDs to glyphs.
-// See sections 9.7.3 of PDF 32000-1:2008.
+//
+// See section 5.11.2 of the PLRM and section 9.7.3 of PDF 32000-1:2008.
 type CIDSystemInfo struct {
 	Registry   string
 	Ordering   string
@@ -108,8 +109,8 @@ func (ROS *CIDSystemInfo) String() string {
 	return ROS.Registry + "-" + ROS.Ordering + "-" + strconv.Itoa(int(ROS.Supplement))
 }
 
-// CID represents a character identifier.  This is the index of character in a
-// character collection.
+// CID represents a character identifier.  This is the index of a character in
+// a character collection.
 //
 // TODO(voss): should this be uint16 instead?
 type CID uint32
