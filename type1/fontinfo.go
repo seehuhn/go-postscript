@@ -112,5 +112,5 @@ func (ROS *CIDSystemInfo) String() string {
 // CID represents a character identifier.  This is the index of a character in
 // a character collection.
 //
-// TODO(voss): should this be uint16 instead?
+// TODO(voss): should this be be a different type instead (e.g. uint16 or int32)?
 type CID uint32
