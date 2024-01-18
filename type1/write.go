@@ -227,7 +227,7 @@ func (w *countingWriter) Write(p []byte) (n int, err error) {
 func (f *Font) makeTemplateData(opt *WriterOptions) *fontInfo {
 	fontMatrix := f.FontInfo.FontMatrix
 	if len(fontMatrix) != 6 {
-		fontMatrix = []float64{0.001, 0, 0, 0.001, 0, 0}
+		fontMatrix = [6]float64{0.001, 0, 0, 0.001, 0, 0}
 	}
 
 	info := &fontInfo{
@@ -443,7 +443,7 @@ type fontInfo struct {
 	CreationDate       time.Time
 	Encoding           []string
 	FamilyName         string
-	FontMatrix         []float64
+	FontMatrix         [6]float64
 	FontName           string
 	ForceBold          bool
 	FullName           string

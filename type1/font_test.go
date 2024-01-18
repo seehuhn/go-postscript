@@ -53,7 +53,7 @@ func FuzzFont(f *testing.F) {
 			IsFixedPitch:       false,
 			UnderlinePosition:  12,
 			UnderlineThickness: 14,
-			FontMatrix:         []float64{0.001, 0, 0, 0.001, 0, 0},
+			FontMatrix:         [6]float64{0.001, 0, 0, 0.001, 0, 0},
 		},
 		Private: &PrivateDict{
 			BlueValues: []funit.Int16{0, 10, 40, 50, 100, 120},

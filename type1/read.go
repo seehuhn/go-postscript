@@ -121,7 +121,7 @@ creationDateLoop:
 			postscript.Integer(0), postscript.Integer(0),
 		}
 	}
-	fontMatrix := make([]float64, 6)
+	var fontMatrix [6]float64
 	for i, v := range fontMatrixArray {
 		vReal, ok := v.(postscript.Real)
 		if ok {

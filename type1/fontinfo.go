@@ -64,7 +64,7 @@ type FontInfo struct {
 	// units of the glyph coordinate system.
 	UnderlineThickness funit.Float64
 
-	FontMatrix []float64
+	FontMatrix [6]float64
 }
 
 // PrivateDict contains information about a font's private dictionary.
