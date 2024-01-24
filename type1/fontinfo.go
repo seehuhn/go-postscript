@@ -17,8 +17,6 @@
 package type1
 
 import (
-	"strconv"
-
 	"seehuhn.de/go/postscript/funit"
 )
 
@@ -64,6 +62,7 @@ type FontInfo struct {
 	// units of the glyph coordinate system.
 	UnderlineThickness funit.Float64
 
+	// FontMatrix is the transformation from glyph space to user space.
 	FontMatrix [6]float64
 }
 
@@ -94,23 +93,3 @@ type PrivateDict struct {
 
 	ForceBold bool
 }
-
-// CIDSystemInfo describes a character collection covered by a PostScript font.
-// A character collection implies an encoding which maps Character IDs to glyphs.
-//
-// See section 5.11.2 of the PLRM and section 9.7.3 of PDF 32000-1:2008.
-type CIDSystemInfo struct {
-	Registry   string
-	Ordering   string
-	Supplement int32
-}
-
-func (ROS *CIDSystemInfo) String() string {
-	return ROS.Registry + "-" + ROS.Ordering + "-" + strconv.Itoa(int(ROS.Supplement))
-}
-
-// CID represents a character identifier.  This is the index of a character in
-// a character collection.
-//
-// TODO(voss): should this be be a different type instead (e.g. uint16 or int32)?
-type CID uint32

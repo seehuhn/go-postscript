@@ -30,10 +30,11 @@ import (
 //
 // TODO(voss): make this more similar to cff.Font
 //
-// TODO(voss): remove kerning and ligature information from here
+// TODO(voss): remove kerning and ligature information from here?
 type Font struct {
+	*FontInfo
+
 	CreationDate time.Time
-	UnitsPerEm   uint16
 
 	Encoding []string
 
@@ -42,8 +43,7 @@ type Font struct {
 	CapHeight funit.Int16
 	XHeight   funit.Int16
 
-	FontInfo *FontInfo
-	Private  *PrivateDict
+	Private *PrivateDict
 
 	Outlines  map[string]*Glyph
 	GlyphInfo map[string]*GlyphInfo

@@ -26,6 +26,7 @@ import (
 	"seehuhn.de/go/postscript/type1"
 )
 
+// Read reads an AFM file.
 func Read(fd io.Reader) (*type1.Font, error) {
 	res := &type1.Font{
 		FontInfo: &type1.FontInfo{
@@ -175,6 +176,5 @@ func Read(fd io.Reader) (*type1.Font, error) {
 		}
 	}
 
-	res.UnitsPerEm = 1000 // TODO(voss): is there a better way?
 	return res, nil
 }

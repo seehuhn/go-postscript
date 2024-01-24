@@ -14,5 +14,5 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-// Package type1 implements reading and writing of Type 1 font files.
+// Package type1 implements reading and writing of PostScript Type 1 fonts.
 package type1

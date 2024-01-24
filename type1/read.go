@@ -32,7 +32,7 @@ import (
 // TODO(voss): allow to merge in information from an ".afm" file.
 
 // Read reads a Type 1 font from a reader.
-// The function supports both PFA and PFB files.
+// The function supports both ".pfa" and ".pfb" files.
 func Read(r io.Reader) (*Font, error) {
 	head, r, err := peek(r, 1)
 	if err != nil {
@@ -346,7 +346,6 @@ creationDateLoop:
 
 	res := &Font{
 		CreationDate: creationDate,
-		UnitsPerEm:   1000, // TODO(voss)
 
 		FontInfo:  fi,
 		Private:   private,
