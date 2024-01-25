@@ -265,7 +265,7 @@ func (f *Font) makeTemplateData(opt *WriterOptions) *fontInfo {
 
 func (f *Font) encodeCharstrings() map[string]string {
 	charStrings := make(map[string]string)
-	for name, g := range f.Outlines {
+	for name, g := range f.Glyphs {
 		gi := f.GlyphInfo[name]
 		cs := g.encodeCharString(gi.WidthX, gi.WidthY)
 

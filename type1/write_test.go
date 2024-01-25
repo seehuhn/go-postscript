@@ -61,7 +61,7 @@ func TestWrite(t *testing.T) {
 				StdVW:      20,
 				ForceBold:  true,
 			},
-			Outlines:  map[string]*Glyph{},
+			Glyphs:    map[string]*Glyph{},
 			GlyphInfo: map[string]*GlyphInfo{},
 			Encoding:  encoding,
 		}
@@ -77,7 +77,7 @@ func TestWrite(t *testing.T) {
 		g.LineTo(100, 110)
 		g.ClosePath()
 		for name, gi := range F.GlyphInfo {
-			gi.BBox = F.Outlines[name].computeBBox()
+			gi.BBox = F.Glyphs[name].computeBBox()
 		}
 
 		buf := &bytes.Buffer{}

@@ -349,7 +349,7 @@ creationDateLoop:
 
 		FontInfo:  fi,
 		Private:   private,
-		Outlines:  glyphs,
+		Glyphs:    glyphs,
 		GlyphInfo: glyphInfo,
 		Encoding:  encoding,
 	}

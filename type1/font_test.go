@@ -65,7 +65,7 @@ func FuzzFont(f *testing.F) {
 			StdVW:      20,
 			ForceBold:  true,
 		},
-		Outlines:  map[string]*Glyph{},
+		Glyphs:    map[string]*Glyph{},
 		GlyphInfo: map[string]*GlyphInfo{},
 		Encoding:  encoding,
 	}

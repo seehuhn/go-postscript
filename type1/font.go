@@ -30,24 +30,22 @@ import (
 //
 // TODO(voss): make this more similar to cff.Font
 //
-// TODO(voss): remove kerning and ligature information from here?
+// TODO(voss): remove afm-specific information from here
 type Font struct {
 	*FontInfo
 
+	Glyphs    map[string]*Glyph
+	GlyphInfo map[string]*GlyphInfo
+	Private   *PrivateDict
+	Encoding  []string
+
 	CreationDate time.Time
 
-	Encoding []string
-
-	Ascent    funit.Int16
-	Descent   funit.Int16 // negative
-	CapHeight funit.Int16
-	XHeight   funit.Int16
-
-	Private *PrivateDict
-
-	Outlines  map[string]*Glyph
-	GlyphInfo map[string]*GlyphInfo
-	Kern      []*KernPair
+	Ascent    funit.Int16 // AFM only
+	Descent   funit.Int16 // AFM only, negative
+	CapHeight funit.Int16 // AFM only
+	XHeight   funit.Int16 // AFM only
+	Kern      []*KernPair // AFM only
 }
 
 // NumGlyphs returns the number of glyphs in the font (including the .notdef glyph).
@@ -120,7 +118,7 @@ func (f *Font) NewGlyph(name string, width funit.Int16) *Glyph {
 	gi := &GlyphInfo{
 		WidthX: width,
 	}
-	f.Outlines[name] = g
+	f.Glyphs[name] = g
 	f.GlyphInfo[name] = gi
 	return g
 }
