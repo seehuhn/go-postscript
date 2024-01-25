@@ -25,7 +25,7 @@ import (
 // Interpreter represents one instance of the PostScript interpreter.
 type Interpreter struct {
 	// CheckStart can be set to true to make the interpreter check that the
-	// first two input bytes are "%!"; otherwise, ErrNoPostscript is returned.
+	// first two input bytes are "%!"; otherwise, ErrNoPostScript is returned.
 	// This flag must be set before the first call to Execute.
 	CheckStart bool
 
@@ -142,7 +142,7 @@ func (intp *Interpreter) executeScanner(s *scanner) error {
 		if string(head) != "%!" {
 			err := s.err
 			if err == nil || err == io.EOF {
-				err = ErrNoPostscript
+				err = ErrNoPostScript
 			}
 			return err
 		}

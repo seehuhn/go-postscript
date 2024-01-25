@@ -104,5 +104,5 @@ var allErrors = []Name{
 
 var (
 	ErrExecutionLimitExceeded = &postScriptError{eInterrupt, "execution limit exceeded"}
-	ErrNoPostscript           = errors.New("not a PostScript file")
+	ErrNoPostScript           = errors.New("not a PostScript file")
 )

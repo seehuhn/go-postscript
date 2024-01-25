@@ -34,44 +34,20 @@ import (
 type Font struct {
 	*FontInfo
 
-	Glyphs    map[string]*Glyph
-	GlyphInfo map[string]*GlyphInfo
-	Private   *PrivateDict
-	Encoding  []string
+	Glyphs   map[string]*Glyph
+	Private  *PrivateDict
+	Encoding []string
 
 	CreationDate time.Time
-
-	Ascent    funit.Int16 // AFM only
-	Descent   funit.Int16 // AFM only, negative
-	CapHeight funit.Int16 // AFM only
-	XHeight   funit.Int16 // AFM only
-	Kern      []*KernPair // AFM only
 }
 
 // NumGlyphs returns the number of glyphs in the font (including the .notdef glyph).
 func (f *Font) NumGlyphs() int {
-	n := len(f.GlyphInfo)
-	if _, ok := f.GlyphInfo[".notdef"]; !ok {
+	n := len(f.Glyphs)
+	if _, ok := f.Glyphs[".notdef"]; !ok {
 		n++
 	}
 	return n
-}
-
-// BBox returns the font bounding box.
-// This is the smallest rectangle enclosing all glyphs in the font.
-func (f *Font) BBox() (bbox funit.Rect16) {
-	first := true
-	for _, glyph := range f.GlyphInfo {
-		if glyph.BBox.IsZero() {
-			continue
-		}
-		if first {
-			bbox = glyph.BBox
-		} else {
-			bbox.Extend(glyph.BBox)
-		}
-	}
-	return bbox
 }
 
 // GlyphList returns a list of all glyph names in the font.
@@ -79,8 +55,8 @@ func (f *Font) BBox() (bbox funit.Rect16) {
 // Encoding vector, followed by the remaining glyphs in alphabetical order
 // of their names.
 func (f *Font) GlyphList() []string {
-	glyphNames := maps.Keys(f.GlyphInfo)
-	if _, ok := f.GlyphInfo[".notdef"]; !ok {
+	glyphNames := maps.Keys(f.Glyphs)
+	if _, ok := f.Glyphs[".notdef"]; !ok {
 		glyphNames = append(glyphNames, ".notdef")
 	}
 
@@ -105,21 +81,39 @@ func (f *Font) GlyphList() []string {
 	return glyphNames
 }
 
+// BBox returns the font bounding box.
+// This is the smallest rectangle enclosing all glyphs in the font.
+func (f *Font) BBox() (bbox funit.Rect16) {
+	first := true
+	for _, glyph := range f.Glyphs {
+		thisBBox := glyph.BBox()
+		if thisBBox.IsZero() {
+			continue
+		}
+		if first {
+			bbox = thisBBox
+		} else {
+			bbox.Extend(thisBBox)
+		}
+	}
+	return bbox
+}
+
 // Glyph represents a glyph in a Type 1 font.
 type Glyph struct {
-	Cmds  []GlyphOp
-	HStem []funit.Int16
-	VStem []funit.Int16
+	Cmds   []GlyphOp
+	HStem  []funit.Int16
+	VStem  []funit.Int16
+	WidthX funit.Int16
+	WidthY funit.Int16
 }
 
 // NewGlyph creates a new glyph with the given name and width.
 func (f *Font) NewGlyph(name string, width funit.Int16) *Glyph {
-	g := &Glyph{}
-	gi := &GlyphInfo{
+	g := &Glyph{
 		WidthX: width,
 	}
 	f.Glyphs[name] = g
-	f.GlyphInfo[name] = gi
 	return g
 }
 
@@ -153,7 +147,8 @@ func (g *Glyph) ClosePath() {
 	g.Cmds = append(g.Cmds, GlyphOp{Op: OpClosePath})
 }
 
-func (g *Glyph) computeBBox() funit.Rect16 {
+// BBox computes the bounding box of the glyph.
+func (g *Glyph) BBox() funit.Rect16 {
 	var left, right, top, bottom float64
 	first := true
 cmdLoop:
@@ -235,14 +230,6 @@ const (
 
 func (c GlyphOp) String() string {
 	return fmt.Sprint("cmd", c.Args, c.Op)
-}
-
-// GlyphInfo contains information about a glyph in a Type 1 font.
-type GlyphInfo struct {
-	WidthX    funit.Int16
-	WidthY    funit.Int16
-	BBox      funit.Rect16
-	Ligatures map[string]string
 }
 
 // KernPair represents a kerning pair.

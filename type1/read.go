@@ -123,17 +123,14 @@ creationDateLoop:
 	}
 	var fontMatrix [6]float64
 	for i, v := range fontMatrixArray {
-		vReal, ok := v.(postscript.Real)
-		if ok {
-			fontMatrix[i] = float64(vReal)
-			continue
+		switch v := v.(type) {
+		case postscript.Real:
+			fontMatrix[i] = float64(v)
+		case postscript.Integer:
+			fontMatrix[i] = float64(v)
+		default:
+			return nil, errors.New("invalid FontMatrix")
 		}
-		vInt, ok := v.(postscript.Integer)
-		if ok {
-			fontMatrix[i] = float64(vInt)
-			continue
-		}
-		return nil, errors.New("invalid FontMatrix")
 	}
 
 	fi := &FontInfo{
@@ -277,20 +274,18 @@ creationDateLoop:
 	names := maps.Keys(cs)
 	slices.Sort(names)
 	glyphs := make(map[string]*Glyph)
-	glyphInfo := make(map[string]*GlyphInfo)
 	for _, name := range names {
 		obfuscated, ok := cs[name].(postscript.String)
 		if !ok || len(obfuscated) < 4 {
 			continue
 		}
 		plain := deobfuscateCharstring(obfuscated, int(lenIV))
-		glyph, gi, err := ctx.decodeCharString(plain, string(name))
+		glyph, err := ctx.decodeCharString(plain, string(name))
 		if err != nil {
 			return nil, err
 		}
 
 		glyphs[string(name)] = glyph
-		glyphInfo[string(name)] = gi
 	}
 
 	for _, seac := range ctx.seacs {
@@ -298,12 +293,13 @@ creationDateLoop:
 			continue
 		}
 		base := glyphs[encoding[byte(seac.base)]]
-		baseI := glyphInfo[encoding[byte(seac.base)]]
 		accent := glyphs[encoding[byte(seac.accent)]]
 		if base == nil || accent == nil {
 			continue
 		}
-		g := glyphs[seac.name]
+		g := glyphs[seac.name] // TODO(voss): do we need to make a copy here?
+		g.WidthX = base.WidthX
+		g.WidthY = base.WidthY
 		g.Cmds = append(g.Cmds[:0], base.Cmds...)
 		for _, cmd := range accent.Cmds {
 			switch cmd.Op {
@@ -331,11 +327,6 @@ creationDateLoop:
 		g.HStem = append(g.HStem[:0], base.HStem...)
 		g.VStem = append(g.VStem[:0], base.VStem...)
 		glyphs[seac.name] = g
-		glyphInfo[seac.name] = &GlyphInfo{
-			WidthX: baseI.WidthX,
-			WidthY: baseI.WidthY,
-			BBox:   g.computeBBox(),
-		}
 	}
 
 	for i, name := range encoding {
@@ -347,11 +338,10 @@ creationDateLoop:
 	res := &Font{
 		CreationDate: creationDate,
 
-		FontInfo:  fi,
-		Private:   private,
-		Glyphs:    glyphs,
-		GlyphInfo: glyphInfo,
-		Encoding:  encoding,
+		FontInfo: fi,
+		Private:  private,
+		Glyphs:   glyphs,
+		Encoding: encoding,
 	}
 	return res, nil
 }

@@ -42,7 +42,7 @@ func TestMoveTo(t *testing.T) {
 		buf := g1.encodeCharString(0, 0)
 
 		ctx := &decodeInfo{}
-		g2, _, err := ctx.decodeCharString(buf, "test")
+		g2, err := ctx.decodeCharString(buf, "test")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -73,7 +73,7 @@ func TestLineTo(t *testing.T) {
 		buf := g1.encodeCharString(0, 0)
 
 		ctx := &decodeInfo{}
-		g2, _, err := ctx.decodeCharString(buf, "test")
+		g2, err := ctx.decodeCharString(buf, "test")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -103,7 +103,7 @@ func TestCurveTo(t *testing.T) {
 		buf := g1.encodeCharString(0, 0)
 
 		ctx := &decodeInfo{}
-		g2, _, err := ctx.decodeCharString(buf, "test")
+		g2, err := ctx.decodeCharString(buf, "test")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -124,7 +124,7 @@ func TestAppendInt(t *testing.T) {
 		buf = appendOp(buf, t1hmoveto)
 		buf = appendOp(buf, t1endchar)
 		ctx := &decodeInfo{}
-		g, _, err := ctx.decodeCharString(buf, "test")
+		g, err := ctx.decodeCharString(buf, "test")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -153,7 +153,7 @@ func TestAppendNumber(t *testing.T) {
 		}
 
 		ctx := &decodeInfo{}
-		g, _, err := ctx.decodeCharString(buf, "test")
+		g, err := ctx.decodeCharString(buf, "test")
 		if err != nil {
 			t.Fatal(err)
 		}

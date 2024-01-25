@@ -61,9 +61,8 @@ func TestWrite(t *testing.T) {
 				StdVW:      20,
 				ForceBold:  true,
 			},
-			Glyphs:    map[string]*Glyph{},
-			GlyphInfo: map[string]*GlyphInfo{},
-			Encoding:  encoding,
+			Glyphs:   map[string]*Glyph{},
+			Encoding: encoding,
 		}
 		g := F.NewGlyph(".notdef", 100)
 		g.MoveTo(10, 10)
@@ -76,9 +75,6 @@ func TestWrite(t *testing.T) {
 		g.LineTo(200, 10)
 		g.LineTo(100, 110)
 		g.ClosePath()
-		for name, gi := range F.GlyphInfo {
-			gi.BBox = F.Glyphs[name].computeBBox()
-		}
 
 		buf := &bytes.Buffer{}
 		for _, format := range []FileFormat{FormatPFA, FormatPFB, FormatBinary, FormatNoEExec} {
