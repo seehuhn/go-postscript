@@ -29,8 +29,6 @@ import (
 	"seehuhn.de/go/postscript/pfb"
 )
 
-// TODO(voss): allow to merge in information from an ".afm" file.
-
 // Read reads a Type 1 font from a reader.
 // The function supports both ".pfa" and ".pfb" files.
 func Read(r io.Reader) (*Font, error) {

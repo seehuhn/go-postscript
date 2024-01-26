@@ -23,19 +23,20 @@ import (
 	"time"
 
 	"golang.org/x/exp/maps"
+
 	"seehuhn.de/go/postscript/funit"
 )
 
 // Font represents a Type 1 font.
 //
 // TODO(voss): make this more similar to cff.Font
-//
-// TODO(voss): remove afm-specific information from here
 type Font struct {
 	*FontInfo
 
-	Glyphs   map[string]*Glyph
-	Private  *PrivateDict
+	Glyphs map[string]*Glyph
+
+	Private *PrivateDict
+
 	Encoding []string
 
 	CreationDate time.Time
