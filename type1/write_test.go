@@ -18,6 +18,7 @@ package type1
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 	"time"
 
@@ -98,6 +99,50 @@ func TestWrite(t *testing.T) {
 			if d := cmp.Diff(F, G); d != "" {
 				t.Errorf("F and G differ: %s", d)
 			}
+		}
+	}
+}
+
+// TestCreationDate ensures that the %%CreationDate comment is not included,
+// if the CreationDate field is unset.
+func TestCreationDate(t *testing.T) {
+	for _, dateWanted := range []bool{true, false} {
+		F := &Font{
+			FontInfo: &FontInfo{
+				FontName:   "Test",
+				FontMatrix: [6]float64{0.001, 0, 0, 0.001, 0, 0},
+			},
+			Private:  &PrivateDict{},
+			Glyphs:   map[string]*Glyph{},
+			Encoding: psenc.StandardEncoding[:],
+		}
+		g := F.NewGlyph(".notdef", 100)
+		g.MoveTo(10, 10)
+		g.LineTo(20, 10)
+		g.LineTo(20, 20)
+		g.LineTo(10, 20)
+		g.ClosePath()
+		g = F.NewGlyph("A", 200)
+		g.MoveTo(0, 10)
+		g.LineTo(200, 10)
+		g.LineTo(100, 110)
+		g.ClosePath()
+
+		if dateWanted {
+			F.CreationDate = time.Now()
+		}
+
+		buf := &bytes.Buffer{}
+		_, _, err := F.WritePDF(buf)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		body := buf.String()
+
+		dateFound := strings.Contains(body, "%%CreationDate")
+		if dateFound != dateWanted {
+			t.Errorf("date: got %t, want %t", dateFound, dateWanted)
 		}
 	}
 }
