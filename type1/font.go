@@ -52,9 +52,8 @@ func (f *Font) NumGlyphs() int {
 }
 
 // GlyphList returns a list of all glyph names in the font.
-// The list starts with the ".notdef" glyph, followed by the glyphs in the
-// Encoding vector, followed by the remaining glyphs in alphabetical order
-// of their names.
+// The list starts with ".notdef", followed by the glyphs in the Encoding
+// vector, followed by the remaining glyph names in alphabetical order.
 func (f *Font) GlyphList() []string {
 	glyphNames := maps.Keys(f.Glyphs)
 	if _, ok := f.Glyphs[".notdef"]; !ok {

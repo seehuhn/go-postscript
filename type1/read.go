@@ -327,6 +327,16 @@ creationDateLoop:
 		glyphs[seac.name] = g
 	}
 
+	if _, ok := glyphs[".notdef"]; !ok {
+		var width funit.Int16
+		if gi, ok := glyphs["space"]; ok {
+			width = gi.WidthX
+		}
+		glyphs[".notdef"] = &Glyph{
+			WidthX: width,
+		}
+	}
+
 	for i, name := range encoding {
 		if _, ok := glyphs[name]; !ok {
 			encoding[i] = ".notdef"
