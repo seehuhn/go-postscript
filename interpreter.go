@@ -46,6 +46,9 @@ type Interpreter struct {
 	// SystemDict is the PostScript system dictionary.
 	SystemDict Dict
 
+	// InternalDict is the PostScript internal dictionary.
+	InternalDict Dict
+
 	// UserDict is the PostScript user dictionary.
 	UserDict Dict
 
@@ -102,6 +105,7 @@ func NewInterpreter() *Interpreter {
 		CMapDirectory: cmapDirectory,
 		Resources:     resources,
 		SystemDict:    systemDict,
+		InternalDict:  Dict{},
 		UserDict:      userDict,
 		ErrorDict:     systemDict["errordict"].(Dict),
 	}
@@ -161,7 +165,6 @@ func (intp *Interpreter) executeScanner(s *scanner) error {
 		} else if err != nil {
 			return err
 		}
-		// fmt.Println("###", objectString(o))
 		err = intp.executeOne(o, false)
 		if err != nil {
 			return err
@@ -172,7 +175,6 @@ func (intp *Interpreter) executeScanner(s *scanner) error {
 
 func (intp *Interpreter) executeOne(obj Object, execProc bool) error {
 	// if !execProc {
-	//  // TODO(voss): also print the commands reached by tail recursion
 	// 	fmt.Println("|-", intp.stackString(), "|", intp.objectString(obj))
 	// }
 
@@ -207,7 +209,13 @@ func (intp *Interpreter) executeOne(obj Object, execProc bool) error {
 		return nil
 	}
 
+	// quax := true
 recurseTail:
+	// if !quax {
+	// 	fmt.Println("|-", intp.stackString(), "|", intp.objectString(obj))
+	// }
+	// quax = false
+
 	intp.NumOps++
 	if intp.MaxOps > 0 && intp.NumOps > intp.MaxOps {
 		return ErrExecutionLimitExceeded

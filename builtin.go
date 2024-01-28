@@ -295,7 +295,16 @@ func makeSystemDict() Dict {
 			return nil
 		}),
 		"cvx": builtin(func(intp *Interpreter) error {
-			// not implemented
+			// nearly not implemented
+			if len(intp.Stack) < 1 {
+				return intp.e(eStackunderflow, "cvx: not enough arguments")
+			}
+			obj := intp.Stack[len(intp.Stack)-1]
+			if a, ok := obj.(Array); ok {
+				b := make(Procedure, len(a))
+				copy(b, a)
+				intp.Stack[len(intp.Stack)-1] = b
+			}
 			return nil
 		}),
 		"def": builtin(func(intp *Interpreter) error {
@@ -700,6 +709,20 @@ func makeSystemDict() Dict {
 			intp.Stack = append(intp.Stack, intp.Stack[len(intp.Stack)-int(index)-1])
 			return nil
 		}),
+		"internaldict": builtin(func(intp *Interpreter) error {
+			if len(intp.Stack) < 1 {
+				return intp.e(eStackunderflow, "internaldict: not enough arguments")
+			}
+			index, ok := intp.Stack[len(intp.Stack)-1].(Integer)
+			if !ok {
+				return intp.e(eTypecheck, "internaldict: invalid argument")
+			}
+			if index != 1183615869 {
+				return intp.e(eInvalidaccess, "internaldict: wrong passcode")
+			}
+			intp.Stack = append(intp.Stack[:len(intp.Stack)-1], intp.InternalDict)
+			return nil
+		}),
 		"known": builtin(func(intp *Interpreter) error {
 			if len(intp.Stack) < 2 {
 				return intp.e(eStackunderflow, "known: not enough arguments")
@@ -781,6 +804,17 @@ func makeSystemDict() Dict {
 		"matrix": builtin(func(intp *Interpreter) error {
 			m := Array{Integer(1), Integer(0), Integer(0), Integer(1), Integer(0), Integer(0)}
 			intp.Stack = append(intp.Stack, m)
+			return nil
+		}),
+		"maxlength": builtin(func(intp *Interpreter) error {
+			if len(intp.Stack) < 1 {
+				return intp.e(eStackunderflow, "maxlength: not enough arguments")
+			}
+			dict, ok := intp.Stack[len(intp.Stack)-1].(Dict)
+			if !ok {
+				return intp.e(eTypecheck, "maxlength: invalid argument")
+			}
+			intp.Stack = append(intp.Stack[:len(intp.Stack)-1], Integer(len(dict)+1))
 			return nil
 		}),
 		"mul": builtin(func(intp *Interpreter) error {
