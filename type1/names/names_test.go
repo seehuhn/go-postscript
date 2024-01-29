@@ -21,7 +21,7 @@ import (
 	"unicode"
 )
 
-func TestNotDef(t *testing.T) {
+func TestNotdef(t *testing.T) {
 	rr := ToUnicode(".notdef", false)
 	if len(rr) != 0 {
 		t.Errorf("expected empty result for .notdef but got %c", rr)
