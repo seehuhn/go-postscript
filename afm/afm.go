@@ -59,35 +59,24 @@ type Info struct {
 	Kern []*KernPair
 }
 
-// NumGlyphs returns the number of glyphs in the font (including the .notdef glyph).
-func (f *Info) NumGlyphs() int {
-	n := len(f.Glyphs)
-	if _, ok := f.Glyphs[".notdef"]; !ok {
-		n++
-	}
-	return n
-}
-
 // GlyphList returns a list of all glyph names in the font.
 // The list starts with the ".notdef" glyph, followed by the glyphs in the
 // Encoding vector, followed by the remaining glyphs in alphabetical order
 // of their names.
 func (f *Info) GlyphList() []string {
 	glyphNames := maps.Keys(f.Glyphs)
-	if _, ok := f.Glyphs[".notdef"]; !ok {
-		glyphNames = append(glyphNames, ".notdef")
-	}
 
 	order := make(map[string]int, len(glyphNames))
 	for _, name := range glyphNames {
 		order[name] = 256
 	}
-	order[".notdef"] = -1
 	for i, name := range f.Encoding {
 		if name != ".notdef" {
 			order[name] = i
 		}
 	}
+	order[".notdef"] = -1
+
 	sort.Slice(glyphNames, func(i, j int) bool {
 		oi := order[glyphNames[i]]
 		oj := order[glyphNames[j]]
