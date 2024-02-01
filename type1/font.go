@@ -100,6 +100,8 @@ func (f *Font) BBox() (bbox funit.Rect16) {
 }
 
 // Glyph represents a glyph in a Type 1 font.
+//
+// TODO(voss): use float64 instead of funit.Int16?
 type Glyph struct {
 	Cmds   []GlyphOp
 	HStem  []funit.Int16
