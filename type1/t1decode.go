@@ -162,7 +162,7 @@ glyphLoop:
 				posY = 0
 				LsbX = funit.Int16(math.Round(stack[0]))
 				LsbY = 0
-				res.WidthX = funit.Int16(math.Round(stack[1]))
+				res.WidthX = stack[1]
 				res.WidthY = 0
 				clearStack()
 			case t1seac:
@@ -199,8 +199,8 @@ glyphLoop:
 				posY = stack[1]
 				LsbX = funit.Int16(math.Round(stack[0]))
 				LsbY = funit.Int16(math.Round(stack[1]))
-				res.WidthX = funit.Int16(math.Round(stack[2]))
-				res.WidthY = funit.Int16(math.Round(stack[3]))
+				res.WidthX = stack[2]
+				res.WidthY = stack[3]
 				clearStack()
 
 			case t1closepath:

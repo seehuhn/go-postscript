@@ -20,11 +20,12 @@ import (
 	"sort"
 
 	"golang.org/x/exp/maps"
+
 	"seehuhn.de/go/postscript/funit"
 )
 
-// TODO(voss): use float64 instead of funit.Int16?
-type Info struct {
+// Metrics contains the information from an AFM file.
+type Metrics struct {
 	Glyphs   map[string]*GlyphInfo
 	Encoding []string
 
@@ -34,19 +35,19 @@ type Info struct {
 	// FullName is a unique, human-readable name for an individual font.
 	FullName string
 
-	CapHeight funit.Int16
-	XHeight   funit.Int16
-	Ascent    funit.Int16
-	Descent   funit.Int16 // negative
+	CapHeight float64
+	XHeight   float64
+	Ascent    float64
+	Descent   float64 // negative
 
 	// UnderlinePosition is the recommended distance from the baseline for
 	// positioning underlining strokes. This number is the y coordinate (in the
 	// glyph coordinate system) of the center of the stroke.
-	UnderlinePosition funit.Float64
+	UnderlinePosition float64
 
 	// UnderlineThickness is the recommended stroke width for underlining, in
 	// units of the glyph coordinate system.
-	UnderlineThickness funit.Float64
+	UnderlineThickness float64
 
 	// ItalicAngle is the angle, in degrees counterclockwise from the vertical,
 	// of the dominant vertical strokes of the font.
@@ -63,7 +64,7 @@ type Info struct {
 // The list starts with the ".notdef" glyph, followed by the glyphs in the
 // Encoding vector, followed by the remaining glyphs in alphabetical order
 // of their names.
-func (f *Info) GlyphList() []string {
+func (f *Metrics) GlyphList() []string {
 	glyphNames := maps.Keys(f.Glyphs)
 
 	order := make(map[string]int, len(glyphNames))
@@ -89,7 +90,7 @@ func (f *Info) GlyphList() []string {
 }
 
 type GlyphInfo struct {
-	WidthX    funit.Int16
+	WidthX    float64
 	BBox      funit.Rect16
 	Ligatures map[string]string
 }

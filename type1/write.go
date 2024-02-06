@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math"
 	"strings"
 	"text/template"
 	"time"
@@ -266,7 +267,7 @@ func (f *Font) makeTemplateData(opt *WriterOptions) *fontInfo {
 func (f *Font) encodeCharstrings() map[string]string {
 	charStrings := make(map[string]string)
 	for name, g := range f.Glyphs {
-		cs := g.encodeCharString(g.WidthX, g.WidthY)
+		cs := g.encodeCharString(int32(math.Round(g.WidthX)), int32(math.Round(g.WidthY)))
 
 		var obf []byte
 		iv := []byte{0, 0, 0, 0}

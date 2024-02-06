@@ -26,8 +26,8 @@ import (
 )
 
 // Read reads an AFM file.
-func Read(fd io.Reader) (*Info, error) {
-	res := &Info{
+func Read(fd io.Reader) (*Metrics, error) {
+	res := &Metrics{
 		Glyphs: make(map[string]*GlyphInfo),
 	}
 
@@ -94,7 +94,7 @@ func Read(fd io.Reader) (*Info, error) {
 			}
 
 			res.Glyphs[name] = &GlyphInfo{
-				WidthX:    width,
+				WidthX:    float64(width),
 				BBox:      BBox,
 				Ligatures: ligTmp,
 			}
@@ -129,23 +129,23 @@ func Read(fd io.Reader) (*Info, error) {
 		case "FullName":
 			res.FullName = strings.Join(fields[1:], " ")
 		case "CapHeight":
-			x, _ := strconv.Atoi(fields[1])
-			res.CapHeight = funit.Int16(x)
+			x, _ := strconv.ParseFloat(fields[1], 64)
+			res.CapHeight = x
 		case "XHeight":
-			x, _ := strconv.Atoi(fields[1])
-			res.XHeight = funit.Int16(x)
+			x, _ := strconv.ParseFloat(fields[1], 64)
+			res.XHeight = x
 		case "Ascender":
-			x, _ := strconv.Atoi(fields[1])
-			res.Ascent = funit.Int16(x)
+			x, _ := strconv.ParseFloat(fields[1], 64)
+			res.Ascent = x
 		case "Descender":
-			x, _ := strconv.Atoi(fields[1])
-			res.Descent = funit.Int16(x)
+			x, _ := strconv.ParseFloat(fields[1], 64)
+			res.Descent = x
 		case "UnderlinePosition":
 			x, _ := strconv.ParseFloat(fields[1], 64)
-			res.UnderlinePosition = funit.Float64(x)
+			res.UnderlinePosition = x
 		case "UnderlineThickness":
 			x, _ := strconv.ParseFloat(fields[1], 64)
-			res.UnderlineThickness = funit.Float64(x)
+			res.UnderlineThickness = x
 		case "ItalicAngle":
 			x, _ := strconv.ParseFloat(fields[1], 64)
 			res.ItalicAngle = x
@@ -161,8 +161,9 @@ func Read(fd io.Reader) (*Info, error) {
 		return nil, err
 	}
 
+	// TODO(voss): remove?
 	if _, ok := res.Glyphs[".notdef"]; !ok {
-		var width funit.Int16
+		var width float64
 		if gi, ok := res.Glyphs["space"]; ok {
 			width = gi.WidthX
 		}

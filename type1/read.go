@@ -327,8 +327,9 @@ creationDateLoop:
 		glyphs[seac.name] = g
 	}
 
+	// TODO(voss): remove?
 	if _, ok := glyphs[".notdef"]; !ok {
-		var width funit.Int16
+		var width float64
 		if gi, ok := glyphs["space"]; ok {
 			width = gi.WidthX
 		}

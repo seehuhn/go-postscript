@@ -106,12 +106,12 @@ type Glyph struct {
 	Cmds   []GlyphOp
 	HStem  []funit.Int16
 	VStem  []funit.Int16
-	WidthX funit.Int16
-	WidthY funit.Int16
+	WidthX float64
+	WidthY float64
 }
 
 // NewGlyph creates a new glyph with the given name and width.
-func (f *Font) NewGlyph(name string, width funit.Int16) *Glyph {
+func (f *Font) NewGlyph(name string, width float64) *Glyph {
 	g := &Glyph{
 		WidthX: width,
 	}

@@ -18,22 +18,20 @@ package type1
 
 import (
 	"math"
-
-	"seehuhn.de/go/postscript/funit"
 )
 
-func (g *Glyph) encodeCharString(wx, wy funit.Int16) []byte {
+func (g *Glyph) encodeCharString(wx, wy int32) []byte {
 	var buf []byte
 
 	if wy == 0 {
 		buf = appendInt(buf, 0)
-		buf = appendInt(buf, int32(wx))
+		buf = appendInt(buf, wx)
 		buf = appendOp(buf, t1hsbw)
 	} else {
 		buf = appendInt(buf, 0)
 		buf = appendInt(buf, 0)
-		buf = appendInt(buf, int32(wx))
-		buf = appendInt(buf, int32(wy))
+		buf = appendInt(buf, wx)
+		buf = appendInt(buf, wy)
 		buf = appendOp(buf, t1sbw)
 	}
 
