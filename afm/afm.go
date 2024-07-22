@@ -91,7 +91,7 @@ func (f *Metrics) GlyphList() []string {
 
 type GlyphInfo struct {
 	WidthX    float64
-	BBox      funit.Rect16
+	BBox      funit.Rect16 // TODO(voss): use a different type
 	Ligatures map[string]string
 }
 
