@@ -16,24 +16,9 @@
 
 package cid
 
-import "strconv"
-
-// SystemInfo describes a character collection covered by a font.
-// A character collection implies an encoding which maps Character IDs to glyphs.
-//
-// See section 5.11.2 of the PLRM and section 9.7.3 of PDF 32000-1:2008.
-type SystemInfo struct {
-	Registry   string
-	Ordering   string
-	Supplement int32
-}
-
-func (ROS *SystemInfo) String() string {
-	return ROS.Registry + "-" + ROS.Ordering + "-" + strconv.Itoa(int(ROS.Supplement))
-}
-
 // CID represents a character identifier.  This is the index of a character in
 // a character collection.
 //
-// TODO(voss): should this be be a different type instead (e.g. uint16 or int32)?
+// TODO(voss): Move this somewhere else.
+// TODO(voss): Split into different types, depending on font type?
 type CID uint32
