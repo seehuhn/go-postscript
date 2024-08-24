@@ -14,12 +14,22 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-// TODO(voss): remove this package
-package cid
+package postscript
 
-// CID represents a character identifier.  This is the index of a character in
-// a character collection.
-//
-// TODO(voss): Move this somewhere else.
-// TODO(voss): Split into different types, depending on font type?
-type CID uint32
+func isStringOrName(o Object) bool {
+	switch o.(type) {
+	case String, Name:
+		return true
+	default:
+		return false
+	}
+}
+
+func isStringOrArray(o Object) bool {
+	switch o.(type) {
+	case String, Array:
+		return true
+	default:
+		return false
+	}
+}

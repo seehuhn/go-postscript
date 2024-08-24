@@ -63,6 +63,17 @@ type Interpreter struct {
 	// The `definefont` PostScript operator adds fonts to this dictionary.
 	FontDirectory Dict
 
+	// CMapDirectory is the PostScript CMap directory. This maps CMap names to
+	// CMap dictionaries for all CMaps currently known to the interpreter.
+	//
+	// The "defineresource" PostScript operator can be used to add CMaps to
+	// this dictionary.
+	//
+	// The keys in this dictionary are CMap names, and the values are CMap
+	// dictionaries.  CMap dictionaries are documented in section 5.11.4 (CMap
+	// Dictionaries) of the PostScript Language Reference Manual.  The
+	// "CodeMap" field of the CMAP dictionaries can be cast to a '*CMapInfo'
+	// object, which contains the mapping data.
 	CMapDirectory Dict
 
 	// DSC contains all DSC comments found in the input so far.
@@ -75,9 +86,12 @@ type Interpreter struct {
 
 	execStackDepth int
 
-	// cmap holds data for the CMap dictionary being constructed, while
-	// a `begincmap` ... `endcmap` block is being executed.
-	cmap *CMapInfo
+	// These variables hold temporary data while a `begincmap` ... `endcmap`
+	// block is being executed.
+	cmapMappings        *CMapInfo
+	cmapCodeSpaceRanges []CodeSpaceRange
+	cmapChars           []CharMap
+	cmapRanges          []RangeMap
 }
 
 // NewInterpreter creates a new instance of the PostScript interpreter.
@@ -92,7 +106,7 @@ func NewInterpreter() *Interpreter {
 		"CIDFont": Dict{},
 		"CMap":    cmapDirectory,
 		"ProcSet": Dict{
-			"CIDInit": CIDInit,
+			"CIDInit": cidInit,
 		},
 	}
 
