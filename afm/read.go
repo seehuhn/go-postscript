@@ -36,8 +36,6 @@ func Read(fd io.Reader) (*Metrics, error) {
 		res.Encoding[i] = ".notdef"
 	}
 
-	noLigs := make(map[string]string) // shared map for all glyphs without ligatures
-
 	charMetrics := false
 	kernPairs := false
 	scanner := bufio.NewScanner(fd)
@@ -80,8 +78,6 @@ func Read(fd io.Reader) (*Metrics, error) {
 					BBox.URy = conv(ff[4])
 				case "L":
 					ligTmp[ff[1]] = ff[2]
-				default:
-					panic("not implemented")
 				}
 			}
 
@@ -90,7 +86,7 @@ func Read(fd io.Reader) (*Metrics, error) {
 			}
 
 			if len(ligTmp) == 0 {
-				ligTmp = noLigs
+				ligTmp = nil
 			}
 
 			res.Glyphs[name] = &GlyphInfo{
@@ -110,7 +106,7 @@ func Read(fd io.Reader) (*Metrics, error) {
 			kernPairs = false
 			continue
 		}
-		if kernPairs {
+		if kernPairs && len(fields) == 4 && fields[0] == "KPX" {
 			x, _ := strconv.Atoi(fields[3])
 			res.Kern = append(res.Kern, &KernPair{
 				Left:   fields[1],
