@@ -19,6 +19,7 @@ package afm
 import (
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"seehuhn.de/go/postscript/funit"
@@ -58,7 +59,7 @@ func (m *Metrics) Write(w io.Writer) error {
 		return err
 	}
 
-	if err := write("ItalicAngle %.1f", m.ItalicAngle); err != nil {
+	if err := write("ItalicAngle %s", strconv.FormatFloat(m.ItalicAngle, 'f', -1, 64)); err != nil {
 		return err
 	}
 	if err := write("IsFixedPitch %t", m.IsFixedPitch); err != nil {
@@ -105,7 +106,7 @@ func (m *Metrics) Write(w io.Writer) error {
 		for succ, lig := range g.Ligatures {
 			line += fmt.Sprintf(" L %s %s ;", succ, lig)
 		}
-		if err := write(line); err != nil {
+		if err := write("%s", line); err != nil {
 			return err
 		}
 	}

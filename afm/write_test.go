@@ -18,6 +18,7 @@ package afm
 
 import (
 	"bytes"
+	"os"
 	"reflect"
 	"testing"
 
@@ -52,6 +53,13 @@ var (
 					LLy: 100,
 					URx: 750,
 					URy: 810,
+				},
+			},
+			"qr": {
+				WidthX: 1000,
+				BBox: funit.Rect16{
+					URx: 1000,
+					URy: 1000,
 				},
 			},
 		},
@@ -355,25 +363,28 @@ func FuzzReadAFM(f *testing.F) {
 	}
 	f.Add(buf.Bytes())
 
-	f.Fuzz(func(t *testing.T, data []byte) {
-		info, err := Read(bytes.NewReader(data))
+	f.Fuzz(func(t *testing.T, data1 []byte) {
+		info1, err := Read(bytes.NewReader(data1))
 		if err != nil {
 			return
 		}
 
 		buf := &bytes.Buffer{}
-		err = info.Write(buf)
+		err = info1.Write(buf)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		info2, err := Read(buf)
+		data2 := buf.Bytes()
+		info2, err := Read(bytes.NewReader(data2))
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		if !reflect.DeepEqual(info, info2) {
-			t.Fatalf("mismatch: %s", cmp.Diff(info, info2))
+		if !reflect.DeepEqual(info1, info2) {
+			os.WriteFile("test1.afm", data1, 0644)
+			os.WriteFile("test2.afm", data2, 0644)
+			t.Fatalf("mismatch: %s", cmp.Diff(info1, info2))
 		}
 	})
 }

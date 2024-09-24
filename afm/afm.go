@@ -35,6 +35,13 @@ type Metrics struct {
 	// FullName is a unique, human-readable name for an individual font.
 	FullName string
 
+	// Version (optional) is the version number of the font.  This should match
+	// the found in the `FontInfo` dictionary of the font file.
+	Version string
+
+	// Notice (optional) is the font name trademark or copyright notice.
+	Notice string
+
 	CapHeight float64
 	XHeight   float64
 	Ascent    float64

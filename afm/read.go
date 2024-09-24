@@ -18,6 +18,7 @@ package afm
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	"strconv"
 	"strings"
@@ -48,7 +49,7 @@ func Read(fd io.Reader) (*Metrics, error) {
 		if charMetrics {
 			var name string
 			var width funit.Int16
-			var code int
+			code := -1
 			var BBox funit.Rect16
 
 			ligTmp := make(map[string]string)
@@ -61,34 +62,58 @@ func Read(fd io.Reader) (*Metrics, error) {
 				}
 				switch ff[0] {
 				case "C":
-					code, _ = strconv.Atoi(ff[1])
+					var err error
+					code, err = strconv.Atoi(ff[1])
+					if err != nil {
+						return nil, fmt.Errorf("invalid character code %q: %v", ff[1], err)
+					}
 				case "WX":
-					tmp, _ := strconv.Atoi(ff[1])
+					tmp, err := strconv.Atoi(ff[1])
+					if err != nil {
+						return nil, fmt.Errorf("invalid character width %q: %v", ff[1], err)
+					}
 					width = funit.Int16(tmp)
 				case "N":
 					name = ff[1]
 				case "B":
-					conv := func(in string) funit.Int16 {
-						x, _ := strconv.Atoi(in)
-						return funit.Int16(x)
+					if len(ff) != 5 {
+						continue
 					}
-					BBox.LLx = conv(ff[1])
-					BBox.LLy = conv(ff[2])
-					BBox.URx = conv(ff[3])
-					BBox.URy = conv(ff[4])
+					conv := func(in string) (funit.Int16, error) {
+						x, err := strconv.Atoi(in)
+						if err != nil {
+							return 0, err
+						}
+						return funit.Int16(x), nil
+					}
+					var err error
+					if BBox.LLx, err = conv(ff[1]); err != nil {
+						return nil, fmt.Errorf("invalid bounding box LLx: %v", err)
+					}
+					if BBox.LLy, err = conv(ff[2]); err != nil {
+						return nil, fmt.Errorf("invalid bounding box LLy: %v", err)
+					}
+					if BBox.URx, err = conv(ff[3]); err != nil {
+						return nil, fmt.Errorf("invalid bounding box URx: %v", err)
+					}
+					if BBox.URy, err = conv(ff[4]); err != nil {
+						return nil, fmt.Errorf("invalid bounding box URy: %v", err)
+					}
 				case "L":
-					ligTmp[ff[1]] = ff[2]
+					if len(ff) >= 3 {
+						ligTmp[ff[1]] = ff[2]
+					}
 				}
 			}
-
+			if name == "" {
+				continue
+			}
 			if code >= 0 && code < 256 {
 				res.Encoding[code] = name
 			}
-
 			if len(ligTmp) == 0 {
 				ligTmp = nil
 			}
-
 			res.Glyphs[name] = &GlyphInfo{
 				WidthX:    float64(width),
 				BBox:      BBox,
@@ -96,18 +121,19 @@ func Read(fd io.Reader) (*Metrics, error) {
 			}
 			continue
 		}
-
 		fields := strings.Fields(line)
 		if len(fields) == 0 {
 			continue
 		}
-
 		if fields[0] == "EndKernPairs" {
 			kernPairs = false
 			continue
 		}
 		if kernPairs && len(fields) == 4 && fields[0] == "KPX" {
-			x, _ := strconv.Atoi(fields[3])
+			x, err := strconv.Atoi(fields[3])
+			if err != nil {
+				return nil, fmt.Errorf("invalid kerning pair adjustment: %v", err)
+			}
 			res.Kern = append(res.Kern, &KernPair{
 				Left:   fields[1],
 				Right:  fields[2],
@@ -115,7 +141,6 @@ func Read(fd io.Reader) (*Metrics, error) {
 			})
 			continue
 		}
-
 		if len(fields) < 2 {
 			continue
 		}
@@ -124,26 +149,51 @@ func Read(fd io.Reader) (*Metrics, error) {
 			res.FontName = fields[1]
 		case "FullName":
 			res.FullName = strings.Join(fields[1:], " ")
+		case "Version":
+			res.Version = strings.Join(fields[1:], " ")
+		case "Notice":
+			res.Notice = strings.Join(fields[1:], " ")
 		case "CapHeight":
-			x, _ := strconv.ParseFloat(fields[1], 64)
+			x, err := strconv.ParseFloat(fields[1], 64)
+			if err != nil {
+				return nil, fmt.Errorf("invalid CapHeight: %v", err)
+			}
 			res.CapHeight = x
 		case "XHeight":
-			x, _ := strconv.ParseFloat(fields[1], 64)
+			x, err := strconv.ParseFloat(fields[1], 64)
+			if err != nil {
+				return nil, fmt.Errorf("invalid XHeight: %v", err)
+			}
 			res.XHeight = x
 		case "Ascender":
-			x, _ := strconv.ParseFloat(fields[1], 64)
+			x, err := strconv.ParseFloat(fields[1], 64)
+			if err != nil {
+				return nil, fmt.Errorf("invalid Ascender: %v", err)
+			}
 			res.Ascent = x
 		case "Descender":
-			x, _ := strconv.ParseFloat(fields[1], 64)
+			x, err := strconv.ParseFloat(fields[1], 64)
+			if err != nil {
+				return nil, fmt.Errorf("invalid Descender: %v", err)
+			}
 			res.Descent = x
 		case "UnderlinePosition":
-			x, _ := strconv.ParseFloat(fields[1], 64)
+			x, err := strconv.ParseFloat(fields[1], 64)
+			if err != nil {
+				return nil, fmt.Errorf("invalid UnderlinePosition: %v", err)
+			}
 			res.UnderlinePosition = x
 		case "UnderlineThickness":
-			x, _ := strconv.ParseFloat(fields[1], 64)
+			x, err := strconv.ParseFloat(fields[1], 64)
+			if err != nil {
+				return nil, fmt.Errorf("invalid UnderlineThickness: %v", err)
+			}
 			res.UnderlineThickness = x
 		case "ItalicAngle":
-			x, _ := strconv.ParseFloat(fields[1], 64)
+			x, err := strconv.ParseFloat(fields[1], 64)
+			if err != nil {
+				return nil, fmt.Errorf("invalid ItalicAngle: %v", err)
+			}
 			res.ItalicAngle = x
 		case "IsFixedPitch":
 			res.IsFixedPitch = fields[1] == "true"
@@ -155,17 +205,6 @@ func Read(fd io.Reader) (*Metrics, error) {
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, err
-	}
-
-	// TODO(voss): remove?
-	if _, ok := res.Glyphs[".notdef"]; !ok {
-		var width float64
-		if gi, ok := res.Glyphs["space"]; ok {
-			width = gi.WidthX
-		}
-		res.Glyphs[".notdef"] = &GlyphInfo{
-			WidthX: width,
-		}
 	}
 
 	return res, nil
