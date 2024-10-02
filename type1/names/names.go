@@ -30,9 +30,6 @@ import (
 // https://github.com/adobe-type-tools/agl-specification .
 //
 // For the ".notdef" glyph, an empty slice is returned.
-//
-// TODO(voss): get rid of the dingbats parameter, and implement a
-// separate function for dingbats.
 func ToUnicode(name string, dingbats bool) []rune {
 	var res []rune
 
