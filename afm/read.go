@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 
+	"seehuhn.de/go/geom/rect"
 	"seehuhn.de/go/postscript/funit"
 )
 
@@ -50,7 +51,7 @@ func Read(fd io.Reader) (*Metrics, error) {
 			var name string
 			var width funit.Int16
 			code := -1
-			var BBox funit.Rect16
+			var BBox rect.Rect
 
 			ligTmp := make(map[string]string)
 
@@ -79,12 +80,8 @@ func Read(fd io.Reader) (*Metrics, error) {
 					if len(ff) != 5 {
 						continue
 					}
-					conv := func(in string) (funit.Int16, error) {
-						x, err := strconv.Atoi(in)
-						if err != nil {
-							return 0, err
-						}
-						return funit.Int16(x), nil
+					conv := func(in string) (float64, error) {
+						return strconv.ParseFloat(in, 64)
 					}
 					var err error
 					if BBox.LLx, err = conv(ff[1]); err != nil {

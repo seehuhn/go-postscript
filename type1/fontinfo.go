@@ -17,6 +17,7 @@
 package type1
 
 import (
+	"seehuhn.de/go/geom/matrix"
 	"seehuhn.de/go/postscript/funit"
 )
 
@@ -63,7 +64,7 @@ type FontInfo struct {
 	UnderlineThickness funit.Float64
 
 	// FontMatrix is the transformation from glyph space to user space.
-	FontMatrix [6]float64
+	FontMatrix matrix.Matrix
 }
 
 // PrivateDict contains information about a font's private dictionary.

@@ -18,18 +18,18 @@ package type1
 
 import (
 	"fmt"
-	"math"
 	"sort"
 	"time"
 
 	"golang.org/x/exp/maps"
 
+	"seehuhn.de/go/geom/rect"
 	"seehuhn.de/go/postscript/funit"
 )
 
 // Font represents a Type 1 font.
 //
-// TODO(voss): make this more similar to cff.Font
+// TODO(voss): make this more similar to cff.Font?
 type Font struct {
 	*FontInfo
 
@@ -81,12 +81,73 @@ func (f *Font) GlyphList() []string {
 	return glyphNames
 }
 
-// BBox returns the font bounding box.
+// BBox returns the font bounding box in glyph space units.
 // This is the smallest rectangle enclosing all glyphs in the font.
-func (f *Font) BBox() (bbox funit.Rect16) {
+func (f *Font) BBox() (bbox rect.Rect) {
 	first := true
 	for _, glyph := range f.Glyphs {
 		thisBBox := glyph.BBox()
+		if thisBBox.IsZero() {
+			continue
+		}
+		if first {
+			bbox = thisBBox
+		} else {
+			bbox.Extend(thisBBox)
+		}
+	}
+	return bbox
+}
+
+// GlyphBBoxPDF computes the bounding box of a glyph in PDF text space units.
+// If the glyph does not exist or is blank, the zero rectangle is returned.
+func (f *Font) GlyphBBoxPDF(name string) (bbox rect.Rect) {
+	g, ok := f.Glyphs[name]
+	if !ok {
+		return
+	}
+
+	first := true
+cmdLoop:
+	for _, cmd := range g.Cmds {
+		var x, y float64
+		switch cmd.Op {
+		case OpMoveTo, OpLineTo:
+			x = cmd.Args[0]
+			y = cmd.Args[1]
+		case OpCurveTo:
+			x = cmd.Args[4]
+			y = cmd.Args[5]
+		default:
+			continue cmdLoop
+		}
+
+		x, y = f.FontMatrix.Apply(x, y)
+
+		if first || x < bbox.LLx {
+			bbox.LLx = x
+		}
+		if first || x > bbox.URx {
+			bbox.URx = x
+		}
+		if first || y < bbox.LLy {
+			bbox.LLy = y
+		}
+		if first || y > bbox.URy {
+			bbox.URy = y
+		}
+		first = false
+	}
+
+	return bbox
+}
+
+// FontBBoxPDF returns the font bounding box in PDF text space units.
+// This is the smallest rectangle enclosing all individual glyphs bounding boxes.
+func (f *Font) FontBBoxPDF() (bbox rect.Rect) {
+	first := true
+	for glyphName := range f.Glyphs {
+		thisBBox := f.GlyphBBoxPDF(glyphName)
 		if thisBBox.IsZero() {
 			continue
 		}
@@ -149,8 +210,8 @@ func (g *Glyph) ClosePath() {
 	g.Cmds = append(g.Cmds, GlyphOp{Op: OpClosePath})
 }
 
-// BBox computes the bounding box of the glyph.
-func (g *Glyph) BBox() funit.Rect16 {
+// BBox computes the bounding box of the glyph in glyph space units.
+func (g *Glyph) BBox() rect.Rect {
 	var left, right, top, bottom float64
 	first := true
 cmdLoop:
@@ -180,11 +241,11 @@ cmdLoop:
 		}
 		first = false
 	}
-	return funit.Rect16{
-		LLx: funit.Int16(math.Floor(left)),
-		LLy: funit.Int16(math.Floor(bottom)),
-		URx: funit.Int16(math.Ceil(right)),
-		URy: funit.Int16(math.Ceil(top)),
+	return rect.Rect{
+		LLx: left,
+		LLy: bottom,
+		URx: right,
+		URy: top,
 	}
 }
 

@@ -21,6 +21,7 @@ import (
 
 	"golang.org/x/exp/maps"
 
+	"seehuhn.de/go/geom/rect"
 	"seehuhn.de/go/postscript/funit"
 )
 
@@ -67,6 +68,18 @@ type Metrics struct {
 	Kern []*KernPair
 }
 
+type GlyphInfo struct {
+	WidthX    float64
+	BBox      rect.Rect
+	Ligatures map[string]string
+}
+
+// KernPair represents a kerning pair.
+type KernPair struct {
+	Left, Right string
+	Adjust      funit.Int16 // negative = move glyphs closer together
+}
+
 // GlyphList returns a list of all glyph names in the font.
 // The list starts with the ".notdef" glyph, followed by the glyphs in the
 // Encoding vector, followed by the remaining glyphs in alphabetical order
@@ -96,14 +109,18 @@ func (f *Metrics) GlyphList() []string {
 	return glyphNames
 }
 
-type GlyphInfo struct {
-	WidthX    float64
-	BBox      funit.Rect16 // TODO(voss): use a different type
-	Ligatures map[string]string
+func (f *Metrics) FontBBox() (bbox rect.Rect) {
+	for _, g := range f.Glyphs {
+		bbox.Extend(g.BBox)
+	}
+	return bbox
 }
 
-// KernPair represents a kerning pair.
-type KernPair struct {
-	Left, Right string
-	Adjust      funit.Int16 // negative = move glyphs closer together
+func (f *Metrics) FontBBoxPDF() (bbox rect.Rect) {
+	bbox = f.FontBBox()
+	bbox.LLx /= 1000
+	bbox.LLy /= 1000
+	bbox.URx /= 1000
+	bbox.URy /= 1000
+	return bbox
 }

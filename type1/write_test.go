@@ -24,6 +24,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
+	"seehuhn.de/go/geom/matrix"
 	"seehuhn.de/go/postscript/funit"
 	"seehuhn.de/go/postscript/psenc"
 )
@@ -50,7 +51,7 @@ func TestWrite(t *testing.T) {
 				IsFixedPitch:       false,
 				UnderlinePosition:  12,
 				UnderlineThickness: 14,
-				FontMatrix:         [6]float64{0.001, 0, 0, 0.001, 0, 0},
+				FontMatrix:         matrix.Matrix{0.001, 0, 0, 0.001, 0, 0},
 			},
 			Private: &PrivateDict{
 				BlueValues: []funit.Int16{0, 10, 40, 50, 100, 120},

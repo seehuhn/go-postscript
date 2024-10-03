@@ -23,7 +23,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"seehuhn.de/go/postscript/funit"
+	"seehuhn.de/go/geom/rect"
 )
 
 var (
@@ -31,14 +31,14 @@ var (
 		Glyphs: map[string]*GlyphInfo{
 			".notdef": {
 				WidthX: 500,
-				BBox: funit.Rect16{
+				BBox: rect.Rect{
 					URx: 500,
 					URy: 800,
 				},
 			},
 			"f": {
 				WidthX: 400,
-				BBox: funit.Rect16{
+				BBox: rect.Rect{
 					LLx: 20,
 					LLy: -100,
 					URx: 500,
@@ -48,7 +48,7 @@ var (
 			},
 			"ff": {
 				WidthX: 700,
-				BBox: funit.Rect16{
+				BBox: rect.Rect{
 					LLx: 20,
 					LLy: 100,
 					URx: 750,
@@ -57,7 +57,7 @@ var (
 			},
 			"qr": {
 				WidthX: 1000,
-				BBox: funit.Rect16{
+				BBox: rect.Rect{
 					URx: 1000,
 					URy: 1000,
 				},

@@ -19,10 +19,9 @@ package afm
 import (
 	"fmt"
 	"io"
+	"math"
 	"strconv"
 	"strings"
-
-	"seehuhn.de/go/postscript/funit"
 )
 
 // Write writes the metrics to the given writer in AFM format.
@@ -51,11 +50,12 @@ func (m *Metrics) Write(w io.Writer) error {
 		return err
 	}
 
-	bbox := &funit.Rect16{}
-	for _, g := range m.Glyphs {
-		bbox.Extend(g.BBox)
-	}
-	if err := write("FontBBox %d %d %d %d", bbox.LLx, bbox.LLy, bbox.URx, bbox.URy); err != nil {
+	bbox := m.FontBBox()
+	llx := int(math.Floor(bbox.LLx))
+	lly := int(math.Floor(bbox.LLy))
+	urx := int(math.Ceil(bbox.URx))
+	ury := int(math.Ceil(bbox.URy))
+	if err := write("FontBBox %d %d %d %d", llx, lly, urx, ury); err != nil {
 		return err
 	}
 
@@ -101,8 +101,12 @@ func (m *Metrics) Write(w io.Writer) error {
 				break
 			}
 		}
+		llx := int(math.Floor(g.BBox.LLx))
+		lly := int(math.Floor(g.BBox.LLy))
+		urx := int(math.Ceil(g.BBox.URx))
+		ury := int(math.Ceil(g.BBox.URy))
 		line := fmt.Sprintf("C %d ; WX %.0f ; N %s ; B %d %d %d %d ;",
-			charCode, g.WidthX, name, g.BBox.LLx, g.BBox.LLy, g.BBox.URx, g.BBox.URy)
+			charCode, g.WidthX, name, llx, lly, urx, ury)
 		for succ, lig := range g.Ligatures {
 			line += fmt.Sprintf(" L %s %s ;", succ, lig)
 		}

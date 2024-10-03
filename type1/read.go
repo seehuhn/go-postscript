@@ -24,6 +24,7 @@ import (
 	"golang.org/x/exp/maps"
 	"golang.org/x/exp/slices"
 
+	"seehuhn.de/go/geom/matrix"
 	"seehuhn.de/go/postscript"
 	"seehuhn.de/go/postscript/funit"
 	"seehuhn.de/go/postscript/pfb"
@@ -119,7 +120,7 @@ creationDateLoop:
 			postscript.Integer(0), postscript.Integer(0),
 		}
 	}
-	var fontMatrix [6]float64
+	var fontMatrix matrix.Matrix
 	for i, v := range fontMatrixArray {
 		switch v := v.(type) {
 		case postscript.Real:
