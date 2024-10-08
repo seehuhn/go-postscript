@@ -17,14 +17,14 @@
 package type1
 
 import (
-	"fmt"
+	"math"
 	"sort"
 	"time"
 
 	"golang.org/x/exp/maps"
 
+	"seehuhn.de/go/geom/matrix"
 	"seehuhn.de/go/geom/rect"
-	"seehuhn.de/go/postscript/funit"
 )
 
 // Font represents a Type 1 font.
@@ -81,9 +81,11 @@ func (f *Font) GlyphList() []string {
 	return glyphNames
 }
 
-// BBox returns the font bounding box in glyph space units.
+// FontBBox returns the font bounding box in glyph space units.
 // This is the smallest rectangle enclosing all glyphs in the font.
-func (f *Font) BBox() (bbox rect.Rect) {
+//
+// TODO(voss): remove in favour of FontBBoxPDF
+func (f *Font) FontBBox() (bbox rect.Rect) {
 	first := true
 	for _, glyph := range f.Glyphs {
 		thisBBox := glyph.BBox()
@@ -92,6 +94,7 @@ func (f *Font) BBox() (bbox rect.Rect) {
 		}
 		if first {
 			bbox = thisBBox
+			first = false
 		} else {
 			bbox.Extend(thisBBox)
 		}
@@ -99,13 +102,34 @@ func (f *Font) BBox() (bbox rect.Rect) {
 	return bbox
 }
 
-// GlyphBBoxPDF computes the bounding box of a glyph in PDF text space units.
+// FontBBoxPDF returns the font bounding box in PDF glyph space units.
+// This is the smallest rectangle enclosing all individual glyphs bounding boxes.
+func (f *Font) FontBBoxPDF() (fontBBox rect.Rect) {
+	first := true
+	for glyphName := range f.Glyphs {
+		glyphBBox := f.GlyphBBoxPDF(glyphName)
+		if glyphBBox.IsZero() {
+			continue
+		}
+		if first {
+			fontBBox = glyphBBox
+			first = false
+		} else {
+			fontBBox.Extend(glyphBBox)
+		}
+	}
+	return fontBBox
+}
+
+// GlyphBBoxPDF computes the bounding box of a glyph in PDF glyph space units.
 // If the glyph does not exist or is blank, the zero rectangle is returned.
 func (f *Font) GlyphBBoxPDF(name string) (bbox rect.Rect) {
 	g, ok := f.Glyphs[name]
 	if !ok {
 		return
 	}
+
+	M := f.FontMatrix.Mul(matrix.Scale(1000, 1000))
 
 	first := true
 cmdLoop:
@@ -122,7 +146,7 @@ cmdLoop:
 			continue cmdLoop
 		}
 
-		x, y = f.FontMatrix.Apply(x, y)
+		x, y = M.Apply(x, y)
 
 		if first || x < bbox.LLx {
 			bbox.LLx = x
@@ -142,161 +166,18 @@ cmdLoop:
 	return bbox
 }
 
-// FontBBoxPDF returns the font bounding box in PDF text space units.
-// This is the smallest rectangle enclosing all individual glyphs bounding boxes.
-func (f *Font) FontBBoxPDF() (bbox rect.Rect) {
-	first := true
-	for glyphName := range f.Glyphs {
-		thisBBox := f.GlyphBBoxPDF(glyphName)
-		if thisBBox.IsZero() {
-			continue
-		}
-		if first {
-			bbox = thisBBox
-		} else {
-			bbox.Extend(thisBBox)
-		}
+func (f *Font) GlyphWidthPDF(name string) float64 {
+	g, ok := f.Glyphs[name]
+	if !ok {
+		return 0
 	}
-	return bbox
-}
 
-// Glyph represents a glyph in a Type 1 font.
-//
-// TODO(voss): use float64 instead of funit.Int16?
-type Glyph struct {
-	Cmds   []GlyphOp
-	HStem  []funit.Int16
-	VStem  []funit.Int16
-	WidthX float64
-	WidthY float64
-}
+	w := g.WidthX
 
-// NewGlyph creates a new glyph with the given name and width.
-func (f *Font) NewGlyph(name string, width float64) *Glyph {
-	g := &Glyph{
-		WidthX: width,
+	q := f.FontMatrix[0]
+	if math.Abs(f.FontMatrix[3]) > 1e-6 {
+		q -= f.FontMatrix[1] * f.FontMatrix[2] / f.FontMatrix[3]
 	}
-	f.Glyphs[name] = g
-	return g
-}
 
-// MoveTo starts a new sub-path and moves the current point to (x, y).
-// The previous sub-path, if any, is closed.
-func (g *Glyph) MoveTo(x, y float64) {
-	g.Cmds = append(g.Cmds, GlyphOp{
-		Op:   OpMoveTo,
-		Args: []float64{x, y},
-	})
-}
-
-// LineTo adds a straight line to the current sub-path.
-func (g *Glyph) LineTo(x, y float64) {
-	g.Cmds = append(g.Cmds, GlyphOp{
-		Op:   OpLineTo,
-		Args: []float64{x, y},
-	})
-}
-
-// CurveTo adds a cubic Bezier curve to the current sub-path.
-func (g *Glyph) CurveTo(x1, y1, x2, y2, x3, y3 float64) {
-	g.Cmds = append(g.Cmds, GlyphOp{
-		Op:   OpCurveTo,
-		Args: []float64{x1, y1, x2, y2, x3, y3},
-	})
-}
-
-// ClosePath closes the current sub-path.
-func (g *Glyph) ClosePath() {
-	g.Cmds = append(g.Cmds, GlyphOp{Op: OpClosePath})
-}
-
-// BBox computes the bounding box of the glyph in glyph space units.
-func (g *Glyph) BBox() rect.Rect {
-	var left, right, top, bottom float64
-	first := true
-cmdLoop:
-	for _, cmd := range g.Cmds {
-		var x, y float64
-		switch cmd.Op {
-		case OpMoveTo, OpLineTo:
-			x = cmd.Args[0]
-			y = cmd.Args[1]
-		case OpCurveTo:
-			x = cmd.Args[4]
-			y = cmd.Args[5]
-		default:
-			continue cmdLoop
-		}
-		if first || x < left {
-			left = x
-		}
-		if first || x > right {
-			right = x
-		}
-		if first || y < bottom {
-			bottom = y
-		}
-		if first || y > top {
-			top = y
-		}
-		first = false
-	}
-	return rect.Rect{
-		LLx: left,
-		LLy: bottom,
-		URx: right,
-		URy: top,
-	}
-}
-
-// GlyphOp is a Type 1 glyph drawing command.
-type GlyphOp struct {
-	Op   GlyphOpType
-	Args []float64
-}
-
-// GlyphOpType is the type of a Type 1 glyph drawing command.
-type GlyphOpType byte
-
-func (op GlyphOpType) String() string {
-	switch op {
-	case OpMoveTo:
-		return "moveto"
-	case OpLineTo:
-		return "lineto"
-	case OpCurveTo:
-		return "curveto"
-	case OpClosePath:
-		return "closepath"
-	default:
-		return fmt.Sprintf("CommandType(%d)", op)
-	}
-}
-
-const (
-	// OpMoveTo tarts a new subpath at the given point.
-	OpMoveTo GlyphOpType = iota + 1
-
-	// OpLineTo appends a straight line segment from the previous point to the
-	// given point.
-	OpLineTo
-
-	// OpCurveTo appends a Bezier curve segment from the previous point to the
-	// given point.
-	OpCurveTo
-
-	// OpClosePath closes the current subpath by appending a straight line from
-	// the current point to the starting point of the current subpath.  This
-	// does not change the current point.
-	OpClosePath
-)
-
-func (c GlyphOp) String() string {
-	return fmt.Sprint("cmd", c.Args, c.Op)
-}
-
-// KernPair represents a kerning pair.
-type KernPair struct {
-	Left, Right string
-	Adjust      funit.Int16 // negative = move glyphs closer together
+	return w * (q * 1000)
 }
