@@ -181,3 +181,7 @@ func (f *Font) GlyphWidthPDF(name string) float64 {
 
 	return w * (q * 1000)
 }
+
+func (f *Font) GetEncoding() []string {
+	return f.Encoding
+}
