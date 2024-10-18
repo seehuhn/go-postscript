@@ -67,6 +67,11 @@ type FontInfo struct {
 	FontMatrix matrix.Matrix
 }
 
+// PostScriptName return the PostScript name of the font.
+func (f *FontInfo) PostScriptName() string {
+	return f.FontName
+}
+
 // PrivateDict contains information about a font's private dictionary.
 type PrivateDict struct {
 	// BlueValues is an array containing an even number of integers.
