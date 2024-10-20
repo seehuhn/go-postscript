@@ -81,6 +81,25 @@ func (f *Font) GlyphList() []string {
 	return glyphNames
 }
 
+// GetEncoding returns the built-in encoding of the font.
+func (f *Font) GetEncoding() []string {
+	return f.Encoding
+}
+
+func (f *Font) WidthsMapPDF() map[string]float64 {
+	q := f.FontMatrix[0]
+	if math.Abs(f.FontMatrix[3]) > 1e-6 {
+		q -= f.FontMatrix[1] * f.FontMatrix[2] / f.FontMatrix[3]
+	}
+	q *= 1000
+
+	widths := make(map[string]float64)
+	for name, glyph := range f.Glyphs {
+		widths[name] = glyph.WidthX * q
+	}
+	return widths
+}
+
 // FontBBox returns the font bounding box in glyph space units.
 // This is the smallest rectangle enclosing all glyphs in the font.
 //
@@ -172,16 +191,11 @@ func (f *Font) GlyphWidthPDF(name string) float64 {
 		return 0
 	}
 
-	w := g.WidthX
-
 	q := f.FontMatrix[0]
 	if math.Abs(f.FontMatrix[3]) > 1e-6 {
 		q -= f.FontMatrix[1] * f.FontMatrix[2] / f.FontMatrix[3]
 	}
 
+	w := g.WidthX
 	return w * (q * 1000)
-}
-
-func (f *Font) GetEncoding() []string {
-	return f.Encoding
 }
