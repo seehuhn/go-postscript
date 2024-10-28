@@ -185,8 +185,13 @@ cmdLoop:
 	return bbox
 }
 
+// GlyphWidthPDF computes the width of a glyph in PDF glyph space units.
+// If the glyph does not exist, the width of the .notdef glyph is returned.
 func (f *Font) GlyphWidthPDF(name string) float64 {
 	g, ok := f.Glyphs[name]
+	if !ok {
+		g, ok = f.Glyphs[".notdef"]
+	}
 	if !ok {
 		return 0
 	}
@@ -196,6 +201,5 @@ func (f *Font) GlyphWidthPDF(name string) float64 {
 		q -= f.FontMatrix[1] * f.FontMatrix[2] / f.FontMatrix[3]
 	}
 
-	w := g.WidthX
-	return w * (q * 1000)
+	return g.WidthX * (q * 1000)
 }

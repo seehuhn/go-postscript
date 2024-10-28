@@ -124,3 +124,16 @@ func (f *Metrics) FontBBoxPDF() (bbox rect.Rect) {
 	bbox.URy /= 1000
 	return bbox
 }
+
+// GlyphWidthPDF computes the width of a glyph in PDF glyph space units.
+// If the glyph does not exist, the width of the .notdef glyph is returned.
+func (f *Metrics) GlyphWidthPDF(name string) float64 {
+	glyph := f.Glyphs[name]
+	if glyph == nil {
+		glyph = f.Glyphs[".notdef"]
+	}
+	if glyph == nil {
+		return 0
+	}
+	return glyph.WidthX
+}
