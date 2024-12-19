@@ -28,8 +28,6 @@ import (
 )
 
 // Font represents a Type 1 font.
-//
-// TODO(voss): make this more similar to cff.Font?
 type Font struct {
 	*FontInfo
 
@@ -82,7 +80,7 @@ func (f *Font) GlyphList() []string {
 }
 
 // GetEncoding returns the built-in encoding of the font.
-func (f *Font) GetEncoding() []string {
+func (f *Font) BuiltinEncoding() []string {
 	return f.Encoding
 }
 
