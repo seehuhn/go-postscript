@@ -102,7 +102,8 @@ func Read(fd io.Reader) (*Metrics, error) {
 					}
 				}
 			}
-			if name == "" {
+			_, seen := res.Glyphs[name]
+			if name == "" || seen {
 				continue
 			}
 			if code >= 0 && code < 256 {

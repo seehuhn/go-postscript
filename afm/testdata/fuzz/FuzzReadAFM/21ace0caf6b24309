@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("StartCharMetrics 0\nC 00; N f \nC 1; N f")
