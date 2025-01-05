@@ -50,7 +50,7 @@ func (m *Metrics) Write(w io.Writer) error {
 		return err
 	}
 
-	bbox := m.FontBBox()
+	bbox := m.FontBBoxPDF()
 	llx := int(math.Floor(bbox.LLx))
 	lly := int(math.Floor(bbox.LLy))
 	urx := int(math.Ceil(bbox.URx))

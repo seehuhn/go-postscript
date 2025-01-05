@@ -109,19 +109,10 @@ func (f *Metrics) GlyphList() []string {
 	return glyphNames
 }
 
-func (f *Metrics) FontBBox() (bbox rect.Rect) {
+func (f *Metrics) FontBBoxPDF() (bbox rect.Rect) {
 	for _, g := range f.Glyphs {
 		bbox.Extend(g.BBox)
 	}
-	return bbox
-}
-
-func (f *Metrics) FontBBoxPDF() (bbox rect.Rect) {
-	bbox = f.FontBBox()
-	bbox.LLx /= 1000
-	bbox.LLy /= 1000
-	bbox.URx /= 1000
-	bbox.URy /= 1000
 	return bbox
 }
 
