@@ -20,6 +20,5 @@ package cid
 // CID represents a character identifier.  This is the index of a character in
 // a character collection.
 //
-// TODO(voss): Move this somewhere else.
-// TODO(voss): Split into different types, depending on font type?
+// TODO(voss): merge with cmap.CID
 type CID uint32
