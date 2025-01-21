@@ -17,8 +17,8 @@
 // TODO(voss): remove this package
 package cid
 
-// CID represents a character identifier.  This is the index of a character in
+// CID represents a character identifier.  This identifies a character within
 // a character collection.
 //
-// TODO(voss): merge with cmap.CID
+// The special value 0 is used to indicate a missing glyph.
 type CID uint32
