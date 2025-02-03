@@ -34,6 +34,8 @@ type Interpreter struct {
 	// returned.
 	MaxOps int
 
+	// TODO(voss): Add `MaxMemory` to limit allocations.
+
 	// Stack is the PostScript operand stack.
 	Stack []Object
 
