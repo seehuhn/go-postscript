@@ -424,7 +424,7 @@ func TestFindResource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !isSameDict(intp.Stack[0].(Dict), cidInit) {
+	if !isSameDict(intp.Stack[0].(Dict), intp.Resources["ProcSet"].(Dict)["CIDInit"].(Dict)) {
 		t.Fatalf("intp.Stack[0]: %v != CIDInit", intp.Stack[0])
 	}
 }
