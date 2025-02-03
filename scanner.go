@@ -27,6 +27,8 @@ import (
 )
 
 // A scanner breaks up a PostScript input stream into tokens.
+//
+// Scanners are not safe for concurrent use.
 type scanner struct {
 	Line int // 0-based
 	Col  int // 0-based

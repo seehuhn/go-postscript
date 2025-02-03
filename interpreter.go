@@ -19,6 +19,7 @@ package postscript
 import (
 	"fmt"
 	"io"
+	"maps"
 	"strings"
 )
 
@@ -108,7 +109,7 @@ func NewInterpreter() *Interpreter {
 		"CIDFont": Dict{},
 		"CMap":    cmapDirectory,
 		"ProcSet": Dict{
-			"CIDInit": cidInit,
+			"CIDInit": maps.Clone(cidInit),
 		},
 	}
 
