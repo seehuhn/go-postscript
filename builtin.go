@@ -1400,6 +1400,7 @@ func isSameDict(a, b Dict) bool {
 		return false
 	}
 
+	// TODO(voss): use rand.Text() once it becomes available
 	testKeyInt := 0
 	var testKey Name
 	for {
