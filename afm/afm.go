@@ -80,6 +80,15 @@ type KernPair struct {
 	Adjust      funit.Int16 // negative = move glyphs closer together
 }
 
+// NumGlyphs returns the number of glyphs in the font (including the .notdef glyph).
+func (f *Metrics) NumGlyphs() int {
+	n := len(f.Glyphs)
+	if _, ok := f.Glyphs[".notdef"]; !ok {
+		n++
+	}
+	return n
+}
+
 // GlyphList returns a list of all glyph names in the font.
 // The list starts with the ".notdef" glyph, followed by the glyphs in the
 // Encoding vector, followed by the remaining glyphs in alphabetical order

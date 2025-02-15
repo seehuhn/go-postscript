@@ -79,7 +79,7 @@ func (f *Font) GlyphList() []string {
 	return glyphNames
 }
 
-// GetEncoding returns the built-in encoding of the font.
+// BuiltinEncoding returns the built-in encoding of the font.
 func (f *Font) BuiltinEncoding() []string {
 	return f.Encoding
 }
