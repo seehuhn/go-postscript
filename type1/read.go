@@ -179,7 +179,7 @@ creationDateLoop:
 	var blueScale float64 // optional
 	blueScaleReal, ok := getReal(pd["BlueScale"])
 	if ok {
-		blueScale = float64(blueScaleReal)
+		blueScale = blueScaleReal
 	} else {
 		blueScale = 0.039625
 	}
@@ -288,7 +288,7 @@ creationDateLoop:
 	}
 
 	for _, seac := range ctx.seacs {
-		if seac.base < 0 || len(encoding) <= int(seac.base) || seac.accent < 0 || len(encoding) <= int(seac.accent) {
+		if seac.base < 0 || len(encoding) <= seac.base || seac.accent < 0 || len(encoding) <= seac.accent {
 			continue
 		}
 		base := glyphs[encoding[byte(seac.base)]]

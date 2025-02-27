@@ -56,7 +56,7 @@ func ReadCMap(r io.Reader) (Dict, error) {
 		// If there is more than one CMap in the file, we return the first one.
 
 		if n, _ := cmap["CMapName"].(Name); n == "" {
-			cmap["CMapName"] = Name(name)
+			cmap["CMapName"] = name
 		}
 		return cmap, nil
 	}
