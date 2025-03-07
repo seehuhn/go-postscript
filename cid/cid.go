@@ -16,6 +16,8 @@
 
 package cid
 
+import "strconv"
+
 // SystemInfo describes a character collection.
 // The characters within the collection are identified by a [CID].
 // The meaning of CID values is specific to the character collection.
@@ -33,6 +35,10 @@ type SystemInfo struct {
 	// additional CIDs are assigned in a character collection, the supplement
 	// number is increased.
 	Supplement int32
+}
+
+func (ROS *SystemInfo) String() string {
+	return ROS.Registry + "-" + ROS.Ordering + "-" + strconv.Itoa(int(ROS.Supplement))
 }
 
 // CID represents a character identifier.  This identifies a character within
