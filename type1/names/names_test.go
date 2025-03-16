@@ -22,36 +22,36 @@ import (
 )
 
 func TestNotdef(t *testing.T) {
-	rr := ToUnicode(".notdef", false)
-	if len(rr) != 0 {
-		t.Errorf("expected empty result for .notdef but got %c", rr)
+	text := ToUnicode(".notdef", "")
+	if text != "" {
+		t.Errorf("expected empty result for .notdef but got %q", text)
 	}
 }
 
 func TestToUnicode(t *testing.T) {
 	cases := []struct {
 		glyph    string
-		dingbats bool
+		fontName string
 		res      []rune
 	}{
-		{"space", false, []rune{0x0020}},
-		{"A", false, []rune{0x0041}},
-		{"Lcommaaccent", false, []rune{0x013B}},
-		{"uni20AC0308", false, []rune{0x20AC, 0x0308}},
-		{"u1040C", false, []rune{0x1040C}},
-		{"uniD801DC0C", false, []rune{}},
-		{"uni20ac", false, []rune{}},
+		{"space", "Test", []rune{0x0020}},
+		{"A", "Test", []rune{0x0041}},
+		{"Lcommaaccent", "Test", []rune{0x013B}},
+		{"uni20AC0308", "Test", []rune{0x20AC, 0x0308}},
+		{"u1040C", "Test", []rune{0x1040C}},
+		{"uniD801DC0C", "Test", []rune{}},
+		{"uni20ac", "Test", []rune{}},
 		{"Lcommaaccent_uni20AC0308_u1040C.alternate",
-			false, []rune{0x013B, 0x20AC, 0x0308, 0x1040C}},
-		{"uni013B", false, []rune{0x013B}},
-		{"u013B", false, []rune{0x013B}},
-		{"foo", false, []rune{}},
-		{".notdef", false, []rune{}},
-		{"Ogoneksmall", false, []rune{0xF6FB}},
-		{"a7", true, []rune{0x271E}},
+			"Test", []rune{0x013B, 0x20AC, 0x0308, 0x1040C}},
+		{"uni013B", "Test", []rune{0x013B}},
+		{"u013B", "Test", []rune{0x013B}},
+		{"foo", "Test", []rune{}},
+		{".notdef", "Test", []rune{}},
+		{"Ogoneksmall", "Test", []rune{0xF6FB}},
+		{"a7", "ZapfDingbats", []rune{0x271E}},
 	}
 	for i, test := range cases {
-		out := ToUnicode(test.glyph, test.dingbats)
+		out := []rune(ToUnicode(test.glyph, test.fontName))
 		equal := len(out) == len(test.res)
 		if equal {
 			for j, c := range out {
@@ -81,7 +81,7 @@ func equal(a, b []rune) bool {
 }
 
 func TestFromUnicode(t *testing.T) {
-	if FromUnicode('ﬄ') != "f_f_l" {
+	if FromUnicode("ﬄ") != "f_f_l" {
 		t.Error("wrong name for ffl-ligature")
 	}
 	seen := make(map[string]bool)
@@ -89,13 +89,13 @@ func TestFromUnicode(t *testing.T) {
 		if !unicode.IsGraphic(r) {
 			continue
 		}
-		name := FromUnicode(r)
+		name := FromUnicode(string(r))
 		if seen[name] {
 			t.Error("duplicate name " + name)
 		}
 		seen[name] = true
 
-		out := ToUnicode(name, false)
+		out := []rune(ToUnicode(name, ""))
 		switch len(out) {
 		case 0:
 			t.Errorf("no output %c -> %s -> xxx", r, name)
@@ -110,6 +110,12 @@ func TestFromUnicode(t *testing.T) {
 				t.Errorf("multi-rune %c -> %s -> %c", r, name, out)
 			}
 		}
+	}
+}
+
+func TestFromUnicodeEmpty(t *testing.T) {
+	if FromUnicode("") != "" {
+		t.Error("expected empty result for empty input")
 	}
 }
 

@@ -29,8 +29,8 @@ import (
 // This implements the algorithm documented at
 // https://github.com/adobe-type-tools/agl-specification .
 //
-// For the ".notdef" glyph, an empty slice is returned.
-func ToUnicode(name string, dingbats bool) []rune {
+// For the ".notdef" glyph, an empty string is returned.
+func ToUnicode(name string, fontName string) string {
 	var res []rune
 
 	idx := strings.IndexByte(name, '.')
@@ -40,7 +40,7 @@ func ToUnicode(name string, dingbats bool) []rune {
 
 	parts := strings.Split(name, "_")
 	for _, part := range parts {
-		if dingbats {
+		if fontName == "ZapfDingbats" {
 			c, ok := glyph.lookup("zapfdingbats", part)
 			if ok {
 				res = append(res, c)
@@ -106,12 +106,20 @@ func ToUnicode(name string, dingbats bool) []rune {
 		}
 	}
 
-	return res
+	return string(res)
 }
 
 // FromUnicode find the PostScript glyph name for a unicode character.
-func FromUnicode(r rune) string {
-	return glyph.encode(r)
+//
+// If text is empty, the empty string is returned.
+//
+// TODO(voss): add special handling for ZapfDingbats?
+func FromUnicode(text string) string {
+	var parts []string
+	for _, r := range text {
+		parts = append(parts, glyph.encode(r))
+	}
+	return strings.Join(parts, "_")
 }
 
 type glyphMap struct {
