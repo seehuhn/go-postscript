@@ -30,7 +30,7 @@ import (
 //
 // This is a thin wrapper around the [Interpreter.Execute] method.
 //
-// The returned Dict is a PostScript CMap dictionaries, as documented in
+// The returned Dict is a PostScript CMap dictionary, as documented in
 // section 5.11.4 (CMap Dictionaries) of the PostScript Language Reference
 // Manual.  The "CodeMap" field of the CMAP dictionary can be cast to a
 // [*CMapInfo] object, which contains the mapping data.
