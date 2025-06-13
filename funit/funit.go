@@ -38,6 +38,14 @@ type Rect16 struct {
 	LLx, LLy, URx, URy Int16
 }
 
+func (rect Rect16) Dx() Int16 {
+	return rect.URx - rect.LLx
+}
+
+func (rect Rect16) Dy() Int16 {
+	return rect.URy - rect.LLy
+}
+
 // IsZero is true if the glyph leaves no marks on the page.
 func (rect Rect16) IsZero() bool {
 	return rect.LLx == 0 && rect.LLy == 0 && rect.URx == 0 && rect.URy == 0
