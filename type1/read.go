@@ -347,11 +347,12 @@ creationDateLoop:
 
 	res := &Font{
 		CreationDate: creationDate,
-
-		FontInfo: fi,
-		Private:  private,
-		Glyphs:   glyphs,
-		Encoding: encoding,
+		FontInfo:     fi,
+		Outlines: &Outlines{
+			Private:  private,
+			Glyphs:   glyphs,
+			Encoding: encoding,
+		},
 	}
 	return res, nil
 }

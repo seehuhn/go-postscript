@@ -55,18 +55,20 @@ func FuzzFont(f *testing.F) {
 			UnderlineThickness: 14,
 			FontMatrix:         [6]float64{0.001, 0, 0, 0.001, 0, 0},
 		},
-		Private: &PrivateDict{
-			BlueValues: []funit.Int16{0, 10, 40, 50, 100, 120},
-			OtherBlues: []funit.Int16{-20, -10},
-			BlueScale:  0.1,
-			BlueShift:  8,
-			BlueFuzz:   2,
-			StdHW:      10,
-			StdVW:      20,
-			ForceBold:  true,
+		Outlines: &Outlines{
+			Private: &PrivateDict{
+				BlueValues: []funit.Int16{0, 10, 40, 50, 100, 120},
+				OtherBlues: []funit.Int16{-20, -10},
+				BlueScale:  0.1,
+				BlueShift:  8,
+				BlueFuzz:   2,
+				StdHW:      10,
+				StdVW:      20,
+				ForceBold:  true,
+			},
+			Glyphs:   map[string]*Glyph{},
+			Encoding: encoding,
 		},
-		Glyphs:   map[string]*Glyph{},
-		Encoding: encoding,
 	}
 	g := F.NewGlyph(".notdef", 100)
 	g.MoveTo(10, 10)

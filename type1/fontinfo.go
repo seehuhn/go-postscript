@@ -55,15 +55,16 @@ type FontInfo struct {
 	IsFixedPitch bool
 
 	// UnderlinePosition is the recommended distance from the baseline for
-	// positioning underlining strokes. This number is the y coordinate (in the
-	// glyph coordinate system) of the center of the stroke.
+	// positioning underlining strokes. This number is the y coordinate of the
+	// center of the stroke (in font design units).
 	UnderlinePosition funit.Float64
 
 	// UnderlineThickness is the recommended stroke width for underlining, in
 	// units of the glyph coordinate system.
 	UnderlineThickness funit.Float64
 
-	// FontMatrix is the transformation from glyph space to user space.
+	// FontMatrix is the transformation from font design units to text space
+	// units.
 	FontMatrix matrix.Matrix
 }
 

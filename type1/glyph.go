@@ -19,7 +19,7 @@ package type1
 import (
 	"fmt"
 
-	"seehuhn.de/go/geom/rect"
+	"seehuhn.de/go/geom/path"
 	"seehuhn.de/go/postscript/funit"
 )
 
@@ -73,42 +73,35 @@ func (g *Glyph) ClosePath() {
 	g.Cmds = append(g.Cmds, GlyphOp{Op: OpClosePath})
 }
 
-// BBox computes the bounding box of the glyph in glyph space units.
-func (g *Glyph) BBox() rect.Rect {
-	var left, right, top, bottom float64
-	first := true
-cmdLoop:
-	for _, cmd := range g.Cmds {
-		var x, y float64
-		switch cmd.Op {
-		case OpMoveTo, OpLineTo:
-			x = cmd.Args[0]
-			y = cmd.Args[1]
-		case OpCurveTo:
-			x = cmd.Args[4]
-			y = cmd.Args[5]
-		default:
-			continue cmdLoop
+func (g *Glyph) Path() path.Path {
+	return func(yield func(path.Command, []path.Point) bool) {
+		var buf [3]path.Point
+
+		for _, cmd := range g.Cmds {
+			switch cmd.Op {
+			case OpMoveTo:
+				buf[0] = path.Point{X: cmd.Args[0], Y: cmd.Args[1]}
+				if !yield(path.CmdMoveTo, buf[:1]) {
+					return
+				}
+			case OpLineTo:
+				buf[0] = path.Point{X: cmd.Args[0], Y: cmd.Args[1]}
+				if !yield(path.CmdLineTo, buf[:1]) {
+					return
+				}
+			case OpCurveTo:
+				buf[0] = path.Point{X: cmd.Args[0], Y: cmd.Args[1]} // control point 1
+				buf[1] = path.Point{X: cmd.Args[2], Y: cmd.Args[3]} // control point 2
+				buf[2] = path.Point{X: cmd.Args[4], Y: cmd.Args[5]} // end point
+				if !yield(path.CmdCubeTo, buf[:3]) {
+					return
+				}
+			case OpClosePath:
+				if !yield(path.CmdClose, nil) {
+					return
+				}
+			}
 		}
-		if first || x < left {
-			left = x
-		}
-		if first || x > right {
-			right = x
-		}
-		if first || y < bottom {
-			bottom = y
-		}
-		if first || y > top {
-			top = y
-		}
-		first = false
-	}
-	return rect.Rect{
-		LLx: left,
-		LLy: bottom,
-		URx: right,
-		URy: top,
 	}
 }
 
