@@ -87,13 +87,7 @@ func (o *Outlines) IsBlank(name string) bool {
 		}
 	}
 
-	// A glyph is blank if it has no commands or only moveto commands
-	for _, cmd := range g.Cmds {
-		if cmd.Op == OpLineTo || cmd.Op == OpCurveTo {
-			return false
-		}
-	}
-	return true
+	return g.IsBlank()
 }
 
 // GlyphBBox computes the bounding box of a glyph, after the matrix M has been

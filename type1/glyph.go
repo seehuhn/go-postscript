@@ -43,6 +43,15 @@ func (f *Font) NewGlyph(name string, width float64) *Glyph {
 	return g
 }
 
+func (g *Glyph) IsBlank() bool {
+	for _, cmd := range g.Cmds {
+		if cmd.Op == OpLineTo || cmd.Op == OpCurveTo {
+			return false
+		}
+	}
+	return true
+}
+
 // MoveTo starts a new sub-path and moves the current point to (x, y).
 // The previous sub-path, if any, is closed.
 func (g *Glyph) MoveTo(x, y float64) {
