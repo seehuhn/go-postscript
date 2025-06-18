@@ -17,11 +17,11 @@
 package postscript
 
 import (
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
 	"math"
-	"strconv"
 
 	"seehuhn.de/go/postscript/psenc"
 )
@@ -1400,17 +1400,7 @@ func isSameDict(a, b Dict) bool {
 		return false
 	}
 
-	// TODO(voss): use rand.Text() once it becomes available
-	testKeyInt := 0
-	var testKey Name
-	for {
-		testKey = Name(strconv.Itoa(testKeyInt))
-		_, inA := a[testKey]
-		if !inA {
-			break
-		}
-		testKeyInt++
-	}
+	testKey := Name(rand.Text())
 
 	if _, inB := b[testKey]; inB {
 		return false
