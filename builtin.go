@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"strconv"
 
 	"seehuhn.de/go/postscript/psenc"
 )
@@ -44,20 +45,27 @@ func makeSystemDict() Dict {
 		"abs":              builtin(bAbs),
 		"add":              builtin(bAdd),
 		"and":              builtin(bAnd),
+		"atan":             builtin(bAtan),
 		"array":            builtin(bArray),
 		"begin":            builtin(bBegin),
 		"bind":             builtin(bBind),
+		"bitshift":         builtin(bBitshift),
+		"ceiling":          builtin(bCeiling),
 		"cleartomark":      builtin(bCleartomark),
 		"closefile":        builtin(bClosefile),
+		"cos":              builtin(bCos),
 		"copy":             builtin(bCopy),
 		"count":            builtin(bCount),
 		"currentdict":      builtin(bCurrentdict),
 		"currentfile":      builtin(bCurrentfile),
+		"cvi":              builtin(bCvi),
+		"cvr":              builtin(bCvr),
 		"cvx":              builtin(bCvx),
 		"def":              builtin(bDef),
 		"definefont":       builtin(bDefinefont),
 		"defineresource":   builtin(bDefineresource),
 		"dict":             builtin(bDict),
+		"div":              builtin(bDiv),
 		"dup":              builtin(bDup),
 		"exec":             builtin(bExec),
 		"eexec":            builtin(eexec),
@@ -66,27 +74,38 @@ func makeSystemDict() Dict {
 		"errordict":        errorDict,
 		"exch":             builtin(bExch),
 		"executeonly":      builtin(bExecuteonly),
+		"exp":              builtin(bExp),
 		"exit":             builtin(bExit),
 		"false":            Boolean(false),
 		"findfont":         builtin(bFindfont),
 		"findresource":     builtin(bFindresource),
+		"floor":            builtin(bFloor),
 		"FontDirectory":    FontDirectory,
 		"for":              builtin(bFor),
 		"forall":           builtin(bForall),
+		"ge":               builtin(bGe),
 		"get":              builtin(bGet),
 		"getinterval":      builtin(bGetinterval),
+		"gt":               builtin(bGt),
+		"idiv":             builtin(bIdiv),
 		"if":               builtin(bIf),
 		"ifelse":           builtin(bIfelse),
 		"index":            builtin(bIndex),
 		"internaldict":     builtin(bInternaldict),
 		"known":            builtin(bKnown),
+		"le":               builtin(bLe),
 		"length":           builtin(bLength),
+		"ln":               builtin(bLn),
 		"load":             builtin(bLoad),
+		"log":              builtin(bLog),
 		"loop":             builtin(bLoop),
+		"lt":               builtin(bLt),
 		"mark":             builtin(bMark),
 		"matrix":           builtin(bMatrix),
 		"maxlength":        builtin(bMaxlength),
+		"mod":              builtin(bMod),
 		"mul":              builtin(bMul),
+		"neg":              builtin(bNeg),
 		"ne":               builtin(bNe),
 		"noaccess":         builtin(bNoaccess),
 		"not":              builtin(bNot),
@@ -98,14 +117,19 @@ func makeSystemDict() Dict {
 		"readstring":       builtin(bReadstring),
 		"repeat":           builtin(bRepeat),
 		"roll":             builtin(bRoll),
+		"round":            builtin(bRound),
+		"sin":              builtin(bSin),
+		"sqrt":             builtin(bSqrt),
 		"StandardEncoding": standardEncoding,
 		"stop":             builtin(bStop),
 		"string":           builtin(bString),
 		"sub":              builtin(bSub),
 		"true":             Boolean(true),
+		"truncate":         builtin(bTruncate),
 		"type":             builtin(bType),
 		"userdict":         userDict,
 		"where":            builtin(bWhere),
+		"xor":              builtin(bXor),
 	}
 	systemDict["systemdict"] = systemDict
 
@@ -1410,6 +1434,730 @@ func isSameDict(a, b Dict) bool {
 	_, isSame := b[testKey]
 	delete(a, testKey)
 	return isSame
+}
+
+// atan: num den atan angle
+func bAtan(intp *Interpreter) error {
+	if len(intp.Stack) < 2 {
+		return intp.e(eStackunderflow, "atan: not enough arguments")
+	}
+
+	num := intp.Stack[len(intp.Stack)-2]
+	den := intp.Stack[len(intp.Stack)-1]
+	intp.Stack = intp.Stack[:len(intp.Stack)-2]
+
+	var numVal, denVal float64
+
+	// Convert num to float64
+	switch n := num.(type) {
+	case Integer:
+		numVal = float64(n)
+	case Real:
+		numVal = float64(n)
+	default:
+		return intp.e(eTypecheck, "atan: num must be a number")
+	}
+
+	// Convert den to float64
+	switch d := den.(type) {
+	case Integer:
+		denVal = float64(d)
+	case Real:
+		denVal = float64(d)
+	default:
+		return intp.e(eTypecheck, "atan: den must be a number")
+	}
+
+	// Check for undefinedresult (both zero)
+	if numVal == 0 && denVal == 0 {
+		return intp.e(eUndefinedresult, "atan: both arguments are zero")
+	}
+
+	// Calculate atan2 and convert from radians to degrees
+	radians := math.Atan2(numVal, denVal)
+	degrees := radians * 180.0 / math.Pi
+
+	// Ensure result is in [0, 360) range
+	if degrees < 0 {
+		degrees += 360
+	}
+
+	intp.Stack = append(intp.Stack, Real(degrees))
+	return nil
+}
+
+// bitshift: int1 shift bitshift int2
+func bBitshift(intp *Interpreter) error {
+	if len(intp.Stack) < 2 {
+		return intp.e(eStackunderflow, "bitshift: not enough arguments")
+	}
+
+	int1, ok1 := intp.Stack[len(intp.Stack)-2].(Integer)
+	shift, ok2 := intp.Stack[len(intp.Stack)-1].(Integer)
+
+	if !ok1 || !ok2 {
+		return intp.e(eTypecheck, "bitshift: both arguments must be integers")
+	}
+
+	intp.Stack = intp.Stack[:len(intp.Stack)-2]
+
+	var result Integer
+	if shift >= 0 {
+		// Left shift
+		result = int1 << uint(shift)
+	} else {
+		// Right shift
+		result = int1 >> uint(-shift)
+	}
+
+	intp.Stack = append(intp.Stack, result)
+	return nil
+}
+
+// ceiling: num1 ceiling num2
+func bCeiling(intp *Interpreter) error {
+	if len(intp.Stack) < 1 {
+		return intp.e(eStackunderflow, "ceiling: not enough arguments")
+	}
+
+	num := intp.Stack[len(intp.Stack)-1]
+	intp.Stack = intp.Stack[:len(intp.Stack)-1]
+
+	switch n := num.(type) {
+	case Integer:
+		intp.Stack = append(intp.Stack, n)
+	case Real:
+		intp.Stack = append(intp.Stack, Real(math.Ceil(float64(n))))
+	default:
+		return intp.e(eTypecheck, "ceiling: argument must be a number")
+	}
+
+	return nil
+}
+
+// cos: angle cos real
+func bCos(intp *Interpreter) error {
+	if len(intp.Stack) < 1 {
+		return intp.e(eStackunderflow, "cos: not enough arguments")
+	}
+
+	angle := intp.Stack[len(intp.Stack)-1]
+	intp.Stack = intp.Stack[:len(intp.Stack)-1]
+
+	var angleVal float64
+	switch a := angle.(type) {
+	case Integer:
+		angleVal = float64(a)
+	case Real:
+		angleVal = float64(a)
+	default:
+		return intp.e(eTypecheck, "cos: argument must be a number")
+	}
+
+	// Convert degrees to radians
+	radians := angleVal * math.Pi / 180.0
+	result := math.Cos(radians)
+
+	intp.Stack = append(intp.Stack, Real(result))
+	return nil
+}
+
+// cvi: num cvi int OR string cvi int
+func bCvi(intp *Interpreter) error {
+	if len(intp.Stack) < 1 {
+		return intp.e(eStackunderflow, "cvi: not enough arguments")
+	}
+
+	operand := intp.Stack[len(intp.Stack)-1]
+	intp.Stack = intp.Stack[:len(intp.Stack)-1]
+
+	switch op := operand.(type) {
+	case Integer:
+		intp.Stack = append(intp.Stack, op)
+	case Real:
+		// Truncate toward zero
+		truncated := math.Trunc(float64(op))
+		// Check for overflow
+		if truncated > math.MaxInt64 || truncated < math.MinInt64 {
+			return intp.e(eRangecheck, "cvi: number too large to convert to integer")
+		}
+		intp.Stack = append(intp.Stack, Integer(truncated))
+	case String:
+		// Parse string as number - simplified implementation
+		str := string(op)
+		if val, err := strconv.ParseFloat(str, 64); err == nil {
+			truncated := math.Trunc(val)
+			if truncated > math.MaxInt64 || truncated < math.MinInt64 {
+				return intp.e(eRangecheck, "cvi: number too large to convert to integer")
+			}
+			intp.Stack = append(intp.Stack, Integer(truncated))
+		} else if val, err := strconv.ParseInt(str, 10, 64); err == nil {
+			intp.Stack = append(intp.Stack, Integer(val))
+		} else {
+			return intp.e(eSyntaxerror, "cvi: invalid number in string")
+		}
+	default:
+		return intp.e(eTypecheck, "cvi: invalid argument type")
+	}
+
+	return nil
+}
+
+// cvr: num cvr real OR string cvr real
+func bCvr(intp *Interpreter) error {
+	if len(intp.Stack) < 1 {
+		return intp.e(eStackunderflow, "cvr: not enough arguments")
+	}
+
+	operand := intp.Stack[len(intp.Stack)-1]
+	intp.Stack = intp.Stack[:len(intp.Stack)-1]
+
+	switch op := operand.(type) {
+	case Integer:
+		intp.Stack = append(intp.Stack, Real(op))
+	case Real:
+		intp.Stack = append(intp.Stack, op)
+	case String:
+		// Parse string as number - simplified implementation
+		str := string(op)
+		if val, err := strconv.ParseFloat(str, 64); err == nil {
+			intp.Stack = append(intp.Stack, Real(val))
+		} else {
+			return intp.e(eSyntaxerror, "cvr: invalid number in string")
+		}
+	default:
+		return intp.e(eTypecheck, "cvr: invalid argument type")
+	}
+
+	return nil
+}
+
+// div: num1 num2 div quotient
+func bDiv(intp *Interpreter) error {
+	if len(intp.Stack) < 2 {
+		return intp.e(eStackunderflow, "div: not enough arguments")
+	}
+
+	num1 := intp.Stack[len(intp.Stack)-2]
+	num2 := intp.Stack[len(intp.Stack)-1]
+	intp.Stack = intp.Stack[:len(intp.Stack)-2]
+
+	var val1, val2 float64
+
+	// Convert num1 to float64
+	switch n := num1.(type) {
+	case Integer:
+		val1 = float64(n)
+	case Real:
+		val1 = float64(n)
+	default:
+		return intp.e(eTypecheck, "div: first argument must be a number")
+	}
+
+	// Convert num2 to float64
+	switch n := num2.(type) {
+	case Integer:
+		val2 = float64(n)
+	case Real:
+		val2 = float64(n)
+	default:
+		return intp.e(eTypecheck, "div: second argument must be a number")
+	}
+
+	if val2 == 0 {
+		return intp.e(eUndefinedresult, "div: division by zero")
+	}
+
+	result := val1 / val2
+	intp.Stack = append(intp.Stack, Real(result))
+	return nil
+}
+
+// exp: base exponent exp real
+func bExp(intp *Interpreter) error {
+	if len(intp.Stack) < 2 {
+		return intp.e(eStackunderflow, "exp: not enough arguments")
+	}
+
+	base := intp.Stack[len(intp.Stack)-2]
+	exponent := intp.Stack[len(intp.Stack)-1]
+	intp.Stack = intp.Stack[:len(intp.Stack)-2]
+
+	var baseVal, expVal float64
+
+	// Convert base to float64
+	switch b := base.(type) {
+	case Integer:
+		baseVal = float64(b)
+	case Real:
+		baseVal = float64(b)
+	default:
+		return intp.e(eTypecheck, "exp: base must be a number")
+	}
+
+	// Convert exponent to float64
+	switch e := exponent.(type) {
+	case Integer:
+		expVal = float64(e)
+	case Real:
+		expVal = float64(e)
+	default:
+		return intp.e(eTypecheck, "exp: exponent must be a number")
+	}
+
+	// Check for meaningful result with fractional exponent
+	if expVal != math.Trunc(expVal) && baseVal < 0 {
+		return intp.e(eUndefinedresult, "exp: negative base with fractional exponent")
+	}
+
+	result := math.Pow(baseVal, expVal)
+
+	// Check for infinite or NaN result
+	if math.IsInf(result, 0) || math.IsNaN(result) {
+		return intp.e(eUndefinedresult, "exp: undefined result")
+	}
+
+	intp.Stack = append(intp.Stack, Real(result))
+	return nil
+}
+
+// floor: num1 floor num2
+func bFloor(intp *Interpreter) error {
+	if len(intp.Stack) < 1 {
+		return intp.e(eStackunderflow, "floor: not enough arguments")
+	}
+
+	num := intp.Stack[len(intp.Stack)-1]
+	intp.Stack = intp.Stack[:len(intp.Stack)-1]
+
+	switch n := num.(type) {
+	case Integer:
+		intp.Stack = append(intp.Stack, n)
+	case Real:
+		intp.Stack = append(intp.Stack, Real(math.Floor(float64(n))))
+	default:
+		return intp.e(eTypecheck, "floor: argument must be a number")
+	}
+
+	return nil
+}
+
+// ge: num1 num2 ge bool OR string1 string2 ge bool
+func bGe(intp *Interpreter) error {
+	if len(intp.Stack) < 2 {
+		return intp.e(eStackunderflow, "ge: not enough arguments")
+	}
+
+	obj1 := intp.Stack[len(intp.Stack)-2]
+	obj2 := intp.Stack[len(intp.Stack)-1]
+	intp.Stack = intp.Stack[:len(intp.Stack)-2]
+
+	// Handle number comparison
+	if isNumber(obj1) && isNumber(obj2) {
+		val1 := numberToFloat(obj1)
+		val2 := numberToFloat(obj2)
+		intp.Stack = append(intp.Stack, Boolean(val1 >= val2))
+		return nil
+	}
+
+	// Handle string comparison
+	if str1, ok1 := obj1.(String); ok1 {
+		if str2, ok2 := obj2.(String); ok2 {
+			// Lexical comparison
+			result := string(str1) >= string(str2)
+			intp.Stack = append(intp.Stack, Boolean(result))
+			return nil
+		}
+	}
+
+	return intp.e(eTypecheck, "ge: invalid argument types")
+}
+
+// gt: num1 num2 gt bool OR string1 string2 gt bool
+func bGt(intp *Interpreter) error {
+	if len(intp.Stack) < 2 {
+		return intp.e(eStackunderflow, "gt: not enough arguments")
+	}
+
+	obj1 := intp.Stack[len(intp.Stack)-2]
+	obj2 := intp.Stack[len(intp.Stack)-1]
+	intp.Stack = intp.Stack[:len(intp.Stack)-2]
+
+	// Handle number comparison
+	if isNumber(obj1) && isNumber(obj2) {
+		val1 := numberToFloat(obj1)
+		val2 := numberToFloat(obj2)
+		intp.Stack = append(intp.Stack, Boolean(val1 > val2))
+		return nil
+	}
+
+	// Handle string comparison
+	if str1, ok1 := obj1.(String); ok1 {
+		if str2, ok2 := obj2.(String); ok2 {
+			// Lexical comparison
+			result := string(str1) > string(str2)
+			intp.Stack = append(intp.Stack, Boolean(result))
+			return nil
+		}
+	}
+
+	return intp.e(eTypecheck, "gt: invalid argument types")
+}
+
+// idiv: int1 int2 idiv quotient
+func bIdiv(intp *Interpreter) error {
+	if len(intp.Stack) < 2 {
+		return intp.e(eStackunderflow, "idiv: not enough arguments")
+	}
+
+	int1, ok1 := intp.Stack[len(intp.Stack)-2].(Integer)
+	int2, ok2 := intp.Stack[len(intp.Stack)-1].(Integer)
+
+	if !ok1 || !ok2 {
+		return intp.e(eTypecheck, "idiv: both arguments must be integers")
+	}
+
+	intp.Stack = intp.Stack[:len(intp.Stack)-2]
+
+	if int2 == 0 {
+		return intp.e(eUndefinedresult, "idiv: division by zero")
+	}
+
+	// Integer division with truncation toward zero
+	result := int1 / int2
+	intp.Stack = append(intp.Stack, result)
+	return nil
+}
+
+// le: num1 num2 le bool OR string1 string2 le bool
+func bLe(intp *Interpreter) error {
+	if len(intp.Stack) < 2 {
+		return intp.e(eStackunderflow, "le: not enough arguments")
+	}
+
+	obj1 := intp.Stack[len(intp.Stack)-2]
+	obj2 := intp.Stack[len(intp.Stack)-1]
+	intp.Stack = intp.Stack[:len(intp.Stack)-2]
+
+	// Handle number comparison
+	if isNumber(obj1) && isNumber(obj2) {
+		val1 := numberToFloat(obj1)
+		val2 := numberToFloat(obj2)
+		intp.Stack = append(intp.Stack, Boolean(val1 <= val2))
+		return nil
+	}
+
+	// Handle string comparison
+	if str1, ok1 := obj1.(String); ok1 {
+		if str2, ok2 := obj2.(String); ok2 {
+			// Lexical comparison
+			result := string(str1) <= string(str2)
+			intp.Stack = append(intp.Stack, Boolean(result))
+			return nil
+		}
+	}
+
+	return intp.e(eTypecheck, "le: invalid argument types")
+}
+
+// ln: num ln real
+func bLn(intp *Interpreter) error {
+	if len(intp.Stack) < 1 {
+		return intp.e(eStackunderflow, "ln: not enough arguments")
+	}
+
+	num := intp.Stack[len(intp.Stack)-1]
+	intp.Stack = intp.Stack[:len(intp.Stack)-1]
+
+	var val float64
+	switch n := num.(type) {
+	case Integer:
+		val = float64(n)
+	case Real:
+		val = float64(n)
+	default:
+		return intp.e(eTypecheck, "ln: argument must be a number")
+	}
+
+	if val <= 0 {
+		return intp.e(eRangecheck, "ln: argument must be positive")
+	}
+
+	result := math.Log(val)
+	intp.Stack = append(intp.Stack, Real(result))
+	return nil
+}
+
+// log: num log real
+func bLog(intp *Interpreter) error {
+	if len(intp.Stack) < 1 {
+		return intp.e(eStackunderflow, "log: not enough arguments")
+	}
+
+	num := intp.Stack[len(intp.Stack)-1]
+	intp.Stack = intp.Stack[:len(intp.Stack)-1]
+
+	var val float64
+	switch n := num.(type) {
+	case Integer:
+		val = float64(n)
+	case Real:
+		val = float64(n)
+	default:
+		return intp.e(eTypecheck, "log: argument must be a number")
+	}
+
+	if val <= 0 {
+		return intp.e(eRangecheck, "log: argument must be positive")
+	}
+
+	result := math.Log10(val)
+	intp.Stack = append(intp.Stack, Real(result))
+	return nil
+}
+
+// lt: num1 num2 lt bool OR string1 string2 lt bool
+func bLt(intp *Interpreter) error {
+	if len(intp.Stack) < 2 {
+		return intp.e(eStackunderflow, "lt: not enough arguments")
+	}
+
+	obj1 := intp.Stack[len(intp.Stack)-2]
+	obj2 := intp.Stack[len(intp.Stack)-1]
+	intp.Stack = intp.Stack[:len(intp.Stack)-2]
+
+	// Handle number comparison
+	if isNumber(obj1) && isNumber(obj2) {
+		val1 := numberToFloat(obj1)
+		val2 := numberToFloat(obj2)
+		intp.Stack = append(intp.Stack, Boolean(val1 < val2))
+		return nil
+	}
+
+	// Handle string comparison
+	if str1, ok1 := obj1.(String); ok1 {
+		if str2, ok2 := obj2.(String); ok2 {
+			// Lexical comparison
+			result := string(str1) < string(str2)
+			intp.Stack = append(intp.Stack, Boolean(result))
+			return nil
+		}
+	}
+
+	return intp.e(eTypecheck, "lt: invalid argument types")
+}
+
+// mod: int1 int2 mod remainder
+func bMod(intp *Interpreter) error {
+	if len(intp.Stack) < 2 {
+		return intp.e(eStackunderflow, "mod: not enough arguments")
+	}
+
+	int1, ok1 := intp.Stack[len(intp.Stack)-2].(Integer)
+	int2, ok2 := intp.Stack[len(intp.Stack)-1].(Integer)
+
+	if !ok1 || !ok2 {
+		return intp.e(eTypecheck, "mod: both arguments must be integers")
+	}
+
+	intp.Stack = intp.Stack[:len(intp.Stack)-2]
+
+	if int2 == 0 {
+		return intp.e(eUndefinedresult, "mod: modulo by zero")
+	}
+
+	// Remainder operation with sign of dividend
+	result := int1 % int2
+	intp.Stack = append(intp.Stack, result)
+	return nil
+}
+
+// neg: num1 neg num2
+func bNeg(intp *Interpreter) error {
+	if len(intp.Stack) < 1 {
+		return intp.e(eStackunderflow, "neg: not enough arguments")
+	}
+
+	num := intp.Stack[len(intp.Stack)-1]
+	intp.Stack = intp.Stack[:len(intp.Stack)-1]
+
+	switch n := num.(type) {
+	case Integer:
+		if n == math.MinInt64 {
+			// Handle most negative integer overflow
+			intp.Stack = append(intp.Stack, Real(-float64(n)))
+		} else {
+			intp.Stack = append(intp.Stack, -n)
+		}
+	case Real:
+		intp.Stack = append(intp.Stack, -n)
+	default:
+		return intp.e(eTypecheck, "neg: argument must be a number")
+	}
+
+	return nil
+}
+
+// round: num1 round num2
+func bRound(intp *Interpreter) error {
+	if len(intp.Stack) < 1 {
+		return intp.e(eStackunderflow, "round: not enough arguments")
+	}
+
+	num := intp.Stack[len(intp.Stack)-1]
+	intp.Stack = intp.Stack[:len(intp.Stack)-1]
+
+	switch n := num.(type) {
+	case Integer:
+		intp.Stack = append(intp.Stack, n)
+	case Real:
+		// PostScript spec: if equally close to two integers, return the greater
+		val := float64(n)
+		if val >= 0 {
+			intp.Stack = append(intp.Stack, Real(math.Floor(val+0.5)))
+		} else {
+			// For negative numbers: -6.5 should round to -6 (the greater)
+			// Check if it's exactly halfway
+			floor := math.Floor(val)
+			ceil := math.Ceil(val)
+			if math.Abs(val-floor) == math.Abs(val-ceil) {
+				// Exactly halfway, return the greater (closer to zero)
+				intp.Stack = append(intp.Stack, Real(ceil))
+			} else {
+				// Normal rounding
+				intp.Stack = append(intp.Stack, Real(math.Round(val)))
+			}
+		}
+	default:
+		return intp.e(eTypecheck, "round: argument must be a number")
+	}
+
+	return nil
+}
+
+// sin: angle sin real
+func bSin(intp *Interpreter) error {
+	if len(intp.Stack) < 1 {
+		return intp.e(eStackunderflow, "sin: not enough arguments")
+	}
+
+	angle := intp.Stack[len(intp.Stack)-1]
+	intp.Stack = intp.Stack[:len(intp.Stack)-1]
+
+	var angleVal float64
+	switch a := angle.(type) {
+	case Integer:
+		angleVal = float64(a)
+	case Real:
+		angleVal = float64(a)
+	default:
+		return intp.e(eTypecheck, "sin: argument must be a number")
+	}
+
+	// Convert degrees to radians
+	radians := angleVal * math.Pi / 180.0
+	result := math.Sin(radians)
+
+	intp.Stack = append(intp.Stack, Real(result))
+	return nil
+}
+
+// sqrt: num sqrt real
+func bSqrt(intp *Interpreter) error {
+	if len(intp.Stack) < 1 {
+		return intp.e(eStackunderflow, "sqrt: not enough arguments")
+	}
+
+	num := intp.Stack[len(intp.Stack)-1]
+	intp.Stack = intp.Stack[:len(intp.Stack)-1]
+
+	var val float64
+	switch n := num.(type) {
+	case Integer:
+		val = float64(n)
+	case Real:
+		val = float64(n)
+	default:
+		return intp.e(eTypecheck, "sqrt: argument must be a number")
+	}
+
+	if val < 0 {
+		return intp.e(eRangecheck, "sqrt: argument must be non-negative")
+	}
+
+	result := math.Sqrt(val)
+	intp.Stack = append(intp.Stack, Real(result))
+	return nil
+}
+
+// truncate: num1 truncate num2
+func bTruncate(intp *Interpreter) error {
+	if len(intp.Stack) < 1 {
+		return intp.e(eStackunderflow, "truncate: not enough arguments")
+	}
+
+	num := intp.Stack[len(intp.Stack)-1]
+	intp.Stack = intp.Stack[:len(intp.Stack)-1]
+
+	switch n := num.(type) {
+	case Integer:
+		intp.Stack = append(intp.Stack, n)
+	case Real:
+		intp.Stack = append(intp.Stack, Real(math.Trunc(float64(n))))
+	default:
+		return intp.e(eTypecheck, "truncate: argument must be a number")
+	}
+
+	return nil
+}
+
+// xor: bool1 bool2 xor bool3 OR int1 int2 xor int3
+func bXor(intp *Interpreter) error {
+	if len(intp.Stack) < 2 {
+		return intp.e(eStackunderflow, "xor: not enough arguments")
+	}
+
+	obj1 := intp.Stack[len(intp.Stack)-2]
+	obj2 := intp.Stack[len(intp.Stack)-1]
+	intp.Stack = intp.Stack[:len(intp.Stack)-2]
+
+	// Handle boolean XOR
+	if bool1, ok1 := obj1.(Boolean); ok1 {
+		if bool2, ok2 := obj2.(Boolean); ok2 {
+			result := bool(bool1) != bool(bool2)
+			intp.Stack = append(intp.Stack, Boolean(result))
+			return nil
+		}
+	}
+
+	// Handle integer bitwise XOR
+	if int1, ok1 := obj1.(Integer); ok1 {
+		if int2, ok2 := obj2.(Integer); ok2 {
+			result := int1 ^ int2
+			intp.Stack = append(intp.Stack, result)
+			return nil
+		}
+	}
+
+	return intp.e(eTypecheck, "xor: arguments must be both booleans or both integers")
+}
+
+// Helper functions
+func isNumber(obj Object) bool {
+	_, isInt := obj.(Integer)
+	_, isReal := obj.(Real)
+	return isInt || isReal
+}
+
+func numberToFloat(obj Object) float64 {
+	switch n := obj.(type) {
+	case Integer:
+		return float64(n)
+	case Real:
+		return float64(n)
+	default:
+		return 0 // Should not happen if isNumber was checked first
+	}
 }
 
 var errExit = errors.New("exit")

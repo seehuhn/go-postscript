@@ -818,3 +818,604 @@ func TestReadstring(t *testing.T) {
 		t.Fatal(d)
 	}
 }
+
+func TestCmdAtan(t *testing.T) {
+	type testCase struct {
+		num, den Object
+		out      Object
+	}
+	cases := []testCase{
+		{Integer(0), Integer(1), Real(0.0)},
+		{Integer(1), Integer(0), Real(90.0)},
+		{Integer(-100), Integer(0), Real(270.0)},
+		{Integer(4), Integer(4), Real(45.0)},
+	}
+	for _, c := range cases {
+		intp := NewInterpreter()
+		intp.Stack = []Object{c.num, c.den}
+		err := intp.ExecuteString("atan")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(intp.Stack) != 1 {
+			t.Fatalf("len(intp.Stack): %d != 1", len(intp.Stack))
+		}
+		if result, ok := intp.Stack[0].(Real); !ok {
+			t.Fatalf("result is not Real: %T", intp.Stack[0])
+		} else if math.Abs(float64(result-c.out.(Real))) > 1e-10 {
+			t.Fatalf("atan(%v, %v): %v != %v", c.num, c.den, result, c.out)
+		}
+	}
+}
+
+func TestCmdBitshift(t *testing.T) {
+	type testCase struct {
+		val, shift Object
+		out        Object
+	}
+	cases := []testCase{
+		{Integer(7), Integer(3), Integer(56)},
+		{Integer(142), Integer(-3), Integer(17)},
+	}
+	for _, c := range cases {
+		intp := NewInterpreter()
+		intp.Stack = []Object{c.val, c.shift}
+		err := intp.ExecuteString("bitshift")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(intp.Stack) != 1 {
+			t.Fatalf("len(intp.Stack): %d != 1", len(intp.Stack))
+		}
+		if intp.Stack[0] != c.out {
+			t.Fatalf("bitshift(%v, %v): %v != %v", c.val, c.shift, intp.Stack[0], c.out)
+		}
+	}
+}
+
+func TestCmdCeiling(t *testing.T) {
+	type testCase struct {
+		in  Object
+		out Object
+	}
+	cases := []testCase{
+		{Real(3.2), Real(4.0)},
+		{Real(-4.8), Real(-4.0)},
+		{Integer(99), Integer(99)},
+	}
+	for _, c := range cases {
+		intp := NewInterpreter()
+		intp.Stack = []Object{c.in}
+		err := intp.ExecuteString("ceiling")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(intp.Stack) != 1 {
+			t.Fatalf("len(intp.Stack): %d != 1", len(intp.Stack))
+		}
+		if intp.Stack[0] != c.out {
+			t.Fatalf("ceiling(%v): %v != %v", c.in, intp.Stack[0], c.out)
+		}
+	}
+}
+
+func TestCmdCos(t *testing.T) {
+	type testCase struct {
+		angle Object
+		out   Object
+	}
+	cases := []testCase{
+		{Integer(0), Real(1.0)},
+		{Integer(90), Real(0.0)},
+	}
+	for _, c := range cases {
+		intp := NewInterpreter()
+		intp.Stack = []Object{c.angle}
+		err := intp.ExecuteString("cos")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(intp.Stack) != 1 {
+			t.Fatalf("len(intp.Stack): %d != 1", len(intp.Stack))
+		}
+		if result, ok := intp.Stack[0].(Real); !ok {
+			t.Fatalf("result is not Real: %T", intp.Stack[0])
+		} else if math.Abs(float64(result-c.out.(Real))) > 1e-10 {
+			t.Fatalf("cos(%v): %v != %v", c.angle, result, c.out)
+		}
+	}
+}
+
+func TestCmdCvi(t *testing.T) {
+	type testCase struct {
+		in  string
+		out Object
+	}
+	cases := []testCase{
+		{"(3.3E1) cvi", Integer(33)},
+		{"-47.8 cvi", Integer(-47)},
+		{"520.9 cvi", Integer(520)},
+	}
+	for _, c := range cases {
+		intp, err := run(c.in, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if intp.Stack[0] != c.out {
+			t.Fatalf("%s: %v != %v", c.in, intp.Stack[0], c.out)
+		}
+	}
+}
+
+func TestCmdCvr(t *testing.T) {
+	type testCase struct {
+		in  Object
+		out Object
+	}
+	cases := []testCase{
+		{Integer(42), Real(42.0)},
+		{Real(3.14), Real(3.14)},
+	}
+	for _, c := range cases {
+		intp := NewInterpreter()
+		intp.Stack = []Object{c.in}
+		err := intp.ExecuteString("cvr")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(intp.Stack) != 1 {
+			t.Fatalf("len(intp.Stack): %d != 1", len(intp.Stack))
+		}
+		if intp.Stack[0] != c.out {
+			t.Fatalf("cvr(%v): %v != %v", c.in, intp.Stack[0], c.out)
+		}
+	}
+}
+
+func TestCmdDiv(t *testing.T) {
+	type testCase struct {
+		a, b Object
+		out  Object
+	}
+	cases := []testCase{
+		{Integer(3), Integer(2), Real(1.5)},
+		{Integer(4), Integer(2), Real(2.0)},
+	}
+	for _, c := range cases {
+		intp := NewInterpreter()
+		intp.Stack = []Object{c.a, c.b}
+		err := intp.ExecuteString("div")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(intp.Stack) != 1 {
+			t.Fatalf("len(intp.Stack): %d != 1", len(intp.Stack))
+		}
+		if intp.Stack[0] != c.out {
+			t.Fatalf("div(%v, %v): %v != %v", c.a, c.b, intp.Stack[0], c.out)
+		}
+	}
+}
+
+func TestCmdExp(t *testing.T) {
+	type testCase struct {
+		base, exp Object
+		out       Object
+	}
+	cases := []testCase{
+		{Integer(9), Real(0.5), Real(3.0)},
+		{Integer(-9), Integer(-1), Real(-1.0 / 9.0)},
+	}
+	for _, c := range cases {
+		intp := NewInterpreter()
+		intp.Stack = []Object{c.base, c.exp}
+		err := intp.ExecuteString("exp")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(intp.Stack) != 1 {
+			t.Fatalf("len(intp.Stack): %d != 1", len(intp.Stack))
+		}
+		if result, ok := intp.Stack[0].(Real); !ok {
+			t.Fatalf("result is not Real: %T", intp.Stack[0])
+		} else if math.Abs(float64(result-c.out.(Real))) > 1e-5 {
+			t.Fatalf("exp(%v, %v): %v != %v", c.base, c.exp, result, c.out)
+		}
+	}
+}
+
+func TestCmdFloor(t *testing.T) {
+	type testCase struct {
+		in  Object
+		out Object
+	}
+	cases := []testCase{
+		{Real(3.2), Real(3.0)},
+		{Real(-4.8), Real(-5.0)},
+		{Integer(99), Integer(99)},
+	}
+	for _, c := range cases {
+		intp := NewInterpreter()
+		intp.Stack = []Object{c.in}
+		err := intp.ExecuteString("floor")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(intp.Stack) != 1 {
+			t.Fatalf("len(intp.Stack): %d != 1", len(intp.Stack))
+		}
+		if intp.Stack[0] != c.out {
+			t.Fatalf("floor(%v): %v != %v", c.in, intp.Stack[0], c.out)
+		}
+	}
+}
+
+func TestCmdGe(t *testing.T) {
+	type testCase struct {
+		a, b Object
+		out  Object
+	}
+	cases := []testCase{
+		{Real(4.2), Integer(4), Boolean(true)},
+		{String("abc"), String("d"), Boolean(false)},
+		{String("aba"), String("ab"), Boolean(true)},
+		{String("aba"), String("aba"), Boolean(true)},
+	}
+	for _, c := range cases {
+		intp := NewInterpreter()
+		intp.Stack = []Object{c.a, c.b}
+		err := intp.ExecuteString("ge")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(intp.Stack) != 1 {
+			t.Fatalf("len(intp.Stack): %d != 1", len(intp.Stack))
+		}
+		if intp.Stack[0] != c.out {
+			t.Fatalf("ge(%v, %v): %v != %v", c.a, c.b, intp.Stack[0], c.out)
+		}
+	}
+}
+
+func TestCmdGt(t *testing.T) {
+	type testCase struct {
+		a, b Object
+		out  Object
+	}
+	cases := []testCase{
+		{Integer(5), Integer(4), Boolean(true)},
+		{Integer(3), Integer(4), Boolean(false)},
+		{String("abc"), String("ab"), Boolean(true)},
+	}
+	for _, c := range cases {
+		intp := NewInterpreter()
+		intp.Stack = []Object{c.a, c.b}
+		err := intp.ExecuteString("gt")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(intp.Stack) != 1 {
+			t.Fatalf("len(intp.Stack): %d != 1", len(intp.Stack))
+		}
+		if intp.Stack[0] != c.out {
+			t.Fatalf("gt(%v, %v): %v != %v", c.a, c.b, intp.Stack[0], c.out)
+		}
+	}
+}
+
+func TestCmdIdiv(t *testing.T) {
+	type testCase struct {
+		a, b Object
+		out  Object
+	}
+	cases := []testCase{
+		{Integer(3), Integer(2), Integer(1)},
+		{Integer(4), Integer(2), Integer(2)},
+		{Integer(-5), Integer(2), Integer(-2)},
+	}
+	for _, c := range cases {
+		intp := NewInterpreter()
+		intp.Stack = []Object{c.a, c.b}
+		err := intp.ExecuteString("idiv")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(intp.Stack) != 1 {
+			t.Fatalf("len(intp.Stack): %d != 1", len(intp.Stack))
+		}
+		if intp.Stack[0] != c.out {
+			t.Fatalf("idiv(%v, %v): %v != %v", c.a, c.b, intp.Stack[0], c.out)
+		}
+	}
+}
+
+func TestCmdLe(t *testing.T) {
+	type testCase struct {
+		a, b Object
+		out  Object
+	}
+	cases := []testCase{
+		{Integer(3), Integer(4), Boolean(true)},
+		{Integer(5), Integer(4), Boolean(false)},
+		{String("abc"), String("abd"), Boolean(true)},
+	}
+	for _, c := range cases {
+		intp := NewInterpreter()
+		intp.Stack = []Object{c.a, c.b}
+		err := intp.ExecuteString("le")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(intp.Stack) != 1 {
+			t.Fatalf("len(intp.Stack): %d != 1", len(intp.Stack))
+		}
+		if intp.Stack[0] != c.out {
+			t.Fatalf("le(%v, %v): %v != %v", c.a, c.b, intp.Stack[0], c.out)
+		}
+	}
+}
+
+func TestCmdLn(t *testing.T) {
+	type testCase struct {
+		in  Object
+		out Real
+	}
+	cases := []testCase{
+		{Integer(10), Real(2.30259)},
+		{Integer(100), Real(4.60517)},
+	}
+	for _, c := range cases {
+		intp := NewInterpreter()
+		intp.Stack = []Object{c.in}
+		err := intp.ExecuteString("ln")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(intp.Stack) != 1 {
+			t.Fatalf("len(intp.Stack): %d != 1", len(intp.Stack))
+		}
+		if result, ok := intp.Stack[0].(Real); !ok {
+			t.Fatalf("result is not Real: %T", intp.Stack[0])
+		} else if math.Abs(float64(result-c.out)) > 1e-4 {
+			t.Fatalf("ln(%v): %v != %v", c.in, result, c.out)
+		}
+	}
+}
+
+func TestCmdLog(t *testing.T) {
+	type testCase struct {
+		in  Object
+		out Object
+	}
+	cases := []testCase{
+		{Integer(10), Real(1.0)},
+		{Integer(100), Real(2.0)},
+	}
+	for _, c := range cases {
+		intp := NewInterpreter()
+		intp.Stack = []Object{c.in}
+		err := intp.ExecuteString("log")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(intp.Stack) != 1 {
+			t.Fatalf("len(intp.Stack): %d != 1", len(intp.Stack))
+		}
+		if intp.Stack[0] != c.out {
+			t.Fatalf("log(%v): %v != %v", c.in, intp.Stack[0], c.out)
+		}
+	}
+}
+
+func TestCmdLt(t *testing.T) {
+	type testCase struct {
+		a, b Object
+		out  Object
+	}
+	cases := []testCase{
+		{Integer(3), Integer(4), Boolean(true)},
+		{Integer(5), Integer(4), Boolean(false)},
+		{String("abc"), String("abd"), Boolean(true)},
+	}
+	for _, c := range cases {
+		intp := NewInterpreter()
+		intp.Stack = []Object{c.a, c.b}
+		err := intp.ExecuteString("lt")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(intp.Stack) != 1 {
+			t.Fatalf("len(intp.Stack): %d != 1", len(intp.Stack))
+		}
+		if intp.Stack[0] != c.out {
+			t.Fatalf("lt(%v, %v): %v != %v", c.a, c.b, intp.Stack[0], c.out)
+		}
+	}
+}
+
+func TestCmdMod(t *testing.T) {
+	type testCase struct {
+		a, b Object
+		out  Object
+	}
+	cases := []testCase{
+		{Integer(5), Integer(3), Integer(2)},
+		{Integer(5), Integer(2), Integer(1)},
+		{Integer(-5), Integer(3), Integer(-2)},
+	}
+	for _, c := range cases {
+		intp := NewInterpreter()
+		intp.Stack = []Object{c.a, c.b}
+		err := intp.ExecuteString("mod")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(intp.Stack) != 1 {
+			t.Fatalf("len(intp.Stack): %d != 1", len(intp.Stack))
+		}
+		if intp.Stack[0] != c.out {
+			t.Fatalf("mod(%v, %v): %v != %v", c.a, c.b, intp.Stack[0], c.out)
+		}
+	}
+}
+
+func TestCmdNeg(t *testing.T) {
+	type testCase struct {
+		in  Object
+		out Object
+	}
+	cases := []testCase{
+		{Real(4.5), Real(-4.5)},
+		{Integer(-3), Integer(3)},
+	}
+	for _, c := range cases {
+		intp := NewInterpreter()
+		intp.Stack = []Object{c.in}
+		err := intp.ExecuteString("neg")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(intp.Stack) != 1 {
+			t.Fatalf("len(intp.Stack): %d != 1", len(intp.Stack))
+		}
+		if intp.Stack[0] != c.out {
+			t.Fatalf("neg(%v): %v != %v", c.in, intp.Stack[0], c.out)
+		}
+	}
+}
+
+func TestCmdRound(t *testing.T) {
+	type testCase struct {
+		in  Object
+		out Object
+	}
+	cases := []testCase{
+		{Real(3.2), Real(3.0)},
+		{Real(6.5), Real(7.0)},
+		{Real(-4.8), Real(-5.0)},
+		{Real(-6.5), Real(-6.0)},
+		{Integer(99), Integer(99)},
+	}
+	for _, c := range cases {
+		intp := NewInterpreter()
+		intp.Stack = []Object{c.in}
+		err := intp.ExecuteString("round")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(intp.Stack) != 1 {
+			t.Fatalf("len(intp.Stack): %d != 1", len(intp.Stack))
+		}
+		if intp.Stack[0] != c.out {
+			t.Fatalf("round(%v): %v != %v", c.in, intp.Stack[0], c.out)
+		}
+	}
+}
+
+func TestCmdSin(t *testing.T) {
+	type testCase struct {
+		angle Object
+		out   Real
+	}
+	cases := []testCase{
+		{Integer(0), Real(0.0)},
+		{Integer(90), Real(1.0)},
+	}
+	for _, c := range cases {
+		intp := NewInterpreter()
+		intp.Stack = []Object{c.angle}
+		err := intp.ExecuteString("sin")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(intp.Stack) != 1 {
+			t.Fatalf("len(intp.Stack): %d != 1", len(intp.Stack))
+		}
+		if result, ok := intp.Stack[0].(Real); !ok {
+			t.Fatalf("result is not Real: %T", intp.Stack[0])
+		} else if math.Abs(float64(result-c.out)) > 1e-10 {
+			t.Fatalf("sin(%v): %v != %v", c.angle, result, c.out)
+		}
+	}
+}
+
+func TestCmdSqrt(t *testing.T) {
+	type testCase struct {
+		in  Object
+		out Object
+	}
+	cases := []testCase{
+		{Integer(9), Real(3.0)},
+		{Integer(16), Real(4.0)},
+		{Real(2.25), Real(1.5)},
+	}
+	for _, c := range cases {
+		intp := NewInterpreter()
+		intp.Stack = []Object{c.in}
+		err := intp.ExecuteString("sqrt")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(intp.Stack) != 1 {
+			t.Fatalf("len(intp.Stack): %d != 1", len(intp.Stack))
+		}
+		if intp.Stack[0] != c.out {
+			t.Fatalf("sqrt(%v): %v != %v", c.in, intp.Stack[0], c.out)
+		}
+	}
+}
+
+func TestCmdTruncate(t *testing.T) {
+	type testCase struct {
+		in  Object
+		out Object
+	}
+	cases := []testCase{
+		{Real(3.2), Real(3.0)},
+		{Real(-4.8), Real(-4.0)},
+		{Integer(99), Integer(99)},
+	}
+	for _, c := range cases {
+		intp := NewInterpreter()
+		intp.Stack = []Object{c.in}
+		err := intp.ExecuteString("truncate")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(intp.Stack) != 1 {
+			t.Fatalf("len(intp.Stack): %d != 1", len(intp.Stack))
+		}
+		if intp.Stack[0] != c.out {
+			t.Fatalf("truncate(%v): %v != %v", c.in, intp.Stack[0], c.out)
+		}
+	}
+}
+
+func TestCmdXor(t *testing.T) {
+	type testCase struct {
+		a, b Object
+		out  Object
+	}
+	cases := []testCase{
+		{Boolean(true), Boolean(true), Boolean(false)},
+		{Boolean(true), Boolean(false), Boolean(true)},
+		{Boolean(false), Boolean(true), Boolean(true)},
+		{Boolean(false), Boolean(false), Boolean(false)},
+		{Integer(7), Integer(3), Integer(4)},
+		{Integer(12), Integer(3), Integer(15)},
+	}
+	for _, c := range cases {
+		intp := NewInterpreter()
+		intp.Stack = []Object{c.a, c.b}
+		err := intp.ExecuteString("xor")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(intp.Stack) != 1 {
+			t.Fatalf("len(intp.Stack): %d != 1", len(intp.Stack))
+		}
+		if intp.Stack[0] != c.out {
+			t.Fatalf("xor(%v, %v): %v != %v", c.a, c.b, intp.Stack[0], c.out)
+		}
+	}
+}
