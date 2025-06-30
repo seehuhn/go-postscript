@@ -6,4 +6,4 @@ require github.com/google/go-cmp v0.7.0
 
 require golang.org/x/exp v0.0.0-20250606033433-dcc06ee1d476
 
-require seehuhn.de/go/geom v0.0.0-20250616181134-58e392c14e27
+require seehuhn.de/go/geom v0.6.0
