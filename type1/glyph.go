@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	"seehuhn.de/go/geom/path"
+	"seehuhn.de/go/geom/vec"
 	"seehuhn.de/go/postscript/funit"
 )
 
@@ -83,25 +84,25 @@ func (g *Glyph) ClosePath() {
 }
 
 func (g *Glyph) Path() path.Path {
-	return func(yield func(path.Command, []path.Point) bool) {
-		var buf [3]path.Point
+	return func(yield func(path.Command, []vec.Vec2) bool) {
+		var buf [3]vec.Vec2
 
 		for _, cmd := range g.Cmds {
 			switch cmd.Op {
 			case OpMoveTo:
-				buf[0] = path.Point{X: cmd.Args[0], Y: cmd.Args[1]}
+				buf[0] = vec.Vec2{X: cmd.Args[0], Y: cmd.Args[1]}
 				if !yield(path.CmdMoveTo, buf[:1]) {
 					return
 				}
 			case OpLineTo:
-				buf[0] = path.Point{X: cmd.Args[0], Y: cmd.Args[1]}
+				buf[0] = vec.Vec2{X: cmd.Args[0], Y: cmd.Args[1]}
 				if !yield(path.CmdLineTo, buf[:1]) {
 					return
 				}
 			case OpCurveTo:
-				buf[0] = path.Point{X: cmd.Args[0], Y: cmd.Args[1]} // control point 1
-				buf[1] = path.Point{X: cmd.Args[2], Y: cmd.Args[3]} // control point 2
-				buf[2] = path.Point{X: cmd.Args[4], Y: cmd.Args[5]} // end point
+				buf[0] = vec.Vec2{X: cmd.Args[0], Y: cmd.Args[1]} // control point 1
+				buf[1] = vec.Vec2{X: cmd.Args[2], Y: cmd.Args[3]} // control point 2
+				buf[2] = vec.Vec2{X: cmd.Args[4], Y: cmd.Args[5]} // end point
 				if !yield(path.CmdCubeTo, buf[:3]) {
 					return
 				}

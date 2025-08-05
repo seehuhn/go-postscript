@@ -22,6 +22,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"seehuhn.de/go/geom/path"
+	"seehuhn.de/go/geom/vec"
 )
 
 func TestGlyphPath(t *testing.T) {
@@ -45,10 +46,10 @@ func TestGlyphPath(t *testing.T) {
 				g.ClosePath()
 			},
 			expected: []pathSegment{
-				{cmd: path.CmdMoveTo, points: []path.Point{{X: 10, Y: 10}}},
-				{cmd: path.CmdLineTo, points: []path.Point{{X: 20, Y: 10}}},
-				{cmd: path.CmdLineTo, points: []path.Point{{X: 20, Y: 20}}},
-				{cmd: path.CmdLineTo, points: []path.Point{{X: 10, Y: 20}}},
+				{cmd: path.CmdMoveTo, points: []vec.Vec2{{X: 10, Y: 10}}},
+				{cmd: path.CmdLineTo, points: []vec.Vec2{{X: 20, Y: 10}}},
+				{cmd: path.CmdLineTo, points: []vec.Vec2{{X: 20, Y: 20}}},
+				{cmd: path.CmdLineTo, points: []vec.Vec2{{X: 10, Y: 20}}},
 				{cmd: path.CmdClose, points: nil},
 			},
 		},
@@ -60,9 +61,9 @@ func TestGlyphPath(t *testing.T) {
 				g.LineTo(40, 20)
 			},
 			expected: []pathSegment{
-				{cmd: path.CmdMoveTo, points: []path.Point{{X: 0, Y: 0}}},
-				{cmd: path.CmdCubeTo, points: []path.Point{{X: 10, Y: 5}, {X: 20, Y: 15}, {X: 30, Y: 10}}},
-				{cmd: path.CmdLineTo, points: []path.Point{{X: 40, Y: 20}}},
+				{cmd: path.CmdMoveTo, points: []vec.Vec2{{X: 0, Y: 0}}},
+				{cmd: path.CmdCubeTo, points: []vec.Vec2{{X: 10, Y: 5}, {X: 20, Y: 15}, {X: 30, Y: 10}}},
+				{cmd: path.CmdLineTo, points: []vec.Vec2{{X: 40, Y: 20}}},
 			},
 		},
 		{
@@ -75,11 +76,11 @@ func TestGlyphPath(t *testing.T) {
 				g.LineTo(30, 30)
 			},
 			expected: []pathSegment{
-				{cmd: path.CmdMoveTo, points: []path.Point{{X: 0, Y: 0}}},
-				{cmd: path.CmdLineTo, points: []path.Point{{X: 10, Y: 0}}},
+				{cmd: path.CmdMoveTo, points: []vec.Vec2{{X: 0, Y: 0}}},
+				{cmd: path.CmdLineTo, points: []vec.Vec2{{X: 10, Y: 0}}},
 				{cmd: path.CmdClose, points: nil},
-				{cmd: path.CmdMoveTo, points: []path.Point{{X: 20, Y: 20}}},
-				{cmd: path.CmdLineTo, points: []path.Point{{X: 30, Y: 30}}},
+				{cmd: path.CmdMoveTo, points: []vec.Vec2{{X: 20, Y: 20}}},
+				{cmd: path.CmdLineTo, points: []vec.Vec2{{X: 30, Y: 30}}},
 			},
 		},
 	}
@@ -93,7 +94,7 @@ func TestGlyphPath(t *testing.T) {
 			for cmd, points := range g.Path() {
 				segments = append(segments, pathSegment{
 					cmd:    cmd,
-					points: append([]path.Point(nil), points...),
+					points: append([]vec.Vec2(nil), points...),
 				})
 			}
 
@@ -118,5 +119,5 @@ func TestGlyphPath(t *testing.T) {
 // pathSegment represents a single path command with its points for testing
 type pathSegment struct {
 	cmd    path.Command
-	points []path.Point
+	points []vec.Vec2
 }
