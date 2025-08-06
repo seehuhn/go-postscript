@@ -65,7 +65,7 @@ func (m *Metrics) Write(w io.Writer) error {
 	if err := write("IsFixedPitch %t", m.IsFixedPitch); err != nil {
 		return err
 	}
-	if err := write("UnderlinePosition %.0f", m.UnderlinePosition); err != nil {
+	if err := write("UnderlinePosition %s", strconv.FormatFloat(m.UnderlinePosition, 'f', -1, 64)); err != nil {
 		return err
 	}
 	if err := write("UnderlineThickness %.0f", m.UnderlineThickness); err != nil {
