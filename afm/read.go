@@ -20,6 +20,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"math"
 	"strconv"
 	"strings"
 
@@ -152,47 +153,47 @@ func Read(fd io.Reader) (*Metrics, error) {
 		case "Notice":
 			res.Notice = strings.Join(fields[1:], " ")
 		case "CapHeight":
-			x, err := strconv.ParseFloat(fields[1], 64)
-			if err != nil {
-				return nil, fmt.Errorf("invalid CapHeight: %v", err)
+			x, _ := strconv.ParseFloat(fields[1], 64)
+			if x >= math.MinInt32 && x <= math.MaxInt32 {
+				// Note that the above test also excludes NaN values and infinities.
+				res.CapHeight = x
 			}
-			res.CapHeight = x
 		case "XHeight":
-			x, err := strconv.ParseFloat(fields[1], 64)
-			if err != nil {
-				return nil, fmt.Errorf("invalid XHeight: %v", err)
+			x, _ := strconv.ParseFloat(fields[1], 64)
+			if x >= math.MinInt32 && x <= math.MaxInt32 {
+				// Note that the above test also excludes NaN values and infinities.
+				res.XHeight = x
 			}
-			res.XHeight = x
 		case "Ascender":
-			x, err := strconv.ParseFloat(fields[1], 64)
-			if err != nil {
-				return nil, fmt.Errorf("invalid Ascender: %v", err)
+			x, _ := strconv.ParseFloat(fields[1], 64)
+			if x >= math.MinInt32 && x <= math.MaxInt32 {
+				// Note that the above test also excludes NaN values and infinities.
+				res.Ascent = x
 			}
-			res.Ascent = x
 		case "Descender":
-			x, err := strconv.ParseFloat(fields[1], 64)
-			if err != nil {
-				return nil, fmt.Errorf("invalid Descender: %v", err)
+			x, _ := strconv.ParseFloat(fields[1], 64)
+			if x >= math.MinInt32 && x <= math.MaxInt32 {
+				// Note that the above test also excludes NaN values and infinities.
+				res.Descent = x
 			}
-			res.Descent = x
 		case "UnderlinePosition":
-			x, err := strconv.ParseFloat(fields[1], 64)
-			if err != nil {
-				return nil, fmt.Errorf("invalid UnderlinePosition: %v", err)
+			x, _ := strconv.ParseFloat(fields[1], 64)
+			if x >= math.MinInt32 && x <= math.MaxInt32 {
+				// Note that the above test also excludes NaN values and infinities.
+				res.UnderlinePosition = x
 			}
-			res.UnderlinePosition = x
 		case "UnderlineThickness":
-			x, err := strconv.ParseFloat(fields[1], 64)
-			if err != nil {
-				return nil, fmt.Errorf("invalid UnderlineThickness: %v", err)
+			x, _ := strconv.ParseFloat(fields[1], 64)
+			if x >= math.MinInt32 && x <= math.MaxInt32 {
+				// Note that the above test also excludes NaN values and infinities.
+				res.UnderlineThickness = x
 			}
-			res.UnderlineThickness = x
 		case "ItalicAngle":
-			x, err := strconv.ParseFloat(fields[1], 64)
-			if err != nil {
-				return nil, fmt.Errorf("invalid ItalicAngle: %v", err)
+			x, _ := strconv.ParseFloat(fields[1], 64)
+			if x >= math.MinInt32 && x <= math.MaxInt32 {
+				// Note that the above test also excludes NaN values and infinities.
+				res.ItalicAngle = x
 			}
-			res.ItalicAngle = x
 		case "IsFixedPitch":
 			res.IsFixedPitch = fields[1] == "true"
 		case "StartCharMetrics":

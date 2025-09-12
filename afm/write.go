@@ -19,7 +19,6 @@ package afm
 import (
 	"fmt"
 	"io"
-	"math"
 	"strconv"
 	"strings"
 )
@@ -51,11 +50,11 @@ func (m *Metrics) Write(w io.Writer) error {
 	}
 
 	bbox := m.FontBBoxPDF()
-	llx := int(math.Floor(bbox.LLx))
-	lly := int(math.Floor(bbox.LLy))
-	urx := int(math.Ceil(bbox.URx))
-	ury := int(math.Ceil(bbox.URy))
-	if err := write("FontBBox %d %d %d %d", llx, lly, urx, ury); err != nil {
+	llx := strconv.FormatFloat(bbox.LLx, 'f', -1, 64)
+	lly := strconv.FormatFloat(bbox.LLy, 'f', -1, 64)
+	urx := strconv.FormatFloat(bbox.URx, 'f', -1, 64)
+	ury := strconv.FormatFloat(bbox.URy, 'f', -1, 64)
+	if err := write("FontBBox %s %s %s %s", llx, lly, urx, ury); err != nil {
 		return err
 	}
 
@@ -68,19 +67,19 @@ func (m *Metrics) Write(w io.Writer) error {
 	if err := write("UnderlinePosition %s", strconv.FormatFloat(m.UnderlinePosition, 'f', -1, 64)); err != nil {
 		return err
 	}
-	if err := write("UnderlineThickness %.0f", m.UnderlineThickness); err != nil {
+	if err := write("UnderlineThickness %s", strconv.FormatFloat(m.UnderlineThickness, 'f', -1, 64)); err != nil {
 		return err
 	}
-	if err := write("CapHeight %.0f", m.CapHeight); err != nil {
+	if err := write("CapHeight %s", strconv.FormatFloat(m.CapHeight, 'f', -1, 64)); err != nil {
 		return err
 	}
-	if err := write("XHeight %.0f", m.XHeight); err != nil {
+	if err := write("XHeight %s", strconv.FormatFloat(m.XHeight, 'f', -1, 64)); err != nil {
 		return err
 	}
-	if err := write("Ascender %.0f", m.Ascent); err != nil {
+	if err := write("Ascender %s", strconv.FormatFloat(m.Ascent, 'f', -1, 64)); err != nil {
 		return err
 	}
-	if err := write("Descender %.0f", m.Descent); err != nil {
+	if err := write("Descender %s", strconv.FormatFloat(m.Descent, 'f', -1, 64)); err != nil {
 		return err
 	}
 
@@ -101,12 +100,13 @@ func (m *Metrics) Write(w io.Writer) error {
 				break
 			}
 		}
-		llx := int(math.Floor(g.BBox.LLx))
-		lly := int(math.Floor(g.BBox.LLy))
-		urx := int(math.Ceil(g.BBox.URx))
-		ury := int(math.Ceil(g.BBox.URy))
-		line := fmt.Sprintf("C %d ; WX %.0f ; N %s ; B %d %d %d %d ;",
-			charCode, g.WidthX, name, llx, lly, urx, ury)
+		llx := strconv.FormatFloat(g.BBox.LLx, 'f', -1, 64)
+		lly := strconv.FormatFloat(g.BBox.LLy, 'f', -1, 64)
+		urx := strconv.FormatFloat(g.BBox.URx, 'f', -1, 64)
+		ury := strconv.FormatFloat(g.BBox.URy, 'f', -1, 64)
+		wx := strconv.FormatFloat(g.WidthX, 'f', -1, 64)
+		line := fmt.Sprintf("C %d ; WX %s ; N %s ; B %s %s %s %s ;",
+			charCode, wx, name, llx, lly, urx, ury)
 		for succ, lig := range g.Ligatures {
 			line += fmt.Sprintf(" L %s %s ;", succ, lig)
 		}
