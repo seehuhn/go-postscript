@@ -26,7 +26,7 @@ type FontInfo struct {
 	// PostScript language name (FontName or CIDFontName) of the font.
 	FontName string
 
-	// Version is the version number of the font program.
+	// Version is the version number of the font file.
 	Version string
 
 	// Notice is used to save any trademark notice/information for the font.
