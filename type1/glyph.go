@@ -44,15 +44,7 @@ func (f *Font) NewGlyph(name string, width float64) *Glyph {
 
 // IsBlank returns true if the glyph has no visible outline.
 func (g *Glyph) IsBlank() bool {
-	if g.Outline == nil {
-		return true
-	}
-	for _, cmd := range g.Outline.Cmds {
-		if cmd == path.CmdLineTo || cmd == path.CmdCubeTo {
-			return false
-		}
-	}
-	return true
+	return g.Outline.IsBlank()
 }
 
 // MoveTo starts a new sub-path and moves the current point to (x, y).
