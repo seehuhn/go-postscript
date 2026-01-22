@@ -18,6 +18,8 @@ package type1
 
 import (
 	"math"
+
+	"seehuhn.de/go/geom/path"
 )
 
 func (g *Glyph) encodeCharString(wx, wy int32) []byte {
@@ -50,75 +52,84 @@ func (g *Glyph) encodeCharString(wx, wy int32) []byte {
 	posX := 0.0
 	posY := 0.0
 	var dx, dy float64
-	for _, cmd := range g.Cmds {
-		switch cmd.Op {
-		case OpMoveTo:
-			if math.Abs(cmd.Args[1]-posY) < 1e-6 {
-				buf, dx = appendNumber(buf, cmd.Args[0]-posX)
-				buf = appendOp(buf, t1hmoveto)
-				posX += dx
-			} else if math.Abs(cmd.Args[0]-posX) < 1e-6 {
-				buf, dy = appendNumber(buf, cmd.Args[1]-posY)
-				buf = appendOp(buf, t1vmoveto)
-				posY += dy
-			} else {
-				buf, dx = appendNumber(buf, cmd.Args[0]-posX)
-				buf, dy = appendNumber(buf, cmd.Args[1]-posY)
-				buf = appendOp(buf, t1rmoveto)
-				posX += dx
-				posY += dy
+	if g.Outline != nil {
+		i := 0 // coordinate index
+		for _, cmd := range g.Outline.Cmds {
+			switch cmd {
+			case path.CmdMoveTo:
+				x, y := g.Outline.Coords[i].X, g.Outline.Coords[i].Y
+				i++
+				if math.Abs(y-posY) < 1e-6 {
+					buf, dx = appendNumber(buf, x-posX)
+					buf = appendOp(buf, t1hmoveto)
+					posX += dx
+				} else if math.Abs(x-posX) < 1e-6 {
+					buf, dy = appendNumber(buf, y-posY)
+					buf = appendOp(buf, t1vmoveto)
+					posY += dy
+				} else {
+					buf, dx = appendNumber(buf, x-posX)
+					buf, dy = appendNumber(buf, y-posY)
+					buf = appendOp(buf, t1rmoveto)
+					posX += dx
+					posY += dy
+				}
+			case path.CmdLineTo:
+				x, y := g.Outline.Coords[i].X, g.Outline.Coords[i].Y
+				i++
+				if math.Abs(y-posY) < 1e-6 {
+					buf, dx = appendNumber(buf, x-posX)
+					buf = appendOp(buf, t1hlineto)
+					posX += dx
+				} else if math.Abs(x-posX) < 1e-6 {
+					buf, dy = appendNumber(buf, y-posY)
+					buf = appendOp(buf, t1vlineto)
+					posY += dy
+				} else {
+					buf, dx = appendNumber(buf, x-posX)
+					buf, dy = appendNumber(buf, y-posY)
+					buf = appendOp(buf, t1rlineto)
+					posX += dx
+					posY += dy
+				}
+			case path.CmdCubeTo:
+				x1, y1 := g.Outline.Coords[i].X, g.Outline.Coords[i].Y
+				x2, y2 := g.Outline.Coords[i+1].X, g.Outline.Coords[i+1].Y
+				x3, y3 := g.Outline.Coords[i+2].X, g.Outline.Coords[i+2].Y
+				i += 3
+				if math.Abs(y1-posY) < 1e-6 && math.Abs(x3-x2) < 1e-6 {
+					var dxa, dxb, dyb, dyc float64
+					buf, dxa = appendNumber(buf, x1-posX)
+					buf, dxb = appendNumber(buf, x2-posX-dxa)
+					buf, dyb = appendNumber(buf, y2-posY)
+					buf, dyc = appendNumber(buf, y3-posY-dyb)
+					buf = appendOp(buf, t1hvcurveto)
+					posX += dxa + dxb
+					posY += dyb + dyc
+				} else if math.Abs(x1-posX) < 1e-6 && math.Abs(y3-y2) < 1e-6 {
+					var dya, dxb, dyb, dxc float64
+					buf, dya = appendNumber(buf, y1-posY)
+					buf, dxb = appendNumber(buf, x2-posX)
+					buf, dyb = appendNumber(buf, y2-posY-dya)
+					buf, dxc = appendNumber(buf, x3-posX-dxb)
+					buf = appendOp(buf, t1vhcurveto)
+					posX += dxb + dxc
+					posY += dya + dyb
+				} else {
+					var dxa, dxb, dxc, dya, dyb, dyc float64
+					buf, dxa = appendNumber(buf, x1-posX)
+					buf, dya = appendNumber(buf, y1-posY)
+					buf, dxb = appendNumber(buf, x2-posX-dxa)
+					buf, dyb = appendNumber(buf, y2-posY-dya)
+					buf, dxc = appendNumber(buf, x3-posX-dxa-dxb)
+					buf, dyc = appendNumber(buf, y3-posY-dya-dyb)
+					buf = appendOp(buf, t1rrcurveto)
+					posX += dxa + dxb + dxc
+					posY += dya + dyb + dyc
+				}
+			case path.CmdClose:
+				buf = appendOp(buf, t1closepath)
 			}
-		case OpLineTo:
-			if math.Abs(cmd.Args[1]-posY) < 1e-6 {
-				buf, dx = appendNumber(buf, cmd.Args[0]-posX)
-				buf = appendOp(buf, t1hlineto)
-				posX += dx
-			} else if math.Abs(cmd.Args[0]-posX) < 1e-6 {
-				buf, dy = appendNumber(buf, cmd.Args[1]-posY)
-				buf = appendOp(buf, t1vlineto)
-				posY += dy
-			} else {
-				buf, dx = appendNumber(buf, cmd.Args[0]-posX)
-				buf, dy = appendNumber(buf, cmd.Args[1]-posY)
-				buf = appendOp(buf, t1rlineto)
-				posX += dx
-				posY += dy
-			}
-		case OpCurveTo:
-			if math.Abs(cmd.Args[1]-posY) < 1e-6 && math.Abs(cmd.Args[4]-cmd.Args[2]) < 1e-6 {
-				var dxa, dxb, dyb, dyc float64
-				buf, dxa = appendNumber(buf, cmd.Args[0]-posX)
-				buf, dxb = appendNumber(buf, cmd.Args[2]-posX-dxa)
-				buf, dyb = appendNumber(buf, cmd.Args[3]-posY)
-				buf, dyc = appendNumber(buf, cmd.Args[5]-posY-dyb)
-				buf = appendOp(buf, t1hvcurveto)
-				posX += dxa + dxb
-				posY += dyb + dyc
-			} else if math.Abs(cmd.Args[0]-posX) < 1e-6 && math.Abs(cmd.Args[5]-cmd.Args[3]) < 1e-6 {
-				var dya, dxb, dyb, dxc float64
-				buf, dya = appendNumber(buf, cmd.Args[1]-posY)
-				buf, dxb = appendNumber(buf, cmd.Args[2]-posX)
-				buf, dyb = appendNumber(buf, cmd.Args[3]-posY-dya)
-				buf, dxc = appendNumber(buf, cmd.Args[4]-posX-dxb)
-				buf = appendOp(buf, t1vhcurveto)
-				posX += dxb + dxc
-				posY += dya + dyb
-			} else {
-				var dxa, dxb, dxc, dya, dyb, dyc float64
-				buf, dxa = appendNumber(buf, cmd.Args[0]-posX)
-				buf, dya = appendNumber(buf, cmd.Args[1]-posY)
-				buf, dxb = appendNumber(buf, cmd.Args[2]-posX-dxa)
-				buf, dyb = appendNumber(buf, cmd.Args[3]-posY-dya)
-				buf, dxc = appendNumber(buf, cmd.Args[4]-posX-dxa-dxb)
-				buf, dyc = appendNumber(buf, cmd.Args[5]-posY-dya-dyb)
-				buf = appendOp(buf, t1rrcurveto)
-				posX += dxa + dxb + dxc
-				posY += dya + dyb + dyc
-			}
-		case OpClosePath:
-			buf = appendOp(buf, t1closepath)
-		default:
-			panic("unreachable")
 		}
 	}
 	buf = appendOp(buf, t1endchar)

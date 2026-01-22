@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"math"
 
+	"seehuhn.de/go/geom/path"
+	"seehuhn.de/go/geom/vec"
 	"seehuhn.de/go/postscript/funit"
 )
 
@@ -44,14 +46,16 @@ func (info *decodeInfo) decodeCharString(code []byte, name string) (*Glyph, erro
 	var postscriptStack []float64
 	var flexData []float64
 
-	res := &Glyph{}
+	res := &Glyph{
+		Outline: &path.Data{},
+	}
 
 	var posX, posY float64
 	var LsbX funit.Int16 // TODO(voss): use float64
 	var LsbY funit.Int16
 	isClosed := true
 	rClosePath := func() {
-		res.Cmds = append(res.Cmds, GlyphOp{Op: OpClosePath})
+		res.Outline.Close()
 		isClosed = true
 	}
 	rMoveTo := func(dx, dy float64) {
@@ -60,18 +64,12 @@ func (info *decodeInfo) decodeCharString(code []byte, name string) (*Glyph, erro
 		}
 		posX += dx
 		posY += dy
-		res.Cmds = append(res.Cmds, GlyphOp{
-			Op:   OpMoveTo,
-			Args: []float64{posX, posY},
-		})
+		res.Outline.MoveTo(vec.Vec2{X: posX, Y: posY})
 	}
 	rLineTo := func(dx, dy float64) {
 		posX += dx
 		posY += dy
-		res.Cmds = append(res.Cmds, GlyphOp{
-			Op:   OpLineTo,
-			Args: []float64{posX, posY},
-		})
+		res.Outline.LineTo(vec.Vec2{X: posX, Y: posY})
 		isClosed = false
 	}
 	rCurveTo := func(dxa, dya, dxb, dyb, dxc, dyc float64) {
@@ -81,14 +79,11 @@ func (info *decodeInfo) decodeCharString(code []byte, name string) (*Glyph, erro
 		yb := ya + dyb
 		posX = xb + dxc
 		posY = yb + dyc
-		res.Cmds = append(res.Cmds, GlyphOp{
-			Op: OpCurveTo,
-			Args: []float64{
-				xa, ya,
-				xb, yb,
-				posX, posY,
-			},
-		})
+		res.Outline.CubeTo(
+			vec.Vec2{X: xa, Y: ya},
+			vec.Vec2{X: xb, Y: yb},
+			vec.Vec2{X: posX, Y: posY},
+		)
 	}
 
 	cmdStack := [][]byte{code}
@@ -389,30 +384,26 @@ glyphLoop:
 				switch idx {
 				case 0: // flex end (3 args, 2 returns)
 					if len(flexData) == 14 {
-						res.Cmds = append(res.Cmds, GlyphOp{
-							Op: OpCurveTo,
-							Args: []float64{
-								flexData[2], flexData[3],
-								flexData[4], flexData[5],
-								flexData[6], flexData[7],
-							},
-						}, GlyphOp{
-							Op: OpCurveTo,
-							Args: []float64{
-								flexData[8], flexData[9],
-								flexData[10], flexData[11],
-								flexData[12], flexData[13],
-							},
-						})
+						res.Outline.CubeTo(
+							vec.Vec2{X: flexData[2], Y: flexData[3]},
+							vec.Vec2{X: flexData[4], Y: flexData[5]},
+							vec.Vec2{X: flexData[6], Y: flexData[7]},
+						)
+						res.Outline.CubeTo(
+							vec.Vec2{X: flexData[8], Y: flexData[9]},
+							vec.Vec2{X: flexData[10], Y: flexData[11]},
+							vec.Vec2{X: flexData[12], Y: flexData[13]},
+						)
 					}
 					postscriptStack = postscriptStack[:len(postscriptStack)-1]
 				case 1: // flex start (0 args)
 					flexData = flexData[:0]
 				case 2: // flex coordinate pair (0 args)
 					flexData = append(flexData, posX, posY)
-					if len(res.Cmds) > 0 {
+					if len(res.Outline.Cmds) > 0 {
 						// remove the rmoveTo command
-						res.Cmds = res.Cmds[:len(res.Cmds)-1]
+						res.Outline.Cmds = res.Outline.Cmds[:len(res.Outline.Cmds)-1]
+						res.Outline.Coords = res.Outline.Coords[:len(res.Outline.Coords)-1]
 					}
 				case 3: // hint replacement (1 arg)
 					postscriptStack = append(postscriptStack[:0], 3)

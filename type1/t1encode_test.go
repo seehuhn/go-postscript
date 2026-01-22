@@ -21,6 +21,8 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+
+	"seehuhn.de/go/geom/path"
 )
 
 func TestMoveTo(t *testing.T) {
@@ -128,11 +130,11 @@ func TestAppendInt(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(g.Cmds) != 1 || g.Cmds[0].Op != OpMoveTo || len(g.Cmds[0].Args) != 2 {
+		if g.Outline == nil || len(g.Outline.Cmds) != 1 || g.Outline.Cmds[0] != path.CmdMoveTo || len(g.Outline.Coords) != 1 {
 			t.Fatalf("test is broken")
 		}
-		if int32(g.Cmds[0].Args[0]) != x {
-			t.Errorf("x=%g, want %d", g.Cmds[0].Args[0], x)
+		if int32(g.Outline.Coords[0].X) != x {
+			t.Errorf("x=%g, want %d", g.Outline.Coords[0].X, x)
 		}
 	}
 }
@@ -157,11 +159,11 @@ func TestAppendNumber(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(g.Cmds) != 1 || g.Cmds[0].Op != OpMoveTo || len(g.Cmds[0].Args) != 2 {
+		if g.Outline == nil || len(g.Outline.Cmds) != 1 || g.Outline.Cmds[0] != path.CmdMoveTo || len(g.Outline.Coords) != 1 {
 			t.Fatalf("test is broken")
 		}
-		if g.Cmds[0].Args[0] != xEnc {
-			t.Errorf("x=%g, want %g", g.Cmds[0].Args[0], x)
+		if g.Outline.Coords[0].X != xEnc {
+			t.Errorf("x=%g, want %g", g.Outline.Coords[0].X, x)
 		}
 	}
 }

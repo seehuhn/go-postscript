@@ -73,7 +73,7 @@ func (f *Font) FontBBoxPDF() (fontBBox rect.Rect) {
 
 // GlyphBBoxPDF computes the bounding box of a glyph in PDF glyph space units
 // (1/1000th of a text space unit). If the glyph is missing, the bounding box
-// of the ".notdef" glyph is returned intead. If the glyph is blank, the zero
+// of the ".notdef" glyph is returned instead. If the glyph is blank, the zero
 // rectangle is returned.
 func (f *Font) GlyphBBoxPDF(name string) (bbox rect.Rect) {
 	M := f.FontMatrix.Mul(matrix.Scale(1000, 1000))

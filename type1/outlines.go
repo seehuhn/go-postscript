@@ -24,6 +24,7 @@ import (
 	"seehuhn.de/go/geom/rect"
 )
 
+// Outlines contains the glyph outlines and encoding for a Type 1 font.
 type Outlines struct {
 	Glyphs map[string]*Glyph
 
@@ -92,7 +93,7 @@ func (o *Outlines) IsBlank(name string) bool {
 
 // GlyphBBox computes the bounding box of a glyph, after the matrix M has been
 // applied to the glyph outline. If the glyph is missing, the bounding box of
-// the ".notdef" glyph is returned intead. If the glyph is blank, the zero
+// the ".notdef" glyph is returned instead. If the glyph is blank, the zero
 // rectangle is returned.
 func (o *Outlines) GlyphBBox(M matrix.Matrix, name string) (bbox rect.Rect) {
 	g, ok := o.Glyphs[name]

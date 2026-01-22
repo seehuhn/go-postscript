@@ -25,6 +25,8 @@ import (
 	"golang.org/x/exp/slices"
 
 	"seehuhn.de/go/geom/matrix"
+	"seehuhn.de/go/geom/path"
+	"seehuhn.de/go/geom/vec"
 	"seehuhn.de/go/postscript"
 	"seehuhn.de/go/postscript/funit"
 	"seehuhn.de/go/postscript/pfb"
@@ -299,30 +301,28 @@ creationDateLoop:
 		g := glyphs[seac.name] // TODO(voss): do we need to make a copy here?
 		g.WidthX = base.WidthX
 		g.WidthY = base.WidthY
-		g.Cmds = append(g.Cmds[:0], base.Cmds...)
-		for _, cmd := range accent.Cmds {
-			switch cmd.Op {
-			case OpMoveTo:
-				g.Cmds = append(g.Cmds, GlyphOp{
-					Op:   OpMoveTo,
-					Args: []float64{cmd.Args[0] + seac.dx, cmd.Args[1] + seac.dy},
-				})
-			case OpLineTo:
-				g.Cmds = append(g.Cmds, GlyphOp{
-					Op:   OpLineTo,
-					Args: []float64{cmd.Args[0] + seac.dx, cmd.Args[1] + seac.dy},
-				})
-			case OpCurveTo:
-				g.Cmds = append(g.Cmds, GlyphOp{
-					Op: OpCurveTo,
-					Args: []float64{
-						cmd.Args[0] + seac.dx, cmd.Args[1] + seac.dy,
-						cmd.Args[2] + seac.dx, cmd.Args[3] + seac.dy,
-						cmd.Args[4] + seac.dx, cmd.Args[5] + seac.dy,
-					},
+
+		// copy base outline
+		if base.Outline != nil {
+			g.Outline = &path.Data{
+				Cmds:   append([]path.Command(nil), base.Outline.Cmds...),
+				Coords: append([]vec.Vec2(nil), base.Outline.Coords...),
+			}
+		} else {
+			g.Outline = &path.Data{}
+		}
+
+		// append translated accent outline
+		if accent.Outline != nil {
+			g.Outline.Cmds = append(g.Outline.Cmds, accent.Outline.Cmds...)
+			for _, coord := range accent.Outline.Coords {
+				g.Outline.Coords = append(g.Outline.Coords, vec.Vec2{
+					X: coord.X + seac.dx,
+					Y: coord.Y + seac.dy,
 				})
 			}
 		}
+
 		g.HStem = append(g.HStem[:0], base.HStem...)
 		g.VStem = append(g.VStem[:0], base.VStem...)
 		glyphs[seac.name] = g
@@ -335,7 +335,8 @@ creationDateLoop:
 			width = gi.WidthX
 		}
 		glyphs[".notdef"] = &Glyph{
-			WidthX: width,
+			Outline: &path.Data{},
+			WidthX:  width,
 		}
 	}
 
