@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.7.0] (2025-01-25)
+
+### Changed
+- **API Change**: type1.Glyph now stores outlines as `Outline *path.Data` instead of `Cmds []GlyphOp`, using the standardized path representation from go-geom
+- **API Change**: type1.Glyph.Path() iterator now uses `vec.Vec2` instead of `path.Point` for point coordinates
+- **AFM writer** now outputs floating-point values with full precision instead of truncating to integers
+- Updated dependency seehuhn.de/go/geom for new vector and path types
+
+### Fixed
+- **AFM parser** now handles malformed numeric values gracefully by skipping invalid entries instead of returning errors
+- **AFM parser** silently ignores extremely large values, NaN, and infinities
+- Fuzzing failure addressed
+
+### Removed
+- **GlyphOp, GlyphOpType**, and Op* constants removed (use `path.Command` and `path.Data` instead)
+
 ## [v0.6.0] (2025-06-30)
 
 ### Added
