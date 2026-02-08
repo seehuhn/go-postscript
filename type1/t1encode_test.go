@@ -102,6 +102,7 @@ func TestCurveTo(t *testing.T) {
 		g1 := &Glyph{}
 		g1.MoveTo(baseX, baseY)
 		g1.CurveTo(baseX+c.a, baseY+c.b, baseX+c.c, baseY+c.d, baseX+c.e, baseY+c.f)
+		g1.ClosePath()
 		buf := g1.encodeCharString(0, 0)
 
 		ctx := &decodeInfo{}

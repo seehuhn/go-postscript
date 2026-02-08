@@ -45,6 +45,7 @@ func (info *decodeInfo) decodeCharString(code []byte, name string) (*Glyph, erro
 
 	var postscriptStack []float64
 	var flexData []float64
+	inFlex := false
 
 	res := &Glyph{
 		Outline: &path.Data{},
@@ -59,11 +60,16 @@ func (info *decodeInfo) decodeCharString(code []byte, name string) (*Glyph, erro
 		isClosed = true
 	}
 	rMoveTo := func(dx, dy float64) {
+		posX += dx
+		posY += dy
+		if inFlex {
+			// during flex, rmoveto is used only to track coordinates;
+			// the actual path commands are emitted by othersubr 0
+			return
+		}
 		if !isClosed {
 			rClosePath()
 		}
-		posX += dx
-		posY += dy
 		res.Outline.MoveTo(vec.Vec2{X: posX, Y: posY})
 	}
 	rLineTo := func(dx, dy float64) {
@@ -84,6 +90,7 @@ func (info *decodeInfo) decodeCharString(code []byte, name string) (*Glyph, erro
 			vec.Vec2{X: xb, Y: yb},
 			vec.Vec2{X: posX, Y: posY},
 		)
+		isClosed = false
 	}
 
 	cmdStack := [][]byte{code}
@@ -383,6 +390,7 @@ glyphLoop:
 
 				switch idx {
 				case 0: // flex end (3 args, 2 returns)
+					inFlex = false
 					if len(flexData) == 14 {
 						res.Outline.CubeTo(
 							vec.Vec2{X: flexData[2], Y: flexData[3]},
@@ -394,17 +402,14 @@ glyphLoop:
 							vec.Vec2{X: flexData[10], Y: flexData[11]},
 							vec.Vec2{X: flexData[12], Y: flexData[13]},
 						)
+						isClosed = false
 					}
 					postscriptStack = postscriptStack[:len(postscriptStack)-1]
 				case 1: // flex start (0 args)
+					inFlex = true
 					flexData = flexData[:0]
 				case 2: // flex coordinate pair (0 args)
 					flexData = append(flexData, posX, posY)
-					if len(res.Outline.Cmds) > 0 {
-						// remove the rmoveTo command
-						res.Outline.Cmds = res.Outline.Cmds[:len(res.Outline.Cmds)-1]
-						res.Outline.Coords = res.Outline.Coords[:len(res.Outline.Coords)-1]
-					}
 				case 3: // hint replacement (1 arg)
 					postscriptStack = append(postscriptStack[:0], 3)
 				default:
