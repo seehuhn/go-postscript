@@ -85,7 +85,7 @@ func TestFromUnicode(t *testing.T) {
 		t.Error("wrong name for ffl-ligature")
 	}
 	seen := make(map[string]bool)
-	for r := rune(0); r < 65537; r++ {
+	for r := range rune(65537) {
 		if !unicode.IsGraphic(r) {
 			continue
 		}

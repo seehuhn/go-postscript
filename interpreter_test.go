@@ -18,11 +18,11 @@ package postscript
 
 import (
 	"io"
-	"sort"
+	"maps"
+	"slices"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"golang.org/x/exp/maps"
 )
 
 func TestArray(t *testing.T) {
@@ -116,8 +116,7 @@ func FuzzInterpreter(f *testing.F) {
 	f.Add("/a {a} def a")
 	f.Add("/a {{}} def userdict /a get dup 0 exch put a")
 	f.Add("/a {{} {}} def userdict /a get dup 0 exch put userdict /a get dup 1 exch put a")
-	builtins := maps.Keys(makeSystemDict())
-	sort.Slice(builtins, func(i, j int) bool { return builtins[i] < builtins[j] })
+	builtins := slices.Sorted(maps.Keys(makeSystemDict()))
 	for _, name := range builtins {
 		f.Add("1 [2 3] (four) " + string(name))
 	}

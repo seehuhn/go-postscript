@@ -17,9 +17,10 @@
 package type1
 
 import (
+	"maps"
+	"slices"
 	"sort"
 
-	"golang.org/x/exp/maps"
 	"seehuhn.de/go/geom/matrix"
 	"seehuhn.de/go/geom/rect"
 )
@@ -46,7 +47,7 @@ func (o *Outlines) NumGlyphs() int {
 // The list starts with ".notdef", followed by the glyphs in the Encoding
 // vector, followed by the remaining glyph names in alphabetical order.
 func (o *Outlines) GlyphList() []string {
-	glyphNames := maps.Keys(o.Glyphs)
+	glyphNames := slices.Collect(maps.Keys(o.Glyphs))
 	if _, ok := o.Glyphs[".notdef"]; !ok {
 		glyphNames = append(glyphNames, ".notdef")
 	}

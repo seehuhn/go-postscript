@@ -17,9 +17,9 @@
 package afm
 
 import (
+	"maps"
+	"slices"
 	"sort"
-
-	"golang.org/x/exp/maps"
 
 	"seehuhn.de/go/geom/rect"
 	"seehuhn.de/go/postscript/funit"
@@ -94,7 +94,7 @@ func (f *Metrics) NumGlyphs() int {
 // Encoding vector, followed by the remaining glyphs in alphabetical order
 // of their names.
 func (f *Metrics) GlyphList() []string {
-	glyphNames := maps.Keys(f.Glyphs)
+	glyphNames := slices.Collect(maps.Keys(f.Glyphs))
 
 	order := make(map[string]int, len(glyphNames))
 	for _, name := range glyphNames {

@@ -369,7 +369,7 @@ glyphLoop:
 				// fmt.Println("callothersubr", idx, args)
 				stack = stack[:len(stack)-2]
 				postscriptStack = postscriptStack[:0]
-				for i := 0; i < argN; i++ {
+				for range argN {
 					val := stack[len(stack)-1]
 					stack = stack[:len(stack)-1]
 					postscriptStack = append(postscriptStack, val)

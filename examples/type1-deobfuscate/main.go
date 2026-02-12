@@ -129,7 +129,7 @@ func deobfuscate(fname string) error {
 	r.eexecR = eexecR
 
 	// skip the IV
-	for i := 0; i < eexecN; i++ {
+	for range eexecN {
 		_, err := r.nextDecoded()
 		if err != nil {
 			return err

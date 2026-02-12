@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"math"
 	"strconv"
 
@@ -374,9 +375,7 @@ func bCopy(intp *Interpreter) error {
 		if !ok {
 			return intp.e(eTypecheck, "copy: mismatched argument types")
 		}
-		for k, v := range a {
-			b[k] = v
-		}
+		maps.Copy(b, a)
 		res = b
 	case String:
 		b, ok := b.(String)
@@ -1195,7 +1194,7 @@ func bRepeat(intp *Interpreter) error {
 		return intp.e(eTypecheck, "repeat: invalid argument")
 	}
 	intp.Stack = intp.Stack[:len(intp.Stack)-2]
-	for i := Integer(0); i < count; i++ {
+	for range count {
 		err := intp.executeOne(proc, true)
 		if err == errStop {
 			break

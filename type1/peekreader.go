@@ -54,10 +54,7 @@ func (r *peekReader) Read(b []byte) (n int, err error) {
 	if len(r.buf) == 0 {
 		return r.r.Read(b)
 	}
-	k := len(b)
-	if k > len(r.buf) {
-		k = len(r.buf)
-	}
+	k := min(len(b), len(r.buf))
 	copy(b, r.buf[:k])
 	r.buf = r.buf[k:]
 	return k, nil

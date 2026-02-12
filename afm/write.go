@@ -25,7 +25,7 @@ import (
 
 // Write writes the metrics to the given writer in AFM format.
 func (m *Metrics) Write(w io.Writer) error {
-	write := func(format string, a ...interface{}) error {
+	write := func(format string, a ...any) error {
 		_, err := fmt.Fprintf(w, format+"\n", a...)
 		return err
 	}
@@ -105,12 +105,13 @@ func (m *Metrics) Write(w io.Writer) error {
 		urx := strconv.FormatFloat(g.BBox.URx, 'f', -1, 64)
 		ury := strconv.FormatFloat(g.BBox.URy, 'f', -1, 64)
 		wx := strconv.FormatFloat(g.WidthX, 'f', -1, 64)
-		line := fmt.Sprintf("C %d ; WX %s ; N %s ; B %s %s %s %s ;",
-			charCode, wx, name, llx, lly, urx, ury)
+		var line strings.Builder
+		line.WriteString(fmt.Sprintf("C %d ; WX %s ; N %s ; B %s %s %s %s ;",
+			charCode, wx, name, llx, lly, urx, ury))
 		for succ, lig := range g.Ligatures {
-			line += fmt.Sprintf(" L %s %s ;", succ, lig)
+			line.WriteString(fmt.Sprintf(" L %s %s ;", succ, lig))
 		}
-		if err := write("%s", line); err != nil {
+		if err := write("%s", line.String()); err != nil {
 			return err
 		}
 	}

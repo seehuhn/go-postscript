@@ -21,7 +21,7 @@ import (
 	"strings"
 )
 
-type Object interface{}
+type Object any
 
 type Integer int
 

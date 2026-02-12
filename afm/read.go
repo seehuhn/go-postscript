@@ -56,8 +56,8 @@ func Read(fd io.Reader) (*Metrics, error) {
 
 			ligTmp := make(map[string]string)
 
-			keyVals := strings.Split(line, ";")
-			for _, keyVal := range keyVals {
+			keyVals := strings.SplitSeq(line, ";")
+			for keyVal := range keyVals {
 				ff := strings.Fields(keyVal)
 				if len(ff) < 2 {
 					continue

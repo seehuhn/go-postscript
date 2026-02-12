@@ -19,10 +19,9 @@ package type1
 import (
 	"errors"
 	"io"
+	"maps"
+	"slices"
 	"time"
-
-	"golang.org/x/exp/maps"
-	"golang.org/x/exp/slices"
 
 	"seehuhn.de/go/geom/matrix"
 	"seehuhn.de/go/geom/path"
@@ -272,8 +271,7 @@ creationDateLoop:
 	if !ok {
 		return nil, errors.New("missing/invalid CharStrings dictionary")
 	}
-	names := maps.Keys(cs)
-	slices.Sort(names)
+	names := slices.Sorted(maps.Keys(cs))
 	glyphs := make(map[string]*Glyph)
 	for _, name := range names {
 		obfuscated, ok := cs[name].(postscript.String)

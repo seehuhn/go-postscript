@@ -25,7 +25,7 @@ import (
 
 func TestPeekReader(t *testing.T) {
 	msg := "Hello World!"
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		var r io.Reader
 		switch i {
 		case 0:

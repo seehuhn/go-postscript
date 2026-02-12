@@ -20,10 +20,9 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"maps"
 	"slices"
 	"sort"
-
-	"golang.org/x/exp/maps"
 )
 
 // ReadCMap reads a CMap File from an [io.Reader].
@@ -43,8 +42,7 @@ func ReadCMap(r io.Reader) (Dict, error) {
 	}
 
 	// make the function deterministic
-	names := maps.Keys(intp.CMapDirectory)
-	slices.Sort(names)
+	names := slices.Sorted(maps.Keys(intp.CMapDirectory))
 
 	for _, name := range names {
 		val := intp.CMapDirectory[name]

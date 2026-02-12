@@ -81,7 +81,7 @@ func (s *scanner) BeginEexec(ivLen int) error {
 
 	// skip the IV
 	s.regurgitate = true
-	for i := 0; i < eexecN; i++ {
+	for range eexecN {
 		_, err := s.Next()
 		if err != nil {
 			return err

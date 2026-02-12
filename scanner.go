@@ -213,7 +213,7 @@ func (s *scanner) ReadString() (String, error) {
 				ignoreLF = true
 			case '0', '1', '2', '3', '4', '5', '6', '7':
 				oct := b - '0'
-				for i := 0; i < 2; i++ {
+				for range 2 {
 					b, err = s.Peek()
 					if err == io.EOF {
 						break
@@ -510,7 +510,7 @@ func (s *scanner) SkipOptionalByte(b byte) {
 
 // SkipN skips N bytes which have already been peeked.
 func (s *scanner) SkipN(n int) {
-	for i := 0; i < n; i++ {
+	for range n {
 		s.Next()
 	}
 }

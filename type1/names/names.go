@@ -38,8 +38,8 @@ func ToUnicode(name string, fontName string) string {
 		name = name[:idx]
 	}
 
-	parts := strings.Split(name, "_")
-	for _, part := range parts {
+	parts := strings.SplitSeq(name, "_")
+	for part := range parts {
 		if fontName == "ZapfDingbats" {
 			c, ok := glyph.lookup("zapfdingbats", part)
 			if ok {

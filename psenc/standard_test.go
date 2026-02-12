@@ -24,7 +24,7 @@ import (
 
 func TestStandardEncoding(t *testing.T) {
 	enc := make([]string, 256)
-	for i := 0; i < 256; i++ {
+	for i := range 256 {
 		enc[i] = ".notdef"
 	}
 	for name, c := range StandardEncodingRev {
