@@ -89,10 +89,7 @@ creationDateLoop:
 		fontName = n
 	}
 
-	fontInfo, ok := fd["FontInfo"].(postscript.Dict)
-	if !ok {
-		return nil, errors.New("invalid FontInfo")
-	}
+	fontInfo, _ := fd["FontInfo"].(postscript.Dict)
 
 	Version, _ := fontInfo["version"].(postscript.String)
 	if len(Version) == 0 {

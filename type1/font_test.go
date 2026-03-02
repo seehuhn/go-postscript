@@ -20,11 +20,13 @@ import (
 	"bytes"
 	"os"
 	"reflect"
+	"regexp"
 	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
 
+	"seehuhn.de/go/geom/matrix"
 	"seehuhn.de/go/postscript/funit"
 )
 
@@ -34,6 +36,57 @@ func makeEmptyEncoding() []string {
 		encoding[i] = ".notdef"
 	}
 	return encoding
+}
+
+func TestReadMissingFontInfo(t *testing.T) {
+	encoding := makeEmptyEncoding()
+	encoding[65] = "A"
+	F := &Font{
+		FontInfo: &FontInfo{
+			FontName:   "NoInfo",
+			FontMatrix: matrix.Matrix{0.001, 0, 0, 0.001, 0, 0},
+		},
+		Outlines: &Outlines{
+			Private:  &PrivateDict{},
+			Glyphs:   map[string]*Glyph{},
+			Encoding: encoding,
+		},
+	}
+	g := F.NewGlyph(".notdef", 100)
+	g.MoveTo(10, 10)
+	g.LineTo(20, 10)
+	g.LineTo(20, 20)
+	g.LineTo(10, 20)
+	g.ClosePath()
+	g = F.NewGlyph("A", 200)
+	g.MoveTo(0, 10)
+	g.LineTo(200, 10)
+	g.LineTo(100, 110)
+	g.ClosePath()
+
+	buf := &bytes.Buffer{}
+	err := F.Write(buf, &WriterOptions{Format: FormatNoEExec})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// strip the FontInfo block from the PFA
+	re := regexp.MustCompile(`(?s)/FontInfo \d+ dict dup begin\n.*?end def\n`)
+	pfa := re.ReplaceAll(buf.Bytes(), nil)
+
+	G, err := Read(bytes.NewReader(pfa))
+	if err != nil {
+		t.Fatalf("reading font without FontInfo: %v", err)
+	}
+	if G.FontName != "NoInfo" {
+		t.Errorf("FontName: got %q, want %q", G.FontName, "NoInfo")
+	}
+	if G.FontMatrix != F.FontMatrix {
+		t.Errorf("FontMatrix: got %v, want %v", G.FontMatrix, F.FontMatrix)
+	}
+	if len(G.Glyphs) != 2 {
+		t.Errorf("glyph count: got %d, want 2", len(G.Glyphs))
+	}
 }
 
 func FuzzFont(f *testing.F) {
