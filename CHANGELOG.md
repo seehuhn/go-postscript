@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.7.1] (2026-03-31)
+
+### Changed
+- type1: `FontInfo` is now optional when reading Type 1 fonts.
+- Dropped `golang.org/x/exp` dependency in favour of standard library.
+
+### Fixed
+- type1: flex handling in charstring decoder.
+
 ## [v0.7.0] (2025-01-25)
 
 ### Changed
