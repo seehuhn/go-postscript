@@ -30,8 +30,3 @@ func invalidSince(reason string) error {
 		Reason: reason,
 	}
 }
-
-var (
-	errStackOverflow = invalidSince("type 1 buildchar stack overflow")
-	errIncomplete    = invalidSince("incomplete type 1 charstring")
-)

@@ -44,10 +44,7 @@ func TestMoveTo(t *testing.T) {
 		buf := g1.encodeCharString(0, 0)
 
 		ctx := &decodeInfo{}
-		g2, err := ctx.decodeCharString(buf, "test")
-		if err != nil {
-			t.Fatal(err)
-		}
+		g2 := ctx.decodeCharString(buf, "test")
 
 		if d := cmp.Diff(g1, g2); d != "" {
 			t.Errorf("unexpected diff: %s", d)
@@ -75,10 +72,7 @@ func TestLineTo(t *testing.T) {
 		buf := g1.encodeCharString(0, 0)
 
 		ctx := &decodeInfo{}
-		g2, err := ctx.decodeCharString(buf, "test")
-		if err != nil {
-			t.Fatal(err)
-		}
+		g2 := ctx.decodeCharString(buf, "test")
 
 		if d := cmp.Diff(g1, g2); d != "" {
 			t.Errorf("unexpected diff: %s", d)
@@ -106,10 +100,7 @@ func TestCurveTo(t *testing.T) {
 		buf := g1.encodeCharString(0, 0)
 
 		ctx := &decodeInfo{}
-		g2, err := ctx.decodeCharString(buf, "test")
-		if err != nil {
-			t.Fatal(err)
-		}
+		g2 := ctx.decodeCharString(buf, "test")
 
 		if d := cmp.Diff(g1, g2); d != "" {
 			t.Errorf("unexpected diff: %s", d)
@@ -127,10 +118,7 @@ func TestAppendInt(t *testing.T) {
 		buf = appendOp(buf, t1hmoveto)
 		buf = appendOp(buf, t1endchar)
 		ctx := &decodeInfo{}
-		g, err := ctx.decodeCharString(buf, "test")
-		if err != nil {
-			t.Fatal(err)
-		}
+		g := ctx.decodeCharString(buf, "test")
 		if g.Outline == nil || len(g.Outline.Cmds) != 1 || g.Outline.Cmds[0] != path.CmdMoveTo || len(g.Outline.Coords) != 1 {
 			t.Fatalf("test is broken")
 		}
@@ -156,10 +144,7 @@ func TestAppendNumber(t *testing.T) {
 		}
 
 		ctx := &decodeInfo{}
-		g, err := ctx.decodeCharString(buf, "test")
-		if err != nil {
-			t.Fatal(err)
-		}
+		g := ctx.decodeCharString(buf, "test")
 		if g.Outline == nil || len(g.Outline.Cmds) != 1 || g.Outline.Cmds[0] != path.CmdMoveTo || len(g.Outline.Coords) != 1 {
 			t.Fatalf("test is broken")
 		}

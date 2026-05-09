@@ -36,7 +36,7 @@ type seacInfo struct {
 	dx, dy       float64
 }
 
-func (info *decodeInfo) decodeCharString(code []byte, name string) (*Glyph, error) {
+func (info *decodeInfo) decodeCharString(code []byte, name string) *Glyph {
 	const maxStack = 24
 	stack := make([]float64, 0, maxStack)
 	clearStack := func() {
@@ -49,6 +49,19 @@ func (info *decodeInfo) decodeCharString(code []byte, name string) (*Glyph, erro
 
 	res := &Glyph{
 		Outline: &path.Data{},
+	}
+
+	// On a malformed charstring, abandon the partial decode and
+	// return a blank stub carrying only WidthX/WidthY (zero before
+	// hsbw/sbw set them).  The caller substitutes this for the bad
+	// glyph so layout metrics survive without leaking partial hint
+	// or path state.
+	bail := func() *Glyph {
+		return &Glyph{
+			Outline: &path.Data{},
+			WidthX:  res.WidthX,
+			WidthY:  res.WidthY,
+		}
 	}
 
 	var posX, posY float64
@@ -101,7 +114,7 @@ glyphLoop:
 	opLoop:
 		for len(code) > 0 {
 			if len(stack) > maxStack {
-				return nil, errStackOverflow
+				return bail()
 			}
 
 			op := t1op(code[0])
@@ -112,7 +125,7 @@ glyphLoop:
 				continue
 			} else if op >= 247 && op <= 250 {
 				if len(code) < 2 {
-					return nil, errIncomplete
+					return bail()
 				}
 				val := (float64(op)-247)*256 + float64(code[1]) + 108
 				stack = append(stack, val)
@@ -121,7 +134,7 @@ glyphLoop:
 				continue
 			} else if op >= 251 && op <= 254 {
 				if len(code) < 2 {
-					return nil, errIncomplete
+					return bail()
 				}
 				val := (251-float64(op))*256 - float64(code[1]) - 108
 				stack = append(stack, val)
@@ -130,7 +143,7 @@ glyphLoop:
 				continue
 			} else if op == 255 {
 				if len(code) < 5 {
-					return nil, errIncomplete
+					return bail()
 				}
 				val := int32(code[1])<<24 | int32(code[2])<<16 |
 					int32(code[3])<<8 | int32(code[4])
@@ -142,7 +155,7 @@ glyphLoop:
 
 			if op == 12 {
 				if len(code) < 2 {
-					return nil, errIncomplete
+					return bail()
 				}
 				op = op<<8 | t1op(code[1])
 				code = code[2:]
@@ -157,7 +170,7 @@ glyphLoop:
 				break glyphLoop
 			case t1hsbw:
 				if len(stack) < 2 {
-					return nil, errIncomplete
+					return bail()
 				}
 				// fmt.Printf("hsbw(%g, %g)\n", stack[0], stack[1])
 				posX = stack[0]
@@ -169,7 +182,7 @@ glyphLoop:
 				clearStack()
 			case t1seac:
 				if len(stack) < 5 {
-					return nil, errIncomplete
+					return bail()
 				}
 				// fmt.Printf("seac(%g, %g, %g, %g, %g)\n", stack[0], stack[1], stack[2], stack[3], stack[4])
 				// asb := stack[0]
@@ -177,11 +190,11 @@ glyphLoop:
 				adY := stack[2]
 				bchar, err := getInt(stack[3])
 				if err != nil {
-					return nil, err
+					return bail()
 				}
 				achar, err := getInt(stack[4])
 				if err != nil {
-					return nil, err
+					return bail()
 				}
 				info.seacs = append(info.seacs, seacInfo{
 					name:   name,
@@ -194,7 +207,7 @@ glyphLoop:
 				break glyphLoop
 			case t1sbw:
 				if len(stack) < 4 {
-					return nil, errIncomplete
+					return bail()
 				}
 				// fmt.Printf("sbw(%g, %g, %g, %g)\n", stack[0], stack[1], stack[2], stack[3])
 				posX = stack[0]
@@ -210,63 +223,63 @@ glyphLoop:
 				rClosePath()
 			case t1hlineto:
 				if len(stack) < 1 {
-					return nil, errIncomplete
+					return bail()
 				}
 				// fmt.Printf("hlineto(%g)\n", stack[0])
 				rLineTo(stack[0], 0)
 				clearStack()
 			case t1hmoveto:
 				if len(stack) < 1 {
-					return nil, errIncomplete
+					return bail()
 				}
 				// fmt.Printf("hmoveto(%g)\n", stack[0])
 				rMoveTo(stack[0], 0)
 				clearStack()
 			case t1hvcurveto:
 				if len(stack) < 4 {
-					return nil, errIncomplete
+					return bail()
 				}
 				// fmt.Printf("hvcurveto(%g, %g, %g, %g)\n", stack[0], stack[1], stack[2], stack[3])
 				rCurveTo(stack[0], 0, stack[1], stack[2], 0, stack[3])
 				clearStack()
 			case t1rlineto:
 				if len(stack) < 2 {
-					return nil, errIncomplete
+					return bail()
 				}
 				// fmt.Printf("rlineto(%g, %g)\n", stack[0], stack[1])
 				rLineTo(stack[0], stack[1])
 				clearStack()
 			case t1rmoveto:
 				if len(stack) < 2 {
-					return nil, errIncomplete
+					return bail()
 				}
 				// fmt.Printf("rmoveto(%g, %g)\n", stack[0], stack[1])
 				rMoveTo(stack[0], stack[1])
 				clearStack()
 			case t1rrcurveto:
 				if len(stack) < 6 {
-					return nil, errIncomplete
+					return bail()
 				}
 				// fmt.Printf("rrcurveto(%g, %g, %g, %g, %g, %g)\n", stack[0], stack[1], stack[2], stack[3], stack[4], stack[5])
 				rCurveTo(stack[0], stack[1], stack[2], stack[3], stack[4], stack[5])
 				clearStack()
 			case t1vhcurveto:
 				if len(stack) < 4 {
-					return nil, errIncomplete
+					return bail()
 				}
 				// fmt.Printf("vhcurveto(%g, %g, %g, %g)\n", stack[0], stack[1], stack[2], stack[3])
 				rCurveTo(0, stack[0], stack[1], stack[2], stack[3], 0)
 				clearStack()
 			case t1vlineto:
 				if len(stack) < 1 {
-					return nil, errIncomplete
+					return bail()
 				}
 				// fmt.Printf("vlineto(%g)\n", stack[0])
 				rLineTo(0, stack[0])
 				clearStack()
 			case t1vmoveto:
 				if len(stack) < 1 {
-					return nil, errIncomplete
+					return bail()
 				}
 				// fmt.Printf("vmoveto(%g)\n", stack[0])
 				rMoveTo(0, stack[0])
@@ -277,7 +290,7 @@ glyphLoop:
 				clearStack()
 			case t1hstem:
 				if len(stack) < 2 {
-					return nil, errIncomplete
+					return bail()
 				}
 				// fmt.Printf("hstem(%g, %g)\n", stack[0], stack[1])
 				a := LsbY + funit.Int16(math.Round(stack[0]))
@@ -286,7 +299,7 @@ glyphLoop:
 				clearStack()
 			case t1hstem3:
 				if len(stack) < 6 {
-					return nil, errIncomplete
+					return bail()
 				}
 				// fmt.Printf("hstem3(%g, %g, %g, %g, %g, %g)\n", stack[0], stack[1], stack[2], stack[3], stack[4], stack[5])
 				a := LsbY + funit.Int16(math.Round(stack[0]))
@@ -299,7 +312,7 @@ glyphLoop:
 				clearStack()
 			case t1vstem:
 				if len(stack) < 2 {
-					return nil, errIncomplete
+					return bail()
 				}
 				// fmt.Printf("vstem(%g, %g)\n", stack[0], stack[1])
 				a := LsbX + funit.Int16(math.Round(stack[0]))
@@ -308,7 +321,7 @@ glyphLoop:
 				clearStack()
 			case t1vstem3:
 				if len(stack) < 6 {
-					return nil, errIncomplete
+					return bail()
 				}
 				// fmt.Printf("vstem3(%g, %g, %g, %g, %g, %g)\n", stack[0], stack[1], stack[2], stack[3], stack[4], stack[5])
 				a := LsbX + funit.Int16(math.Round(stack[0]))
@@ -321,18 +334,18 @@ glyphLoop:
 				clearStack()
 			case t1div:
 				if len(stack) < 2 {
-					return nil, errIncomplete
+					return bail()
 				}
 				// fmt.Printf("div(%g, %g)\n", stack[0], stack[1])
 				stack = append(stack[:len(stack)-2], stack[len(stack)-2]/stack[len(stack)-1])
 
 			case t1callsubr:
 				if len(stack) < 1 {
-					return nil, errIncomplete
+					return bail()
 				}
 				idx, err := getInt(stack[len(stack)-1])
 				if err != nil {
-					return nil, err
+					return bail()
 				}
 				stack = stack[:len(stack)-1]
 				switch idx { // pre-defined subroutines
@@ -342,29 +355,36 @@ glyphLoop:
 				}
 
 				if idx < 0 || idx >= len(info.subrs) {
-					return nil, invalidSince("invalid subr index")
+					return bail()
 				}
 				// fmt.Printf("callsubr(%d)\n", idx)
 
 				cmdStack = append(cmdStack, code)
 				if len(cmdStack) > 10 {
-					return nil, invalidSince("maximum call stack size exceeded")
+					return bail()
 				}
 				code = info.subrs[idx]
 			case t1callothersubr:
 				if len(stack) < 2 {
-					return nil, errIncomplete
+					return bail()
 				}
 				idx, err := getInt(stack[len(stack)-1])
 				if err != nil {
-					return nil, err
+					return bail()
 				}
 				argN, err := getInt(stack[len(stack)-2])
 				if err != nil {
-					return nil, err
+					return bail()
+				}
+				// argN args must fit in the main stack, so no legitimate
+				// charstring can have argN > maxStack; the upper bound
+				// also keeps argN+2 below from overflowing on 32-bit
+				// platforms.
+				if argN < 0 || argN > maxStack {
+					return bail()
 				}
 				if len(stack) < argN+2 {
-					return nil, errIncomplete
+					return bail()
 				}
 				// fmt.Println("callothersubr", idx, args)
 				stack = stack[:len(stack)-2]
@@ -390,6 +410,9 @@ glyphLoop:
 
 				switch idx {
 				case 0: // flex end (3 args, 2 returns)
+					if argN != 3 {
+						return bail()
+					}
 					inFlex = false
 					if len(flexData) == 14 {
 						res.Outline.CubeTo(
@@ -406,18 +429,27 @@ glyphLoop:
 					}
 					postscriptStack = postscriptStack[:len(postscriptStack)-1]
 				case 1: // flex start (0 args)
+					if argN != 0 {
+						return bail()
+					}
 					inFlex = true
 					flexData = flexData[:0]
 				case 2: // flex coordinate pair (0 args)
+					if argN != 0 {
+						return bail()
+					}
 					flexData = append(flexData, posX, posY)
 				case 3: // hint replacement (1 arg)
+					if argN != 1 {
+						return bail()
+					}
 					postscriptStack = append(postscriptStack[:0], 3)
 				default:
-					// can be ignored
+					// font-private othersubrs: ignore
 				}
 			case t1pop:
 				if len(postscriptStack) < 1 {
-					return nil, invalidSince("postscript interpreter operand stack underflow")
+					return bail()
 				}
 				// fmt.Println("pop")
 				val := postscriptStack[len(postscriptStack)-1]
@@ -429,7 +461,7 @@ glyphLoop:
 				break opLoop
 			case t1setcurrentpoint:
 				if len(stack) < 2 {
-					return nil, errIncomplete
+					return bail()
 				}
 				// fmt.Printf("setcurrentpoint(%g, %g)\n", stack[0], stack[1])
 				posX = stack[0]
@@ -437,7 +469,7 @@ glyphLoop:
 				clearStack()
 
 			default:
-				return nil, invalidSince(fmt.Sprintf("invalid type 1 opcode %d", op))
+				return bail()
 			}
 		}
 	}
@@ -445,7 +477,7 @@ glyphLoop:
 		rClosePath()
 	}
 
-	return res, nil
+	return res
 }
 
 func getInt(x float64) (int, error) {

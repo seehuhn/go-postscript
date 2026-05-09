@@ -276,12 +276,7 @@ creationDateLoop:
 			continue
 		}
 		plain := deobfuscateCharstring(obfuscated, int(lenIV))
-		glyph, err := ctx.decodeCharString(plain, string(name))
-		if err != nil {
-			return nil, err
-		}
-
-		glyphs[string(name)] = glyph
+		glyphs[string(name)] = ctx.decodeCharString(plain, string(name))
 	}
 
 	for _, seac := range ctx.seacs {
