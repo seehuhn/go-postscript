@@ -34,7 +34,7 @@ func obfuscateCharstring(plain []byte, iv []byte) []byte {
 }
 
 func deobfuscateCharstring(cipher []byte, n int) []byte {
-	if len(cipher) < n {
+	if n < 0 || len(cipher) < n {
 		return nil
 	}
 

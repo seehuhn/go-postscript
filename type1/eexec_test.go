@@ -16,7 +16,10 @@
 
 package type1
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
 
 func TestObfuscation(t *testing.T) {
 	iv := []byte{1, 2, 3, 4}
@@ -36,5 +39,18 @@ func TestObfuscation(t *testing.T) {
 	}
 	if len(plain2) != cap(plain2) {
 		t.Errorf("plain2 has wrong capacity")
+	}
+}
+
+// TestDeobfuscateNegativeLenIV checks that a negative lenIV (which can come
+// from a malicious /Private dict in a Type 1 font) is rejected instead of
+// triggering a makeslice panic via len(cipher)-n overflow.
+func TestDeobfuscateNegativeLenIV(t *testing.T) {
+	cipher := []byte{1, 2, 3, 4, 5, 6, 7, 8}
+	if plain := deobfuscateCharstring(cipher, math.MinInt); plain != nil {
+		t.Errorf("expected nil for negative n, got %d bytes", len(plain))
+	}
+	if plain := deobfuscateCharstring(cipher, -1); plain != nil {
+		t.Errorf("expected nil for negative n, got %d bytes", len(plain))
 	}
 }

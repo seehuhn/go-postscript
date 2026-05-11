@@ -346,7 +346,7 @@ func bCopy(intp *Interpreter) error {
 		if n < 0 {
 			return intp.e(eRangecheck, "copy: invalid count %d", n)
 		}
-		if len(intp.Stack) < int(n)+1 {
+		if n > Integer(len(intp.Stack)-1) {
 			return intp.e(eStackunderflow, "copy: not enough arguments")
 		}
 		intp.Stack = intp.Stack[:len(intp.Stack)-1]
@@ -1131,7 +1131,7 @@ func bPutinterval(intp *Interpreter) error {
 		if !ok {
 			return intp.e(eTypecheck, "putinterval: mismatched argument types")
 		}
-		if int(index)+len(src) > len(dst) {
+		if Integer(len(src)) > Integer(len(dst))-index {
 			return intp.e(eRangecheck, "putinterval: index out of range")
 		}
 		copy(dst[index:], src)
@@ -1140,7 +1140,7 @@ func bPutinterval(intp *Interpreter) error {
 		if !ok {
 			return intp.e(eTypecheck, "putinterval: mismatched argument types")
 		}
-		if int(index)+len(src) > len(dst) {
+		if Integer(len(src)) > Integer(len(dst))-index {
 			return intp.e(eRangecheck, "putinterval: index out of range")
 		}
 		copy(dst[index:], src)

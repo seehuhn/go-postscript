@@ -241,6 +241,16 @@ func TestCmdCopy(t *testing.T) {
 	}
 }
 
+// TestCmdCopyOverflow checks that a malicious count near math.MaxInt64
+// returns an error instead of panicking from an integer overflow in the
+// stack-bounds check.
+func TestCmdCopyOverflow(t *testing.T) {
+	intp := NewInterpreter()
+	if err := intp.ExecuteString("9223372036854775807 copy\n"); err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
 func TestCmdCopy2(t *testing.T) {
 	intp, err := run(`
 		/a [1 2] def
@@ -738,6 +748,16 @@ func TestCmdPutInterval(t *testing.T) {
 	}
 	if d := cmp.Diff(intp.Stack[0], String("axyzef")); d != "" {
 		t.Error(d)
+	}
+}
+
+// TestCmdPutIntervalOverflow checks that a malicious index near
+// math.MaxInt64 returns an error instead of panicking from an integer
+// overflow in the destination-bounds check.
+func TestCmdPutIntervalOverflow(t *testing.T) {
+	intp := NewInterpreter()
+	if err := intp.ExecuteString("10 string 9223372036854775807 (X) putinterval\n"); err == nil {
+		t.Fatal("expected error, got nil")
 	}
 }
 
