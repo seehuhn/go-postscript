@@ -591,7 +591,7 @@ func bFindresource(intp *Interpreter) error {
 	}
 	catName, ok := intp.Stack[len(intp.Stack)-1].(Name)
 	if !ok {
-		return intp.e(eTypecheck, "findresource: needs a name, not %T", intp.Stack[len(intp.Stack)-2])
+		return intp.e(eTypecheck, "findresource: needs a name, not %T", intp.Stack[len(intp.Stack)-1])
 	}
 	cat, ok := intp.Resources[catName]
 	if !ok {
@@ -607,7 +607,10 @@ func bFindresource(intp *Interpreter) error {
 	default:
 		return intp.e(eUndefinedresource, "findresource: needs a name or string, not %T", keyObj)
 	}
-	catDict := cat.(Dict)
+	catDict, ok := cat.(Dict)
+	if !ok {
+		return intp.e(eUndefined, "resource category %q is not a dictionary", catName)
+	}
 	obj, ok := catDict[key]
 	if !ok {
 		return intp.e(eUndefinedresource, "resource %q not found in category %q", key, catName)
