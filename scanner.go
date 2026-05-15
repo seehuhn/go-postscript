@@ -169,10 +169,12 @@ func (s *scanner) ReadString() (String, error) {
 		if err != nil {
 			return nil, err
 		}
-		if ignoreLF && b == 10 {
-			continue
+		if ignoreLF {
+			ignoreLF = false
+			if b == 10 {
+				continue
+			}
 		}
-		ignoreLF = false
 		switch b {
 		case '(':
 			bracketLevel++

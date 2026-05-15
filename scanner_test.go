@@ -112,6 +112,31 @@ func TestScanString3(t *testing.T) {
 	}
 }
 
+func TestScanStringMultiEOL(t *testing.T) {
+	// PostScript Language Reference: an unescaped end-of-line marker inside
+	// a literal string is normalised to a single LF, whether the marker is
+	// CR, LF, or CR-LF. Consecutive markers therefore yield consecutive LFs.
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"(a\r\rb)", "a\n\nb"},
+		{"(a\r\n\nb)", "a\n\nb"},
+		{"(a\r\n\r\nb)", "a\n\nb"},
+	}
+	for _, c := range cases {
+		s := newScanner(strings.NewReader(c.in))
+		o, err := s.ReadString()
+		if err != nil {
+			t.Errorf("%q: %v", c.in, err)
+			continue
+		}
+		if string(o) != c.want {
+			t.Errorf("%q: got %q, want %q", c.in, string(o), c.want)
+		}
+	}
+}
+
 func TestScanString5(t *testing.T) {
 	exp := string([]byte{1, 2, 3, 0, '4', 0o377})
 	r := strings.NewReader(`(\1\02\003\0004\777)`)
