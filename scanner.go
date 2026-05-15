@@ -41,12 +41,11 @@ type scanner struct {
 	peek        []byte
 	regurgitate bool
 
-	eexec int // 0 = off, 1 = ascii, 2 = binary
-	r     uint16
+	eexecMode  int // 0 = off, 1 = ascii, 2 = binary
+	eexecState uint16
 
-	// Err is the first error returned by r.Read().
-	// Once an error has been returned, all subsequent calls to .refill() will
-	// return err.
+	// err is the first error returned by src.Read().
+	// Once an error has been recorded, refill returns it on every call.
 	err error
 }
 
@@ -64,7 +63,7 @@ func newScanner(r io.Reader) *scanner {
 
 func (s *scanner) Read(p []byte) (int, error) {
 	for n := range p {
-		b, err := s.Next()
+		b, err := s.ReadByte()
 		if err != nil {
 			return n, err
 		}
@@ -166,7 +165,7 @@ func (s *scanner) ReadString() (String, error) {
 	bracketLevel := 1
 	ignoreLF := false
 	for {
-		b, err := s.Next()
+		b, err := s.ReadByte()
 		if err != nil {
 			return nil, err
 		}
@@ -185,7 +184,7 @@ func (s *scanner) ReadString() (String, error) {
 			}
 			res = append(res, b)
 		case '\\':
-			b, err = s.Next()
+			b, err = s.ReadByte()
 			if err != nil {
 				return nil, err
 			}
@@ -250,7 +249,7 @@ func (s *scanner) ReadHexString() (String, error) {
 	var hi byte
 readLoop:
 	for {
-		b, err := s.Next()
+		b, err := s.ReadByte()
 		if err != nil {
 			return nil, err
 		}
@@ -297,7 +296,7 @@ func (s *scanner) ReadBase85String() (String, error) {
 	var val uint32
 readLoop:
 	for {
-		b, err := s.Next()
+		b, err := s.ReadByte()
 		if err != nil {
 			return nil, err
 		}
@@ -433,7 +432,7 @@ commentLineLoop:
 		}
 
 		for {
-			b, err := s.Next()
+			b, err := s.ReadByte()
 			if err == io.EOF {
 				break
 			} else if err != nil {
@@ -469,7 +468,7 @@ func (s *scanner) SkipComment() {
 
 func (s *scanner) SkipToEOL() {
 	for {
-		b, err := s.Next()
+		b, err := s.ReadByte()
 		if err != nil {
 			return
 		} else if b == 10 { // LF
@@ -487,11 +486,11 @@ func (s *scanner) LookingAt(pat string) bool {
 
 // SkipByte skips a single byte of input
 func (s *scanner) SkipByte() {
-	s.Next()
+	s.ReadByte()
 }
 
 func (s *scanner) SkipRequiredByte(expected byte) error {
-	seen, err := s.Next()
+	seen, err := s.ReadByte()
 	if err != nil {
 		return err
 	}
@@ -504,14 +503,14 @@ func (s *scanner) SkipRequiredByte(expected byte) error {
 func (s *scanner) SkipOptionalByte(b byte) {
 	next, err := s.Peek()
 	if err == nil && next == b {
-		s.Next()
+		s.ReadByte()
 	}
 }
 
 // SkipN skips N bytes which have already been peeked.
 func (s *scanner) SkipN(n int) {
 	for range n {
-		s.Next()
+		s.ReadByte()
 	}
 }
 
@@ -537,7 +536,7 @@ func (s *scanner) PeekN(n int) []byte {
 	return s.peek[:n]
 }
 
-func (s *scanner) Next() (byte, error) {
+func (s *scanner) ReadByte() (byte, error) {
 	var b byte
 
 	if len(s.peek) > 0 && !s.regurgitate {
@@ -566,7 +565,7 @@ func (s *scanner) Next() (byte, error) {
 }
 
 func (s *scanner) readByte() (byte, error) {
-	if s.eexec == 0 {
+	if s.eexecMode == 0 {
 		return s.readByteRaw()
 	}
 
@@ -578,7 +577,7 @@ func (s *scanner) readByte() (byte, error) {
 }
 
 func (s *scanner) readByteEexec() (byte, error) {
-	if s.eexec == 2 { // binary eexec
+	if s.eexecMode == 2 { // binary eexec
 		return s.readByteRaw()
 	}
 

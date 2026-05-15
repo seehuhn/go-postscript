@@ -46,7 +46,7 @@ func eexec(intp *Interpreter) error {
 }
 
 func (s *scanner) BeginEexec(ivLen int) error {
-	if s.eexec != 0 {
+	if s.eexecMode != 0 {
 		return &postScriptError{eInvalidaccess, "nested eexec not supported"}
 	}
 
@@ -73,16 +73,16 @@ func (s *scanner) BeginEexec(ivLen int) error {
 	}
 
 	if isBinary {
-		s.eexec = 2 // binary
+		s.eexecMode = 2 // binary
 	} else {
-		s.eexec = 1 // hex
+		s.eexecMode = 1 // hex
 	}
-	s.r = eexecR
+	s.eexecState = eexecR
 
 	// skip the IV
 	s.regurgitate = true
 	for range eexecN {
-		_, err := s.Next()
+		_, err := s.ReadByte()
 		if err != nil {
 			return err
 		}
@@ -93,12 +93,12 @@ func (s *scanner) BeginEexec(ivLen int) error {
 }
 
 func (s *scanner) EndEexec() {
-	s.eexec = 0
+	s.eexecMode = 0
 }
 
 func (s *scanner) eexecDecode(b byte) byte {
-	out := b ^ byte(s.r>>8)
-	s.r = (uint16(b)+s.r)*eexecC1 + eexecC2
+	out := b ^ byte(s.eexecState>>8)
+	s.eexecState = (uint16(b)+s.eexecState)*eexecC1 + eexecC2
 	return out
 }
 

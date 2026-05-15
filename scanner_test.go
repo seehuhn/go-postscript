@@ -170,7 +170,7 @@ func TestLineCol(t *testing.T) {
 	r := strings.NewReader("1\n12\r123\r\n\n1\n")
 	s := newScanner(r)
 	for {
-		b, err := s.Next()
+		b, err := s.ReadByte()
 		if err == io.EOF {
 			break
 		} else if err != nil {

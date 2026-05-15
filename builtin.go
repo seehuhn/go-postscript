@@ -1169,7 +1169,7 @@ func bReadstring(intp *Interpreter) error {
 	}
 	intp.Stack = intp.Stack[:len(intp.Stack)-2]
 	s := intp.scanners[len(intp.scanners)-1]
-	_, err := s.Next()
+	_, err := s.ReadByte()
 	if err != nil && err != io.EOF {
 		return err
 	}

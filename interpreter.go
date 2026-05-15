@@ -17,7 +17,6 @@
 package postscript
 
 import (
-	"fmt"
 	"io"
 	"maps"
 	"strings"
@@ -143,9 +142,10 @@ func (intp *Interpreter) ExecuteString(code string) error {
 func (intp *Interpreter) Execute(r io.Reader) error {
 	s := newScanner(r)
 	err := intp.executeScanner(s)
-	if err == errExit {
+	switch err {
+	case errExit:
 		err = intp.e(eInvalidexit, "exit outside loop")
-	} else if err == errStop {
+	case errStop:
 		err = nil
 	}
 	if err != nil {
@@ -191,10 +191,6 @@ func (intp *Interpreter) executeScanner(s *scanner) error {
 }
 
 func (intp *Interpreter) executeOne(obj Object, execProc bool) error {
-	// if !execProc {
-	// 	fmt.Println("|-", intp.stackString(), "|", intp.objectString(obj))
-	// }
-
 	if execProc {
 		if intp.execStackDepth >= 100 {
 			return intp.e(eExecstackoverflow, "exec stack overflow")
@@ -304,82 +300,6 @@ func (intp *Interpreter) load(key Object) (Object, error) {
 		}
 	}
 	return nil, intp.e(eUndefined, "load: %s not defined", name)
-}
-
-func (intp *Interpreter) stackString() string {
-	var ss []string
-	for _, o := range intp.Stack {
-		ss = append(ss, intp.objectString2(o, true))
-	}
-	return strings.Join(ss, " ")
-}
-
-func (intp *Interpreter) objectString(o Object) string {
-	return intp.objectString2(o, false)
-}
-
-func (intp *Interpreter) objectString2(o Object, short bool) string {
-	switch o := o.(type) {
-	case nil:
-		return "currentfile" // TODO(voss)
-	case Boolean:
-		return fmt.Sprintf("%t", o)
-	case Integer:
-		return fmt.Sprint(o)
-	case Real:
-		return fmt.Sprint(o)
-	case Name:
-		return "/" + string(o)
-	case Operator:
-		return string(o)
-	case Array:
-		var ss []string
-		l := 1
-		for _, oi := range o {
-			si := intp.objectString2(oi, true)
-			l += 1 + len(si)
-			if short && l > 8 || l > 40 {
-				ss = append(ss, "...")
-				break
-			}
-			ss = append(ss, si)
-		}
-		return "[" + strings.Join(ss, " ") + "]"
-	case String:
-		s := o.PS()
-		if short && len(s) > 13 {
-			s = s[:5] + "..." + s[len(s)-5:]
-		}
-		return s
-	case Procedure:
-		var ss []string
-		l := 1
-		for i, oi := range o {
-			o[i] = nil // protect against infinite loops
-			si := intp.objectString2(oi, true)
-			o[i] = oi
-			l += 1 + len(si)
-			if short && l > 8 || l > 40 {
-				ss = append(ss, "...")
-				break
-			}
-			ss = append(ss, si)
-		}
-		return "{" + strings.Join(ss, " ") + "}"
-	case Dict:
-		if isSameDict(o, intp.SystemDict) {
-			return "*systemdict*"
-		} else if isSameDict(o, intp.UserDict) {
-			return "*userdict*"
-		}
-		return fmt.Sprintf("<Dict %d>", len(o))
-	case builtin:
-		return "<builtin>"
-	case mark:
-		return "*"
-	default:
-		return fmt.Sprintf("<%T>", o)
-	}
 }
 
 const (
