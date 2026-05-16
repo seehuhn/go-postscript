@@ -25,6 +25,136 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
+func TestScanReadStringBomb(t *testing.T) {
+	const limit = 100
+	s := newScanner(strings.NewReader("(" + strings.Repeat("a", limit+1) + ")"))
+	s.maxStringBytes = limit
+	if _, err := s.ReadString(); err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
+func TestScanReadHexStringBomb(t *testing.T) {
+	const limit = 100
+	s := newScanner(strings.NewReader("<" + strings.Repeat("00", limit+1) + ">"))
+	s.maxStringBytes = limit
+	if _, err := s.ReadHexString(); err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
+func TestScanReadBase85StringBomb(t *testing.T) {
+	const limit = 100
+	// "z" in base85 expands to 4 NUL bytes per token.  limit/4 + 1 zs
+	// produce limit + 4 output bytes.
+	s := newScanner(strings.NewReader("<~" + strings.Repeat("z", limit/4+1) + "~>"))
+	s.maxStringBytes = limit
+	if _, err := s.ReadBase85String(); err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
+func TestScanReadHexStringTailBomb(t *testing.T) {
+	const limit = 100
+	// 2*limit hex digits fill res to exactly limit, then one trailing
+	// digit triggers the odd-tail append after the loop.
+	s := newScanner(strings.NewReader("<" + strings.Repeat("00", limit) + "0>"))
+	s.maxStringBytes = limit
+	if _, err := s.ReadHexString(); err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
+func TestScanReadBase85StringTailBomb(t *testing.T) {
+	const limit = 100
+	// limit/4 "z" tokens fill res to exactly limit, then a partial final
+	// block ("!!!" => pos=3) triggers the tail-append overshoot check
+	// after the loop.
+	s := newScanner(strings.NewReader("<~" + strings.Repeat("z", limit/4) + "!!!~>"))
+	s.maxStringBytes = limit
+	if _, err := s.ReadBase85String(); err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
+func TestScanNameBomb(t *testing.T) {
+	const limit = 100
+	s := newScanner(strings.NewReader("/" + strings.Repeat("a", limit+1) + " "))
+	s.maxNameBytes = limit
+	if _, err := s.ScanToken(); err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
+func TestScanOperatorBomb(t *testing.T) {
+	const limit = 100
+	s := newScanner(strings.NewReader(strings.Repeat("a", limit+1) + " "))
+	s.maxNameBytes = limit
+	if _, err := s.ScanToken(); err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
+func TestScanDSCKeyBomb(t *testing.T) {
+	const limit = 100
+	// A DSC key longer than maxNameBytes is rejected inside
+	// readStructuredComment; the line is skipped and parsing continues, so
+	// no DSC entry is recorded and the following token still scans.
+	body := "%%" + strings.Repeat("A", limit+1000) + ": value\n42"
+	s := newScanner(strings.NewReader(body))
+	s.maxNameBytes = limit
+	tok, err := s.ScanToken()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if tok != Integer(42) {
+		t.Errorf("got %v, want 42", tok)
+	}
+	if len(s.DSC) != 0 {
+		t.Errorf("expected no DSC entries, got %d", len(s.DSC))
+	}
+}
+
+func TestScanDSCBomb(t *testing.T) {
+	const limit = 100
+	// Single DSC comment with a value much longer than the cap.  Parsing
+	// must complete normally, but the stored value must be truncated to
+	// at most maxDSCBytes bytes.
+	body := "%%X: " + strings.Repeat("a", limit+1000) + "\n"
+	s := newScanner(strings.NewReader(body))
+	s.maxDSCBytes = limit
+	if _, err := s.ScanToken(); err != io.EOF {
+		t.Fatalf("expected io.EOF, got %v", err)
+	}
+	if len(s.DSC) != 1 {
+		t.Fatalf("expected 1 DSC entry, got %d", len(s.DSC))
+	}
+	if got := len(s.DSC[0].Value); got > limit {
+		t.Errorf("DSC value length %d exceeds bound %d", got, limit)
+	}
+}
+
+func TestScanDSCMultiLineBomb(t *testing.T) {
+	const limit = 100
+	// Multi-line DSC value via %%+ continuation must also be capped.
+	var b strings.Builder
+	b.WriteString("%%X: short\n")
+	for range 10 {
+		b.WriteString("%%+ " + strings.Repeat("b", 200) + "\n")
+	}
+	s := newScanner(strings.NewReader(b.String()))
+	s.maxDSCBytes = limit
+	if _, err := s.ScanToken(); err != io.EOF {
+		t.Fatalf("expected io.EOF, got %v", err)
+	}
+	if len(s.DSC) != 1 {
+		t.Fatalf("expected 1 DSC entry, got %d", len(s.DSC))
+	}
+	if got := len(s.DSC[0].Value); got > limit {
+		t.Errorf("DSC value length %d exceeds bound %d", got, limit)
+	}
+}
+
 func TestScanToken(t *testing.T) {
 	in := `
 	% this is a comment

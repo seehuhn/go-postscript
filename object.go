@@ -90,7 +90,7 @@ func (n Name) String() string {
 
 func (n Name) PS() string {
 	for _, c := range []byte(n) {
-		if !isRegular(c) {
+		if class[c] != regular {
 			panic(fmt.Sprintf("invalid character in name: %q", n))
 		}
 	}

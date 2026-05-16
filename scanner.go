@@ -26,6 +26,16 @@ import (
 	"strconv"
 )
 
+// Production size bounds for scanner-produced objects.  Set well above
+// any value seen in legitimate PostScript input; each scanner copies
+// these into mutable fields so tests can shrink the bounds without
+// touching package state.
+const (
+	defaultMaxStringBytes = 16 * 1024 * 1024
+	defaultMaxNameBytes   = 4096
+	defaultMaxDSCBytes    = 1 << 20
+)
+
 // A scanner breaks up a PostScript input stream into tokens.
 //
 // Scanners are not safe for concurrent use.
@@ -44,6 +54,20 @@ type scanner struct {
 	eexecMode  int // 0 = off, 1 = ascii, 2 = binary
 	eexecState uint16
 
+	// Per-scanner size bounds.  Initialised from the package-level
+	// defaults; tests override these directly.
+	//
+	// maxStringBytes caps the byte length of string, hex-string, and
+	// base85-string objects.
+	maxStringBytes int
+	// maxNameBytes caps the byte length of name and operator tokens,
+	// and also of DSC comment keys.
+	maxNameBytes int
+	// maxDSCBytes caps the byte length stored for a single DSC comment
+	// value.  Bytes past the cap are read and discarded so that parsing
+	// continues normally.
+	maxDSCBytes int
+
 	// err is the first error returned by src.Read().
 	// Once an error has been recorded, refill returns it on every call.
 	err error
@@ -56,8 +80,11 @@ type Comment struct {
 
 func newScanner(r io.Reader) *scanner {
 	return &scanner{
-		src: r,
-		buf: make([]byte, 512),
+		src:            r,
+		buf:            make([]byte, 512),
+		maxStringBytes: defaultMaxStringBytes,
+		maxNameBytes:   defaultMaxNameBytes,
+		maxDSCBytes:    defaultMaxDSCBytes,
 	}
 }
 
@@ -121,8 +148,11 @@ func (s *scanner) ScanToken() (Object, error) {
 			} else if err != nil {
 				return nil, err
 			}
-			if !isRegular(b) {
+			if class[b] != regular {
 				break
+			}
+			if len(name) >= s.maxNameBytes {
+				return nil, &postScriptError{eLimitcheck, "name too long"}
 			}
 			s.SkipByte()
 			name = append(name, b)
@@ -131,7 +161,7 @@ func (s *scanner) ScanToken() (Object, error) {
 	default:
 		s.SkipByte()
 		opBytes := []byte{b}
-		if isRegular(b) {
+		if class[b] == regular {
 			for {
 				b, err := s.Peek()
 				if err == io.EOF {
@@ -139,8 +169,11 @@ func (s *scanner) ScanToken() (Object, error) {
 				} else if err != nil {
 					return nil, err
 				}
-				if !isRegular(b) {
+				if class[b] != regular {
 					break
+				}
+				if len(opBytes) >= s.maxNameBytes {
+					return nil, &postScriptError{eLimitcheck, "operator too long"}
 				}
 				s.SkipByte()
 				opBytes = append(opBytes, b)
@@ -175,16 +208,17 @@ func (s *scanner) ReadString() (String, error) {
 				continue
 			}
 		}
+		var out byte
 		switch b {
 		case '(':
 			bracketLevel++
-			res = append(res, b)
+			out = b
 		case ')':
 			bracketLevel--
 			if bracketLevel == 0 {
 				return String(res), nil
 			}
-			res = append(res, b)
+			out = b
 		case '\\':
 			b, err = s.ReadByte()
 			if err != nil {
@@ -192,26 +226,22 @@ func (s *scanner) ReadString() (String, error) {
 			}
 			switch b {
 			case 'n':
-				res = append(res, '\n')
+				out = '\n'
 			case 'r':
-				res = append(res, '\r')
+				out = '\r'
 			case 't':
-				res = append(res, '\t')
+				out = '\t'
 			case 'b':
-				res = append(res, '\b')
+				out = '\b'
 			case 'f':
-				res = append(res, '\f')
-			case '(': // literal (
-				res = append(res, '(')
-			case ')': // literal )
-				res = append(res, ')')
-			case '\\': // literal \
-				res = append(res, '\\')
+				out = '\f'
 			case 10: // LF
-				// ignore
+				// line continuation
+				continue
 			case 13: // CR or CR+LF
-				// ignore
+				// line continuation; ignore an immediately following LF
 				ignoreLF = true
+				continue
 			case '0', '1', '2', '3', '4', '5', '6', '7':
 				oct := b - '0'
 				for range 2 {
@@ -227,16 +257,20 @@ func (s *scanner) ReadString() (String, error) {
 					s.SkipByte()
 					oct = oct*8 + (b - '0')
 				}
-				res = append(res, oct)
+				out = oct
 			default:
-				res = append(res, b)
+				out = b
 			}
 		case 13: // CR or CR+LF
-			res = append(res, '\n')
+			out = '\n'
 			ignoreLF = true
 		default:
-			res = append(res, b)
+			out = b
 		}
+		if len(res) >= s.maxStringBytes {
+			return nil, &postScriptError{eLimitcheck, "string too long"}
+		}
+		res = append(res, out)
 	}
 }
 
@@ -259,7 +293,7 @@ readLoop:
 		switch {
 		case b == '>':
 			break readLoop
-		case b <= 32:
+		case class[b] == space:
 			continue
 		case b >= '0' && b <= '9':
 			lo = b - '0'
@@ -274,11 +308,17 @@ readLoop:
 			hi = lo << 4
 			first = false
 		} else {
+			if len(res) >= s.maxStringBytes {
+				return nil, &postScriptError{eLimitcheck, "hex string too long"}
+			}
 			res = append(res, hi|lo)
 			first = true
 		}
 	}
 	if !first {
+		if len(res) >= s.maxStringBytes {
+			return nil, &postScriptError{eLimitcheck, "hex string too long"}
+		}
 		res = append(res, hi)
 	}
 
@@ -305,14 +345,20 @@ readLoop:
 		switch {
 		case b == '~':
 			break readLoop
-		case b <= 32:
+		case class[b] == space:
 			continue
 		case b == 'z' && pos == 0:
+			if len(res)+4 > s.maxStringBytes {
+				return nil, &postScriptError{eLimitcheck, "base85 string too long"}
+			}
 			res = append(res, 0, 0, 0, 0)
 		case b >= '!' && b <= 'u':
 			val = val*85 + uint32(b-'!')
 			pos++
 			if pos == 5 {
+				if len(res)+4 > s.maxStringBytes {
+					return nil, &postScriptError{eLimitcheck, "base85 string too long"}
+				}
 				res = append(res, byte(val>>24), byte(val>>16), byte(val>>8), byte(val))
 				pos = 0
 				val = 0
@@ -331,6 +377,9 @@ readLoop:
 			val = val*85 + 84
 		}
 		tail := []byte{byte(val >> 24), byte(val >> 16), byte(val >> 8), byte(val)}
+		if len(res)+pos-1 > s.maxStringBytes {
+			return nil, &postScriptError{eLimitcheck, "base85 string too long"}
+		}
 		res = append(res, tail[:pos-1]...)
 	}
 
@@ -350,7 +399,7 @@ func (s *scanner) SkipWhiteSpace() error {
 		if err != nil {
 			return err
 		}
-		if b <= 32 {
+		if class[b] == space {
 			s.SkipByte()
 		} else if b == '%' {
 			if s.Col == 0 && s.LookingAt("%%") {
@@ -397,12 +446,15 @@ func (s *scanner) readCommentKey() (string, error) {
 		} else if err != nil {
 			return "", err
 		}
-		if b <= 32 {
+		if class[b] == space {
 			break
 		}
 		s.SkipByte()
 		if b == ':' {
 			break
+		}
+		if buf.Len() >= s.maxNameBytes {
+			return "", &postScriptError{eLimitcheck, "DSC key too long"}
 		}
 		buf.WriteByte(b)
 	}
@@ -415,6 +467,8 @@ func (s *scanner) readCommentKey() (string, error) {
 // ReadCommentValue reads the value of a structured comment.
 // Multi-line values (using `%%+`) are supported.
 // The method consumes the first EOL after the value.
+// Values longer than s.maxDSCBytes are truncated; the remaining input is
+// still consumed so the surrounding parse continues normally.
 func (s *scanner) readCommentValue() (string, error) {
 	var buf bytes.Buffer
 
@@ -427,7 +481,7 @@ commentLineLoop:
 			} else if err != nil {
 				return "", err
 			}
-			if b == '\n' || b == '\r' || b > 32 {
+			if b == '\n' || b == '\r' || class[b] != space {
 				break
 			}
 			s.SkipByte()
@@ -445,12 +499,16 @@ commentLineLoop:
 				s.SkipOptionalByte(10)
 				break
 			}
-			buf.WriteByte(b)
+			if buf.Len() < s.maxDSCBytes {
+				buf.WriteByte(b)
+			}
 		}
 
 		if s.LookingAt("%%+") {
 			s.SkipN(3)
-			buf.WriteByte(' ')
+			if buf.Len() < s.maxDSCBytes {
+				buf.WriteByte(' ')
+			}
 			continue commentLineLoop
 		}
 
@@ -592,7 +650,7 @@ readLoop:
 		switch {
 		case err != nil:
 			return 0, err
-		case b <= 32:
+		case class[b] == space:
 			continue readLoop
 		case b >= '0' && b <= '9':
 			nibble = b - '0'
@@ -648,16 +706,34 @@ func (s *scanner) refill() error {
 	return err
 }
 
-func isRegular(b byte) bool {
-	if b <= 32 {
-		return false
-	}
-	switch b {
-	case '(', ')', '<', '>', '[', ']', '{', '}', '/', '%':
-		return false
-	default:
-		return true
-	}
+type characterClass byte
+
+const (
+	regular characterClass = iota
+	space
+	delimiter
+)
+
+// class classifies each byte per PostScript PLRM 3.1 (whitespace + special
+// characters). regular is the zero value, so unlisted bytes are regular
+// by default.
+var class = [256]characterClass{
+	0:   space,
+	9:   space,
+	10:  space,
+	12:  space,
+	13:  space,
+	32:  space,
+	'(': delimiter,
+	')': delimiter,
+	'<': delimiter,
+	'>': delimiter,
+	'[': delimiter,
+	']': delimiter,
+	'{': delimiter,
+	'}': delimiter,
+	'/': delimiter,
+	'%': delimiter,
 }
 
 func parseNumber(s []byte) (Object, error) {
@@ -667,7 +743,7 @@ func parseNumber(s []byte) (Object, error) {
 	}
 
 	y, err := strconv.ParseFloat(string(s), 64)
-	if err == strconv.ErrRange {
+	if errors.Is(err, strconv.ErrRange) {
 		return nil, &postScriptError{eLimitcheck, fmt.Sprintf("number %q out of range", s)}
 	} else if err == nil && !math.IsInf(y, 0) && !math.IsNaN(y) {
 		return Real(y), nil
