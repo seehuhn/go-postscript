@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.7.3] (2026-05-19)
+
+### Changed
+- Whitespace handling now matches PLRM 3.1 exactly: only NUL, TAB,
+  LF, FF, CR, and SP separate tokens.  Control bytes below 32 that
+  the previous parser silently treated as whitespace are now
+  rejected.
+
+### Fixed
+- Scanner now bounds the size of strings, names/operators, and DSC
+  comment values to defend against parser-bomb input.  Strings and
+  names error with `eLimitcheck` at the cap; DSC values are silently
+  truncated so the surrounding parse continues.
+- Float overflow in `parseNumber` now yields `eLimitcheck` instead of
+  falling through to a syntax error (`strconv.ParseFloat` wraps
+  `ErrRange` in `*NumError`, which the previous comparison missed).
+- Literal-string scanner: a CR followed by multiple LFs no longer
+  swallows every LF; only the LF completing a CR-LF pair is consumed.
+- `findresource` no longer panics on an unchecked type assertion when
+  the resource catalogue contains a non-Dict value.
+
 ## [v0.7.2] (2026-05-11)
 
 ### Changed
