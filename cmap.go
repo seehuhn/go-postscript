@@ -18,47 +18,52 @@ package postscript
 
 import (
 	"bytes"
-	"fmt"
+	"errors"
 	"io"
-	"maps"
 	"slices"
 	"sort"
 )
 
-// ReadCMap reads a CMap File from an [io.Reader].
+// ReadCMap reads a CMap from an [io.Reader].
 //
-// This is a thin wrapper around the [Interpreter.Execute] method.
+// The reader expects the file to define exactly one CMap.  A different count,
+// or a CMap whose contents do not match the spec, is an error.
 //
-// The returned Dict is a PostScript CMap dictionary, as documented in
+// The returned Dict is the PostScript CMap dictionary, as documented in
 // section 5.11.4 (CMap Dictionaries) of the PostScript Language Reference
-// Manual.  The "CodeMap" field of the CMAP dictionary can be cast to a
-// [*CMapInfo] object, which contains the mapping data.
-func ReadCMap(r io.Reader) (Dict, error) {
+// Manual.  The returned [*CMapInfo] holds the mapping data; the same value
+// is also stored under the "CodeMap" key in the dictionary.
+func ReadCMap(r io.Reader) (Dict, *CMapInfo, error) {
 	intp := NewInterpreter()
 	intp.MaxOps = 1_000_000 // TODO(voss): measure what is required
-	err := intp.Execute(r)
-	if err != nil {
-		return nil, err
+	if err := intp.Execute(r); err != nil {
+		return nil, nil, err
 	}
 
-	// make the function deterministic
-	names := slices.Sorted(maps.Keys(intp.CMapDirectory))
-
-	for _, name := range names {
-		val := intp.CMapDirectory[name]
-		cmap, ok := val.(Dict)
-		if !ok {
-			continue
-		}
-
-		// If there is more than one CMap in the file, we return the first one.
-
-		if n, _ := cmap["CMapName"].(Name); n == "" {
-			cmap["CMapName"] = name
-		}
-		return cmap, nil
+	if len(intp.CMapDirectory) == 0 {
+		return nil, nil, errors.New("no CMap found")
 	}
-	return nil, fmt.Errorf("no valid CMap found")
+	if len(intp.CMapDirectory) > 1 {
+		return nil, nil, errors.New("multiple CMaps in one file")
+	}
+
+	var name Name
+	var val Object
+	for k, v := range intp.CMapDirectory {
+		name, val = k, v
+	}
+	cmap, ok := val.(Dict)
+	if !ok {
+		return nil, nil, errors.New("invalid CMap")
+	}
+	codeMap, ok := cmap["CodeMap"].(*CMapInfo)
+	if !ok || codeMap == nil {
+		return nil, nil, errors.New("invalid CodeMap")
+	}
+	if n, _ := cmap["CMapName"].(Name); n == "" {
+		cmap["CMapName"] = name
+	}
+	return cmap, codeMap, nil
 }
 
 // CMapInfo contains the information for a CMap.

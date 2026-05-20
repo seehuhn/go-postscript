@@ -50,8 +50,11 @@ func Read(r io.Reader) (*Font, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(intp.FontDirectory) != 1 {
-		return nil, errors.New("expected exactly one font in file")
+	if len(intp.FontDirectory) == 0 {
+		return nil, errors.New("no font found")
+	}
+	if len(intp.FontDirectory) > 1 {
+		return nil, errors.New("multiple fonts in one file")
 	}
 
 	var creationDate time.Time
@@ -70,12 +73,13 @@ creationDateLoop:
 	}
 
 	var key postscript.Name
-	var fd postscript.Dict
-	for _, val := range intp.FontDirectory {
-		if dict, ok := val.(postscript.Dict); ok {
-			fd = dict
-			break
-		}
+	var val postscript.Object
+	for k, v := range intp.FontDirectory {
+		key, val = k, v
+	}
+	fd, ok := val.(postscript.Dict)
+	if !ok {
+		return nil, errors.New("invalid font")
 	}
 	fontType, ok := fd["FontType"].(postscript.Integer)
 	if !ok || fontType != 1 {
