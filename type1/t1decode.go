@@ -22,12 +22,20 @@ import (
 
 	"seehuhn.de/go/geom/path"
 	"seehuhn.de/go/geom/vec"
+	"seehuhn.de/go/membudget"
 	"seehuhn.de/go/postscript/funit"
 )
 
 type decodeInfo struct {
 	subrs [][]byte
 	seacs []seacInfo
+
+	// budget bounds the total charstring bytes processed across all glyphs of
+	// the font.  Each charstring body is charged its length before execution,
+	// so amplification via repeated subroutine calls trips the budget.  Shared
+	// by every glyph, so it bounds total decode work, not per-glyph work.
+	// Must not be nil.
+	budget *membudget.Budget
 }
 
 type seacInfo struct {
@@ -62,6 +70,11 @@ func (info *decodeInfo) decodeCharString(code []byte, name string) *Glyph {
 			WidthX:  res.WidthX,
 			WidthY:  res.WidthY,
 		}
+	}
+
+	// charge the top-level charstring body
+	if err := info.budget.Charge(len(code)); err != nil {
+		return bail()
 	}
 
 	var posX, posY float64
@@ -364,6 +377,10 @@ glyphLoop:
 					return bail()
 				}
 				code = info.subrs[idx]
+				// charge the subr body to bound fan-out amplification
+				if err := info.budget.Charge(len(code)); err != nil {
+					return bail()
+				}
 			case t1callothersubr:
 				if len(stack) < 2 {
 					return bail()

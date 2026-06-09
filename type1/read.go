@@ -26,10 +26,32 @@ import (
 	"seehuhn.de/go/geom/matrix"
 	"seehuhn.de/go/geom/path"
 	"seehuhn.de/go/geom/vec"
+	"seehuhn.de/go/membudget"
 	"seehuhn.de/go/postscript"
 	"seehuhn.de/go/postscript/funit"
 	"seehuhn.de/go/postscript/pfb"
 )
+
+// charstring decode budget sizing, mirroring go-sfnt/parser/budget.go.
+// go-sfnt depends on this module, so the constants are duplicated here
+// rather than imported.
+const (
+	budgetBase       = 1 << 20   // 1 MiB minimum, so tiny fonts still decode
+	budgetMultiplier = 64        // max charstring bytes processed per code byte
+	budgetHardCap    = 128 << 20 // cap on the input-proportional part
+)
+
+// newCharstringBudget returns the font-wide budget for decoding glyphs whose
+// total reachable charstring code (every subr plus every glyph body) totals
+// codeBytes.  A single budget shared across all glyphs bounds total decode
+// work in proportion to the font's charstring data, mirroring the CFF reader.
+func newCharstringBudget(codeBytes int) *membudget.Budget {
+	add := int64(budgetMultiplier) * int64(codeBytes)
+	if add < 0 || add > budgetHardCap {
+		add = budgetHardCap
+	}
+	return membudget.New(budgetBase + add)
+}
 
 // Read reads a Type 1 font from a reader.
 // The function supports both ".pfa" and ".pfb" files.
@@ -272,6 +294,23 @@ creationDateLoop:
 	if !ok {
 		return nil, errors.New("missing/invalid CharStrings dictionary")
 	}
+
+	// total charstring code (every subr plus every glyph body), used to size
+	// a single font-wide decode budget shared across all glyphs.  This bounds
+	// total decode work in proportion to the font's charstring data; one
+	// runaway glyph can exhaust the budget and blank the glyphs decoded after
+	// it, but the budget is generous enough that no well-formed font trips it.
+	codeBytes := 0
+	for _, s := range ctx.subrs {
+		codeBytes += len(s)
+	}
+	for _, obfuscated := range cs {
+		if s, ok := obfuscated.(postscript.String); ok {
+			codeBytes += len(s)
+		}
+	}
+	ctx.budget = newCharstringBudget(codeBytes)
+
 	names := slices.Sorted(maps.Keys(cs))
 	glyphs := make(map[string]*Glyph)
 	for _, name := range names {

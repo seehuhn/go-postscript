@@ -20,11 +20,17 @@ import (
 	"bytes"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 
 	"seehuhn.de/go/geom/matrix"
+	"seehuhn.de/go/membudget"
 )
+
+// newTestBudget returns a budget generous enough that no well-formed test
+// charstring trips it.
+func newTestBudget() *membudget.Budget { return membudget.New(64 << 20) }
 
 // TestDecodeCharStringMalformedNoPanic checks that decodeCharString
 // returns a blank stub rather than panicking on malformed input.
@@ -50,7 +56,7 @@ func TestDecodeCharStringMalformedNoPanic(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			info := &decodeInfo{}
+			info := &decodeInfo{budget: newTestBudget()}
 			g := info.decodeCharString(tc.cs, "test")
 			if g == nil {
 				t.Fatal("expected non-nil stub")
@@ -179,4 +185,64 @@ func patchCharstring(pfa []byte, name string, newBytes []byte) ([]byte, bool) {
 	out = append(out, newBytes...)
 	out = append(out, pfa[bytesEnd:]...)
 	return out, true
+}
+
+// TestDecodeCharStringFanoutBomb checks that decodeCharString terminates on a
+// malicious charstring whose subrs fan out exponentially.
+//
+// Each subr i calls subr i+1 `fan` times before returning. Because every call
+// fully unwinds before the next sibling call begins, the live command stack
+// never exceeds `depth` frames (well under the depth-10 cap), yet the total
+// work is fan^(depth-1). Without an execution budget this hangs the reader on
+// input far smaller than the work it triggers — a denial-of-service.
+//
+// The chain is placed at subr indices 4..4+depth-1 to avoid index 3, which the
+// interpreter treats as a predefined no-op.
+func TestDecodeCharStringFanoutBomb(t *testing.T) {
+	const depth = 9 // keep < 10 so the legitimate depth cap is not what stops us
+	const fan = 20  // 20^8 = 2.56e10 executions: impossible to finish honestly
+
+	const base = 4
+	subrs := make([][]byte, base+depth)
+	subrs[base+depth-1] = []byte{0x0b} // innermost: return
+	for i := depth - 2; i >= 0; i-- {
+		child := base + i + 1
+		var body []byte
+		for range fan {
+			body = append(body, byte(child+139), 0x0a) // push child index, callsubr
+		}
+		body = append(body, 0x0b) // return
+		subrs[base+i] = body
+	}
+	// 0 0 hsbw, <base> callsubr, endchar
+	cs := []byte{0x8b, 0x8b, 0x0d, byte(base + 139), 0x0a, 0x0e}
+
+	// size the budget exactly as production does for this font
+	subrBytes := 0
+	for _, s := range subrs {
+		subrBytes += len(s)
+	}
+	info := &decodeInfo{
+		subrs:  subrs,
+		budget: newCharstringBudget(subrBytes + len(cs)),
+	}
+
+	// run in a goroutine so a regression that removes the budget fails the
+	// test (via timeout) instead of hanging it forever
+	done := make(chan struct{})
+	var g *Glyph
+	go func() {
+		g = info.decodeCharString(cs, "bomb")
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("decodeCharString did not terminate: subr fan-out has no execution budget")
+	}
+	// the bomb cannot finish honestly, so termination means the budget
+	// tripped and bail() returned a blank stub
+	if len(g.Outline.Cmds) != 0 {
+		t.Errorf("expected blank stub from tripped budget, got %d outline cmds", len(g.Outline.Cmds))
+	}
 }
