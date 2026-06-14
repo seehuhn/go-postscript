@@ -147,6 +147,9 @@ func bListEnd(intp *Interpreter) error {
 	for i := n - 1; i >= 0; i-- {
 		if intp.Stack[i] == theMark {
 			size := n - i - 1
+			if err := intp.charge(size * objectSize); err != nil {
+				return err
+			}
 			a := make(Array, size)
 			copy(a, intp.Stack[i+1:])
 			intp.Stack = append(intp.Stack[:i], a)
@@ -175,7 +178,11 @@ func bDictEnd(intp *Interpreter) error {
 	} else if (n-markPos)%2 != 1 {
 		return intp.e(eRangecheck, "dict literal: odd length")
 	}
-	d := make(Dict, (n-markPos-1)/2)
+	size := (n - markPos - 1) / 2
+	if err := intp.charge(size * dictEntrySize); err != nil {
+		return err
+	}
+	d := make(Dict, size)
 	for i := markPos + 1; i < n; i += 2 {
 		name, ok := intp.Stack[i].(Name)
 		if !ok {
@@ -283,6 +290,9 @@ func bArray(intp *Interpreter) error {
 		return intp.e(eRangecheck, "array: invalid size %d", size)
 	} else if size > maxArraySize {
 		return intp.e(eLimitcheck, "array: invalid size %d", size)
+	}
+	if err := intp.charge(int(size) * objectSize); err != nil {
+		return err
 	}
 	intp.Stack = intp.Stack[:len(intp.Stack)-1]
 	intp.Stack = append(intp.Stack, make(Array, size))
@@ -415,6 +425,9 @@ func bCvx(intp *Interpreter) error {
 	}
 	obj := intp.Stack[len(intp.Stack)-1]
 	if a, ok := obj.(Array); ok {
+		if err := intp.charge(len(a) * objectSize); err != nil {
+			return err
+		}
 		b := make(Procedure, len(a))
 		copy(b, a)
 		intp.Stack[len(intp.Stack)-1] = b
@@ -496,6 +509,9 @@ func bDict(intp *Interpreter) error {
 		return intp.e(eRangecheck, "dict: invalid size %d", size)
 	} else if size > maxDictSize {
 		return intp.e(eLimitcheck, "dict: invalid size %d", size)
+	}
+	if err := intp.charge(int(size) * dictEntrySize); err != nil {
+		return err
 	}
 	intp.Stack = intp.Stack[:len(intp.Stack)-1]
 	intp.Stack = append(intp.Stack, make(Dict, size))
@@ -1261,6 +1277,9 @@ func bString(intp *Interpreter) error {
 		return intp.e(eRangecheck, "string: invalid size %d", size)
 	} else if size > maxStringSize {
 		return intp.e(eLimitcheck, "string: invalid size %d", size)
+	}
+	if err := intp.charge(int(size)); err != nil {
+		return err
 	}
 	intp.Stack = intp.Stack[:len(intp.Stack)-1]
 	intp.Stack = append(intp.Stack, make(String, size))

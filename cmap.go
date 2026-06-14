@@ -24,6 +24,13 @@ import (
 	"sort"
 )
 
+// cmapMaxMemory bounds the total memory the interpreter may allocate while
+// reading a single CMap.  Real CMaps need only a few MiB; this leaves ample
+// headroom for transient allocations while stopping a malformed one well
+// before it can exhaust memory.  Each ReadCMap call uses a fresh budget, so a
+// document with many CMaps is bounded per CMap, not in aggregate.
+const cmapMaxMemory = 64 << 20 // 64 MiB
+
 // ReadCMap reads a CMap from an [io.Reader].
 //
 // The reader expects the file to define exactly one CMap.  A different count,
@@ -36,6 +43,7 @@ import (
 func ReadCMap(r io.Reader) (Dict, *CMapInfo, error) {
 	intp := NewInterpreter()
 	intp.MaxOps = 1_000_000 // TODO(voss): measure what is required
+	intp.MaxMemory = cmapMaxMemory
 	if err := intp.Execute(r); err != nil {
 		return nil, nil, err
 	}

@@ -20,6 +20,8 @@ import (
 	"io"
 	"maps"
 	"strings"
+
+	"seehuhn.de/go/membudget"
 )
 
 // Interpreter represents one instance of the PostScript interpreter.
@@ -34,7 +36,15 @@ type Interpreter struct {
 	// returned.
 	MaxOps int
 
-	// TODO(voss): Add `MaxMemory` to limit allocations.
+	// MaxMemory can be set to a positive value to limit the total number of
+	// bytes allocated by object-creating operators.  If this limit is
+	// exceeded, a limitcheck error is returned.
+	MaxMemory int64
+
+	// budget tracks memory allocated by object-creating operators.  It is
+	// created lazily from MaxMemory on the first call to Execute and is nil
+	// when MaxMemory is not positive (unlimited).
+	budget *membudget.Budget
 
 	// Stack is the PostScript operand stack.
 	Stack []Object
@@ -140,6 +150,10 @@ func (intp *Interpreter) ExecuteString(code string) error {
 
 // Execute executes the PostScript code in the given reader.
 func (intp *Interpreter) Execute(r io.Reader) error {
+	if intp.MaxMemory > 0 && intp.budget == nil {
+		intp.budget = membudget.New(intp.MaxMemory)
+	}
+
 	s := newScanner(r)
 	err := intp.executeScanner(s)
 	switch err {
@@ -210,6 +224,9 @@ func (intp *Interpreter) executeOne(obj Object, execProc bool) error {
 		a := intp.procStart[len(intp.procStart)-1]
 		intp.procStart = intp.procStart[:len(intp.procStart)-1]
 		b := len(intp.Stack)
+		if err := intp.charge((b - a) * objectSize); err != nil {
+			return err
+		}
 		proc := make(Procedure, b-a)
 		copy(proc, intp.Stack[a:])
 		intp.Stack = append(intp.Stack[:a], proc)
@@ -309,3 +326,22 @@ const (
 	maxOperandStackDepth = 500
 	maxStringSize        = 65536
 )
+
+// approximate per-element weights for the memory budget; not exact
+// unsafe.Sizeof values, just accounting weights that bound amplification
+const (
+	objectSize    = 16                         // an Object interface value
+	dictEntrySize = membudget.MapEntryOverhead // a dictionary entry
+)
+
+// charge accounts for n bytes against the memory budget.  It returns a
+// limitcheck error if the budget is exceeded, and nil when no budget is set.
+func (intp *Interpreter) charge(n int) error {
+	if intp.budget == nil {
+		return nil
+	}
+	if err := intp.budget.Charge(n); err != nil {
+		return intp.e(eLimitcheck, "memory limit exceeded")
+	}
+	return nil
+}
