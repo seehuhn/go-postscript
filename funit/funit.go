@@ -25,6 +25,16 @@ func (x Int16) AsFloat(scale float64) float64 {
 	return float64(x) * scale
 }
 
+// Uint16 is an unsigned 16-bit integer in font design units.
+// It corresponds to the UFWORD type in the OpenType specification and is
+// used for non-negative quantities such as advance widths.
+type Uint16 uint16
+
+// AsFloat returns x*scale as a float64.
+func (x Uint16) AsFloat(scale float64) float64 {
+	return float64(x) * scale
+}
+
 // Int is an integer in font design units.
 type Int int
 
