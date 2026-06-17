@@ -53,6 +53,11 @@ func newCharstringBudget(codeBytes int) *membudget.Budget {
 	return membudget.New(budgetBase + add)
 }
 
+// type1MaxMemory bounds memory allocated by the interpreter while parsing a
+// Type 1 font program, guarding against a hostile embedded font that would
+// otherwise retain gigabytes from a few bytes of PostScript.
+const type1MaxMemory = 64 << 20 // 64 MiB
+
 // Read reads a Type 1 font from a reader.
 // The function supports both ".pfa" and ".pfb" files.
 func Read(r io.Reader) (*Font, error) {
@@ -68,6 +73,7 @@ func Read(r io.Reader) (*Font, error) {
 	intp.CheckStart = true
 	// TODO(voss): Is this enough?  I have seen a font with NumOps=310_788.
 	intp.MaxOps = 3_000_000
+	intp.MaxMemory = type1MaxMemory
 	err = intp.Execute(r)
 	if err != nil {
 		return nil, err
