@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.7.4] (2026-06-25)
+
+### Added
+- `funit.Uint16` for non-negative font-design-unit quantities (the
+  OpenType UFWORD type), such as advance widths.
+
+### Changed
+- The interpreter and Type 1 font reader allocate against an explicit
+  memory budget, bounding peak allocation on untrusted input.
+
+### Fixed
+- Type 1 charstring decoding is bounded to prevent a subroutine
+  fan-out denial of service.
+- CMap and Type 1 readers validate single-entry input.
+
 ## [v0.7.3] (2026-05-19)
 
 ### Changed
