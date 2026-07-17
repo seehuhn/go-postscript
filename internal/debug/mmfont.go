@@ -24,18 +24,17 @@ import (
 	"sort"
 )
 
-// MakeMMFont returns a complete, valid two-axis Multiple Master Type 1 font
-// program in PFA (plain-text, hex eexec) form.
+// MakeMMFont returns a deterministic multiple master Type 1 font program in
+// PFA (plain-text, hex eexec) form.
 //
-// The font has two design axes (Weight and Width), four corner masters and a
-// default WeightVector of [0.25 0.25 0.25 0.25], so the default instance is a
-// genuine blend of all four masters.  Every blended charstring coordinate is
-// chosen so its default-instance value is an exact integer, which makes the
-// decoded outlines analytically computable.  The charstrings exercise the
-// multiple-master blend OtherSubrs 14, 15 and 17, a seac composite glyph and a
-// glyph combining flex with blend in a single charstring.
-//
-// The output is deterministic: repeated calls return identical bytes.
+// The font has two design axes (Weight and Width) with four corner masters
+// and exercises blend charstrings that follow Adobe's operand conventions,
+// including OtherSubrs 14, 15, and 17 for blending, seac composites, and flex
+// with blend.  However, the program omits the /OtherSubrs, /NormalizeDesignVector,
+// /ConvertDesignVector, and /$Blend procedures, so it is not loadable by a full
+// PostScript interpreter; instead, it targets MM readers that implement OtherSubr
+// semantics directly, like this package.  Every blended coordinate's default-instance
+// value is an exact integer for analytical verification.
 func MakeMMFont() []byte {
 	priv := buildPrivate()
 

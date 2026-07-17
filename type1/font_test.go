@@ -171,7 +171,8 @@ func FuzzFont(f *testing.F) {
 
 		// The writer does not re-emit multiple master data, so a MM font
 		// cannot round-trip losslessly.  Still exercise write and re-read for
-		// robustness, but skip the equality check for such fonts.
+		// robustness, but skip the equality check for such fonts.  This is interim
+		// until the MM write contract (idempotence after first write) is implemented.
 		if i1.MM != nil {
 			return
 		}
