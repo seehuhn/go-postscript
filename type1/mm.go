@@ -45,7 +45,7 @@ type MMInfo struct {
 	// It may be nil.
 	Blend *MMBlend
 
-	// deobfuscated charstrings and subrs, retained for instantiation.
+	// deobfuscated charstrings and subrs, retained for instantiation
 	charstrings map[string][]byte
 	subrs       [][]byte
 }
@@ -110,10 +110,8 @@ func readMMInfo(fd, fontInfo postscript.Dict) *MMInfo {
 	if k < mmMinMasters || k > mmMaxMasters {
 		return nil
 	}
-	for _, v := range wv {
-		if !isFinite(v) {
-			return nil
-		}
+	if !allFinite(wv) {
+		return nil
 	}
 
 	mm := &MMInfo{WeightVector: wv}
@@ -154,13 +152,8 @@ func readAxesAndMasters(fontInfo postscript.Dict, k int) ([]MMAxis, [][]float64,
 	masters := make([][]float64, k)
 	for i, rowObj := range positions {
 		row := readNumberArray(rowObj)
-		if len(row) != n {
+		if len(row) != n || !allFinite(row) {
 			return nil, nil, false
-		}
-		for _, v := range row {
-			if !isFinite(v) {
-				return nil, nil, false
-			}
 		}
 		masters[i] = row
 	}
@@ -184,7 +177,7 @@ func readAxesAndMasters(fontInfo postscript.Dict, k int) ([]MMAxis, [][]float64,
 		points := make([]MMMapPoint, len(seg))
 		for j, pointObj := range seg {
 			pair := readNumberArray(pointObj)
-			if len(pair) != 2 || !isFinite(pair[0]) || !isFinite(pair[1]) {
+			if len(pair) != 2 || !allFinite(pair) {
 				return nil, nil, false
 			}
 			if j > 0 && pair[0] <= points[j-1].Design {
@@ -271,13 +264,8 @@ func readBlend2D(obj postscript.Object, k int) [][]float64 {
 // on any deviation.
 func readBlend1D(obj postscript.Object, k int) []float64 {
 	row := readNumberArray(obj)
-	if len(row) != k {
+	if len(row) != k || !allFinite(row) {
 		return nil
-	}
-	for _, v := range row {
-		if !isFinite(v) {
-			return nil
-		}
 	}
 	return row
 }
@@ -294,4 +282,14 @@ func readBlendScalar(obj postscript.Object, k int) []float64 {
 
 func isFinite(x float64) bool {
 	return !math.IsNaN(x) && !math.IsInf(x, 0)
+}
+
+// allFinite reports whether every element of v is finite.
+func allFinite(v []float64) bool {
+	for _, x := range v {
+		if !isFinite(x) {
+			return false
+		}
+	}
+	return true
 }

@@ -283,6 +283,16 @@ creationDateLoop:
 		lenIV = 4
 	}
 
+	// total charstring code (every subr plus every glyph body), used to size
+	// a single font-wide decode budget shared across all glyphs.  This bounds
+	// total decode work in proportion to the font's charstring data; one
+	// runaway glyph can exhaust the budget and blank the glyphs decoded after
+	// it, but the budget is generous enough that no well-formed font trips it.
+	// Subr lengths are counted after deobfuscation, charstring lengths before
+	// (including entries later dropped as too short), matching the amount of
+	// interpreter work each contributes.
+	codeBytes := 0
+
 	var subrs [][]byte
 	if subrsArray, ok := pd["Subrs"].(postscript.Array); ok {
 		for _, cipherObj := range subrsArray {
@@ -291,13 +301,20 @@ creationDateLoop:
 				subrs = append(subrs, nil)
 				continue
 			}
-			subrs = append(subrs, deobfuscateCharstring(cipher, int(lenIV)))
+			plain := deobfuscateCharstring(cipher, int(lenIV))
+			subrs = append(subrs, plain)
+			codeBytes += len(plain)
 		}
 	}
 
 	cs, ok := fd["CharStrings"].(postscript.Dict)
 	if !ok {
 		return nil, errors.New("missing/invalid CharStrings dictionary")
+	}
+	for _, obfuscatedObj := range cs {
+		if s, ok := obfuscatedObj.(postscript.String); ok {
+			codeBytes += len(s)
+		}
 	}
 	charstrings := make(map[string][]byte)
 	for name, obfuscatedObj := range cs {
@@ -316,7 +333,7 @@ creationDateLoop:
 		weightVector = mm.WeightVector
 	}
 
-	glyphs := decodeGlyphs(charstrings, subrs, weightVector, encoding)
+	glyphs := decodeGlyphs(charstrings, subrs, weightVector, encoding, codeBytes)
 
 	res := &Font{
 		CreationDate: creationDate,
@@ -334,21 +351,10 @@ creationDateLoop:
 // decodeGlyphs decodes the deobfuscated charstrings into glyphs, resolves
 // seac composites and synthesises a fallback ".notdef".  Encoding entries
 // that reference a missing glyph are rewritten to ".notdef".  weightVector
-// is the font's blend weights (nil for non-MM fonts).
-func decodeGlyphs(charstrings map[string][]byte, subrs [][]byte, weightVector []float64, encoding []string) map[string]*Glyph {
-	// total charstring code (every subr plus every glyph body), used to size
-	// a single font-wide decode budget shared across all glyphs.  This bounds
-	// total decode work in proportion to the font's charstring data; one
-	// runaway glyph can exhaust the budget and blank the glyphs decoded after
-	// it, but the budget is generous enough that no well-formed font trips it.
-	codeBytes := 0
-	for _, s := range subrs {
-		codeBytes += len(s)
-	}
-	for _, s := range charstrings {
-		codeBytes += len(s)
-	}
-
+// is the font's blend weights (nil for non-MM fonts).  codeBytes sizes the
+// font-wide charstring decode budget; see the comment in Read for how it is
+// computed.
+func decodeGlyphs(charstrings map[string][]byte, subrs [][]byte, weightVector []float64, encoding []string, codeBytes int) map[string]*Glyph {
 	ctx := &decodeInfo{
 		subrs:        subrs,
 		weightVector: weightVector,

@@ -18,10 +18,9 @@ package type1
 
 import (
 	"bytes"
+	"math"
 	"strings"
 	"testing"
-
-	"math"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
