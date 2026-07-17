@@ -30,6 +30,10 @@ type decodeInfo struct {
 	subrs [][]byte
 	seacs []seacInfo
 
+	// weightVector holds the multiple master blend weights, or nil for a
+	// non-MM font.  The OtherSubr 14-18 blend operators consume it.
+	weightVector []float64
+
 	// budget bounds the total charstring bytes processed across all glyphs of
 	// the font.  Each charstring body is charged its length before execution,
 	// so amplification via repeated subroutine calls trips the budget.  Shared

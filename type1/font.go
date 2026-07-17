@@ -29,6 +29,10 @@ type Font struct {
 	*FontInfo
 	*Outlines
 	CreationDate time.Time
+
+	// MM holds the multiple master data of the font, or nil for an
+	// ordinary single master font.
+	MM *MMInfo
 }
 
 // GlyphWidthPDF computes the width of a glyph in PDF glyph space units.

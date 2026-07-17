@@ -283,16 +283,15 @@ creationDateLoop:
 		lenIV = 4
 	}
 
-	ctx := &decodeInfo{}
-	if subrs, ok := pd["Subrs"].(postscript.Array); ok {
-		for _, cipherObj := range subrs {
+	var subrs [][]byte
+	if subrsArray, ok := pd["Subrs"].(postscript.Array); ok {
+		for _, cipherObj := range subrsArray {
 			cipher, ok := cipherObj.(postscript.String)
 			if !ok {
-				ctx.subrs = append(ctx.subrs, nil)
+				subrs = append(subrs, nil)
 				continue
 			}
-			plain := deobfuscateCharstring(cipher, int(lenIV))
-			ctx.subrs = append(ctx.subrs, plain)
+			subrs = append(subrs, deobfuscateCharstring(cipher, int(lenIV)))
 		}
 	}
 
@@ -300,32 +299,66 @@ creationDateLoop:
 	if !ok {
 		return nil, errors.New("missing/invalid CharStrings dictionary")
 	}
+	charstrings := make(map[string][]byte)
+	for name, obfuscatedObj := range cs {
+		obfuscated, ok := obfuscatedObj.(postscript.String)
+		if !ok || len(obfuscated) < 4 {
+			continue
+		}
+		charstrings[string(name)] = deobfuscateCharstring(obfuscated, int(lenIV))
+	}
 
+	mm := readMMInfo(fd, fontInfo)
+	var weightVector []float64
+	if mm != nil {
+		mm.charstrings = charstrings
+		mm.subrs = subrs
+		weightVector = mm.WeightVector
+	}
+
+	glyphs := decodeGlyphs(charstrings, subrs, weightVector, encoding)
+
+	res := &Font{
+		CreationDate: creationDate,
+		FontInfo:     fi,
+		MM:           mm,
+		Outlines: &Outlines{
+			Private:  private,
+			Glyphs:   glyphs,
+			Encoding: encoding,
+		},
+	}
+	return res, nil
+}
+
+// decodeGlyphs decodes the deobfuscated charstrings into glyphs, resolves
+// seac composites and synthesises a fallback ".notdef".  Encoding entries
+// that reference a missing glyph are rewritten to ".notdef".  weightVector
+// is the font's blend weights (nil for non-MM fonts).
+func decodeGlyphs(charstrings map[string][]byte, subrs [][]byte, weightVector []float64, encoding []string) map[string]*Glyph {
 	// total charstring code (every subr plus every glyph body), used to size
 	// a single font-wide decode budget shared across all glyphs.  This bounds
 	// total decode work in proportion to the font's charstring data; one
 	// runaway glyph can exhaust the budget and blank the glyphs decoded after
 	// it, but the budget is generous enough that no well-formed font trips it.
 	codeBytes := 0
-	for _, s := range ctx.subrs {
+	for _, s := range subrs {
 		codeBytes += len(s)
 	}
-	for _, obfuscated := range cs {
-		if s, ok := obfuscated.(postscript.String); ok {
-			codeBytes += len(s)
-		}
+	for _, s := range charstrings {
+		codeBytes += len(s)
 	}
-	ctx.budget = newCharstringBudget(codeBytes)
 
-	names := slices.Sorted(maps.Keys(cs))
+	ctx := &decodeInfo{
+		subrs:        subrs,
+		weightVector: weightVector,
+		budget:       newCharstringBudget(codeBytes),
+	}
+
+	names := slices.Sorted(maps.Keys(charstrings))
 	glyphs := make(map[string]*Glyph)
 	for _, name := range names {
-		obfuscated, ok := cs[name].(postscript.String)
-		if !ok || len(obfuscated) < 4 {
-			continue
-		}
-		plain := deobfuscateCharstring(obfuscated, int(lenIV))
-		glyphs[string(name)] = ctx.decodeCharString(plain, string(name))
+		glyphs[name] = ctx.decodeCharString(charstrings[name], name)
 	}
 
 	for _, seac := range ctx.seacs {
@@ -385,16 +418,7 @@ creationDateLoop:
 		}
 	}
 
-	res := &Font{
-		CreationDate: creationDate,
-		FontInfo:     fi,
-		Outlines: &Outlines{
-			Private:  private,
-			Glyphs:   glyphs,
-			Encoding: encoding,
-		},
-	}
-	return res, nil
+	return glyphs
 }
 
 func getReal(x postscript.Object) (float64, bool) {
