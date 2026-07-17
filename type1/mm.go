@@ -48,6 +48,11 @@ type MMInfo struct {
 	// deobfuscated charstrings and subrs, retained for instantiation
 	charstrings map[string][]byte
 	subrs       [][]byte
+
+	// codeBytes is the font-wide charstring decode budget input computed by
+	// Read; see the comment there for how it is derived.  Instantiate reuses
+	// it so the re-decoded instance uses the same decoder budget as Read.
+	codeBytes int
 }
 
 // MMAxis describes a single design axis of a multiple master font.

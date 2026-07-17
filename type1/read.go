@@ -330,6 +330,7 @@ creationDateLoop:
 	if mm != nil {
 		mm.charstrings = charstrings
 		mm.subrs = subrs
+		mm.codeBytes = codeBytes
 		weightVector = mm.WeightVector
 	}
 

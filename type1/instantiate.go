@@ -22,6 +22,7 @@ import (
 	"math"
 	"slices"
 	"strconv"
+	"strings"
 
 	"seehuhn.de/go/postscript/funit"
 )
@@ -115,16 +116,10 @@ func (f *Font) Instantiate(coords map[string]float64) (*Font, error) {
 		w[i] = prod
 	}
 
-	// re-decode the glyphs at the instance weight vector, mirroring Read
-	codeBytes := 0
-	for _, s := range mm.subrs {
-		codeBytes += len(s)
-	}
-	for _, s := range mm.charstrings {
-		codeBytes += len(s)
-	}
+	// re-decode the glyphs at the instance weight vector, mirroring Read;
+	// mm.codeBytes reuses the decode budget input computed by Read.
 	encoding := slices.Clone(f.Encoding)
-	glyphs := decodeGlyphs(mm.charstrings, mm.subrs, w, encoding, codeBytes)
+	glyphs := decodeGlyphs(mm.charstrings, mm.subrs, w, encoding, mm.codeBytes)
 
 	// blended Private and FontInfo entries
 	private := *f.Private
@@ -157,11 +152,13 @@ func (f *Font) Instantiate(coords map[string]float64) (*Font, error) {
 	}
 
 	// instance name: base + "_" + design coordinate per axis (TN #5088)
-	name := f.FontName
+	var nameBuilder strings.Builder
+	nameBuilder.WriteString(f.FontName)
 	for j := range mm.Axes {
-		name += "_" + strconv.FormatFloat(design[j], 'f', -1, 64)
+		nameBuilder.WriteByte('_')
+		nameBuilder.WriteString(strconv.FormatFloat(design[j], 'f', -1, 64))
 	}
-	fi.FontName = name
+	fi.FontName = nameBuilder.String()
 
 	return &Font{
 		CreationDate: f.CreationDate,
@@ -206,7 +203,7 @@ func normalizeDesign(pts []MMMapPoint, design float64) float64 {
 	if design >= pts[last].Design {
 		return pts[last].Normalized
 	}
-	for i := 0; i < last; i++ {
+	for i := range last {
 		d0, d1 := pts[i].Design, pts[i+1].Design
 		if design <= d1 {
 			if d1 == d0 { // guard; the reader forbids this, but stay safe
@@ -230,7 +227,7 @@ func designFromNormalized(pts []MMMapPoint, norm float64) float64 {
 	if norm >= pts[last].Normalized {
 		return pts[last].Design
 	}
-	for i := 0; i < last; i++ {
+	for i := range last {
 		n0, n1 := pts[i].Normalized, pts[i+1].Normalized
 		if norm <= n1 {
 			if n1 == n0 { // equal-Normalized segment
