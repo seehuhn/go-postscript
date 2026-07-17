@@ -28,6 +28,7 @@ import (
 
 	"seehuhn.de/go/geom/matrix"
 	"seehuhn.de/go/postscript/funit"
+	"seehuhn.de/go/postscript/internal/debug"
 )
 
 func makeEmptyEncoding() []string {
@@ -144,6 +145,12 @@ func FuzzFont(f *testing.F) {
 		f.Add(buf.Bytes(), uint8(format))
 	}
 
+	// a synthetic multiple master font, to exercise the MM reader and blend
+	// charstring decoder
+	mm := debug.MakeMMFont()
+	f.Add(mm, uint8(FormatPFA))
+	f.Add(mm, uint8(FormatPFB))
+
 	f.Fuzz(func(t *testing.T, data []byte, format uint8) {
 		i1, err := Read(bytes.NewReader(data))
 		if err != nil {
@@ -160,6 +167,13 @@ func FuzzFont(f *testing.F) {
 		if err != nil {
 			os.WriteFile("debug.pfa", buf.Bytes(), 0644)
 			t.Fatal(err)
+		}
+
+		// The writer does not re-emit multiple master data, so a MM font
+		// cannot round-trip losslessly.  Still exercise write and re-read for
+		// robustness, but skip the equality check for such fonts.
+		if i1.MM != nil {
+			return
 		}
 
 		if !reflect.DeepEqual(i1, i2) {
