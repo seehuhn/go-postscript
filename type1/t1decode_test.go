@@ -25,8 +25,117 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"seehuhn.de/go/geom/matrix"
+	"seehuhn.de/go/geom/vec"
 	"seehuhn.de/go/membudget"
 )
+
+// encInt encodes v as a five-byte Type 1 charstring integer operand.
+func encInt(v int) []byte {
+	return []byte{0xff, byte(v >> 24), byte(v >> 16), byte(v >> 8), byte(v)}
+}
+
+// buildBlendCharstring assembles a charstring that invokes the MM blend
+// othersubr `othersubr` with the given per-value base and delta operands,
+// then retrieves the m blended results with m pop operators, emitting each
+// as the dx of an rmoveto so the results surface as cumulative moveto
+// coordinates.  deltas[i] holds the k-1 master deltas for value i.
+func buildBlendCharstring(othersubr int, base []float64, deltas [][]float64) []byte {
+	var cs []byte
+	cs = append(cs, encInt(0)...)   // sidebearing
+	cs = append(cs, encInt(100)...) // width
+	cs = append(cs, 0x0d)           // hsbw
+	n := 0
+	for _, b := range base {
+		cs = append(cs, encInt(int(b))...)
+		n++
+	}
+	for _, dv := range deltas {
+		for _, d := range dv {
+			cs = append(cs, encInt(int(d))...)
+			n++
+		}
+	}
+	cs = append(cs, encInt(n)...)         // argument count
+	cs = append(cs, encInt(othersubr)...) // othersubr number
+	cs = append(cs, 0x0c, 0x10)           // callothersubr
+	for range base {
+		cs = append(cs, 0x0c, 0x11)   // pop
+		cs = append(cs, encInt(0)...) // dy
+		cs = append(cs, 0x15)         // rmoveto
+	}
+	cs = append(cs, 0x0e) // endchar
+	return cs
+}
+
+// blendInputs returns distinguishable base and delta operands for a blend
+// of m values across k masters: base values in the thousands, deltas small
+// so the two are never confused.
+func blendInputs(m, k int) (base []float64, deltas [][]float64) {
+	base = make([]float64, m)
+	deltas = make([][]float64, m)
+	for i := range base {
+		base[i] = float64(1000 * (i + 1))
+		deltas[i] = make([]float64, k-1)
+		for j := range deltas[i] {
+			deltas[i][j] = float64((i+1)*10 + (j + 1))
+		}
+	}
+	return base, deltas
+}
+
+// wantBlendCoords computes the cumulative moveto coordinates that
+// buildBlendCharstring must yield for the given operands and weights.
+func wantBlendCoords(base []float64, deltas [][]float64, wv []float64) []vec.Vec2 {
+	want := make([]vec.Vec2, len(base))
+	cum := 0.0
+	for i := range base {
+		r := base[i]
+		for j := 1; j < len(wv); j++ {
+			r += deltas[i][j-1] * wv[j]
+		}
+		cum += r
+		want[i] = vec.Vec2{X: cum, Y: 0}
+	}
+	return want
+}
+
+// TestDecodeCharStringBlend checks the multiple master blend othersubrs
+// (14-18) against analytically computed results.  The base and delta
+// operands are chosen so a wrong operand ordering would produce visibly
+// different coordinates.
+func TestDecodeCharStringBlend(t *testing.T) {
+	wv2 := []float64{0.25, 0.75}
+	wv4 := []float64{0.125, 0.25, 0.5, 0.125}
+	cases := []struct {
+		name      string
+		othersubr int
+		m         int
+		wv        []float64
+	}{
+		{"os14_2master", 14, 1, wv2},
+		{"os15_2master", 15, 2, wv2},
+		{"os16_2master", 16, 3, wv2},
+		{"os17_2master", 17, 4, wv2},
+		{"os18_2master", 18, 6, wv2},
+		{"os14_4master", 14, 1, wv4},
+		{"os15_4master", 15, 2, wv4},
+		{"os16_4master", 16, 3, wv4},
+		{"os17_4master", 17, 4, wv4},
+		{"os18_4master", 18, 6, wv4},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			base, deltas := blendInputs(tc.m, len(tc.wv))
+			cs := buildBlendCharstring(tc.othersubr, base, deltas)
+			info := &decodeInfo{budget: newTestBudget(), weightVector: tc.wv}
+			g := info.decodeCharString(cs, "blend")
+			want := wantBlendCoords(base, deltas, tc.wv)
+			if diff := cmp.Diff(want, g.Outline.Coords); diff != "" {
+				t.Errorf("blend coords mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
 
 // newTestBudget returns a budget generous enough that no well-formed test
 // charstring trips it.
@@ -65,6 +174,70 @@ func TestDecodeCharStringMalformedNoPanic(t *testing.T) {
 				t.Errorf("expected blank stub, got %+v", g)
 			}
 		})
+	}
+}
+
+// TestDecodeCharStringBlendNilWeightVector checks that a blend othersubr in
+// a non-MM font (weightVector == nil) is ignored: the raw operands stay on
+// the postscript stack for the following pops, exactly as an unknown
+// othersubr behaves, so the popped value is the raw base operand.
+func TestDecodeCharStringBlendNilWeightVector(t *testing.T) {
+	base := []float64{1000}
+	deltas := [][]float64{{100}}
+	cs := buildBlendCharstring(14, base, deltas)
+	info := &decodeInfo{budget: newTestBudget()} // weightVector nil
+	g := info.decodeCharString(cs, "blend")
+	// pop returns the first operand pushed, i.e. the raw base value 1000
+	want := []vec.Vec2{{X: 1000, Y: 0}}
+	if diff := cmp.Diff(want, g.Outline.Coords); diff != "" {
+		t.Errorf("nil-weightVector blend must be a no-op (-want +got):\n%s", diff)
+	}
+}
+
+// TestDecodeCharStringBlendWrongArgN checks that a blend othersubr whose
+// operand count does not equal m*k yields a blank stub via the bail path,
+// without error or panic.
+func TestDecodeCharStringBlendWrongArgN(t *testing.T) {
+	// othersubr 14 wants m*k = 1*2 = 2 operands; supply 3.
+	base := []float64{1000}
+	deltas := [][]float64{{100, 200}}
+	cs := buildBlendCharstring(14, base, deltas)
+	info := &decodeInfo{budget: newTestBudget(), weightVector: []float64{0.25, 0.75}}
+	g := info.decodeCharString(cs, "blend")
+	if g == nil {
+		t.Fatal("expected non-nil stub")
+	}
+	if len(g.Outline.Cmds) != 0 {
+		t.Errorf("expected blank stub on wrong argN, got %d cmds", len(g.Outline.Cmds))
+	}
+	if g.WidthX != 100 {
+		t.Errorf("stub must preserve width, got %v, want 100", g.WidthX)
+	}
+}
+
+// TestDecodeCharStringBlendStackLimit checks the conditional operand-stack
+// limit: a 16-master blend of 6 values pushes 96 operands, which decodes
+// when weightVector is set but trips the ordinary limit when it is not.
+func TestDecodeCharStringBlendStackLimit(t *testing.T) {
+	wv := make([]float64, 16)
+	wv[0] = 0.5
+	wv[15] = 0.5
+	base, deltas := blendInputs(6, 16)
+	cs := buildBlendCharstring(18, base, deltas)
+
+	// with a weight vector the raised limit admits all 96 operands
+	info := &decodeInfo{budget: newTestBudget(), weightVector: wv}
+	g := info.decodeCharString(cs, "blend")
+	want := wantBlendCoords(base, deltas, wv)
+	if diff := cmp.Diff(want, g.Outline.Coords); diff != "" {
+		t.Errorf("16-master blend coords mismatch (-want +got):\n%s", diff)
+	}
+
+	// without one, the same 96 operands hit the ordinary 24-operand limit
+	info2 := &decodeInfo{budget: newTestBudget()}
+	g2 := info2.decodeCharString(cs, "blend")
+	if len(g2.Outline.Cmds) != 0 {
+		t.Errorf("expected blank stub from tripped limit, got %d cmds", len(g2.Outline.Cmds))
 	}
 }
 

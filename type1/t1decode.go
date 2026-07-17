@@ -49,7 +49,14 @@ type seacInfo struct {
 }
 
 func (info *decodeInfo) decodeCharString(code []byte, name string) *Glyph {
-	const maxStack = 24
+	// operand-stack depth limit.  the MM blend othersubrs 14-18 legitimately
+	// push up to 6 values * 16 masters = 96 operands, plus the argument count
+	// and othersubr number, so raise the limit for MM fonts; ordinary fonts
+	// keep the strict limit.
+	maxStack := 24
+	if info.weightVector != nil {
+		maxStack = 98
+	}
 	stack := make([]float64, 0, maxStack)
 	clearStack := func() {
 		stack = stack[:0]
@@ -465,8 +472,43 @@ glyphLoop:
 						return bail()
 					}
 					postscriptStack = append(postscriptStack[:0], 3)
+				case 14, 15, 16, 17, 18: // multiple master blend
+					if info.weightVector == nil {
+						// a blend othersubr in a non-MM font is malformed;
+						// fall through to the unknown-othersubr contract below
+						break
+					}
+					k := len(info.weightVector)
+					m := idx - 13 // number of blended values
+					if idx == 18 {
+						m = 6
+					}
+					if argN != m*k {
+						return bail()
+					}
+					// postscriptStack holds the argN operands reversed: the
+					// forward operand p (0-indexed) is postscriptStack[argN-1-p].
+					// layout: m base values, then for each value its k-1 deltas
+					// for masters 2..k.
+					results := make([]float64, m)
+					for i := range m {
+						v := postscriptStack[argN-1-i] // base value i
+						for mm := 1; mm < k; mm++ {
+							d := postscriptStack[argN-1-(m+i*(k-1)+(mm-1))]
+							v += d * info.weightVector[mm]
+						}
+						results[i] = v
+					}
+					// push results reversed so the following m pops return
+					// them in the base-value order
+					postscriptStack = postscriptStack[:0]
+					for i := m - 1; i >= 0; i-- {
+						postscriptStack = append(postscriptStack, results[i])
+					}
 				default:
-					// font-private othersubrs: ignore
+					// unknown (font-private) othersubr: ignored, its operands
+					// remain on the postscript stack for the following pop
+					// operators (permissive reading)
 				}
 			case t1pop:
 				if len(postscriptStack) < 1 {
