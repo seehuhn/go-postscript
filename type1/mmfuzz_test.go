@@ -31,7 +31,7 @@ import (
 // the same idempotence-after-first-write contract as FuzzFont: writing and
 // re-reading it twice must yield identical results.
 func FuzzInstantiate(f *testing.F) {
-	mm := debug.MakeMMFont()
+	mmPFA := debug.MakeMMFont()
 	seeds := [][2]uint16{
 		{0, 0},
 		{0, 65535},
@@ -40,7 +40,20 @@ func FuzzInstantiate(f *testing.F) {
 		{32767, 32767},
 	}
 	for _, s := range seeds {
-		f.Add(mm, s[0], s[1])
+		f.Add(mmPFA, s[0], s[1])
+	}
+
+	// add PFB-encoded form of the same MM font
+	mmFont, err := Read(bytes.NewReader(mmPFA))
+	if err != nil {
+		f.Fatal(err)
+	}
+	mmPFB := &bytes.Buffer{}
+	if err := mmFont.Write(mmPFB, &WriterOptions{Format: FormatPFB}); err != nil {
+		f.Fatal(err)
+	}
+	for _, s := range seeds {
+		f.Add(mmPFB.Bytes(), s[0], s[1])
 	}
 
 	f.Fuzz(func(t *testing.T, data []byte, w1, w2 uint16) {
