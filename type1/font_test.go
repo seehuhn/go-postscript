@@ -169,11 +169,29 @@ func FuzzFont(f *testing.F) {
 			t.Fatal(err)
 		}
 
-		// The writer does not re-emit multiple master data, so a MM font
-		// cannot round-trip losslessly.  Still exercise write and re-read for
-		// robustness, but skip the equality check for such fonts.  This is interim
-		// until the MM write contract (idempotence after first write) is implemented.
+		// The writer does not re-emit multiple master data: writing a MM font
+		// emits a single-master snapshot of its default instance, so i1 and i2
+		// need not match.  The settled contract is idempotence from the first
+		// write onward: i2 must be an ordinary font, and writing it again must
+		// reproduce it exactly.
 		if i1.MM != nil {
+			if i2.MM != nil {
+				t.Fatal("MM data survived a write/read round trip")
+			}
+
+			buf2 := &bytes.Buffer{}
+			err = i2.Write(buf2, &WriterOptions{Format: FileFormat(format % uint8(len(ff)))})
+			if err != nil {
+				t.Fatal(err)
+			}
+			i3, err := Read(bytes.NewReader(buf2.Bytes()))
+			if err != nil {
+				os.WriteFile("debug.pfa", buf2.Bytes(), 0644)
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(i2, i3) {
+				t.Fatal(cmp.Diff(i2, i3))
+			}
 			return
 		}
 
