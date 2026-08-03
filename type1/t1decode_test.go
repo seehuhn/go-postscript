@@ -25,6 +25,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"seehuhn.de/go/geom/matrix"
+	"seehuhn.de/go/geom/path"
 	"seehuhn.de/go/geom/vec"
 	"seehuhn.de/go/membudget"
 )
@@ -418,4 +419,250 @@ func TestDecodeCharStringFanoutBomb(t *testing.T) {
 	if len(g.Outline.Cmds) != 0 {
 		t.Errorf("expected blank stub from tripped budget, got %d outline cmds", len(g.Outline.Cmds))
 	}
+}
+
+// appendPair encodes two charstring integer operands.
+func appendPair(cs []byte, a, b int) []byte {
+	cs = append(cs, encInt(a)...)
+	return append(cs, encInt(b)...)
+}
+
+// TestDecodeCharStringCloseThenDraw checks the handling of a charstring which
+// continues drawing after a closepath.  The Type 1 closepath command leaves
+// the current point unchanged, so the decoded outline must start a new
+// sub-path there rather than at the start of the closed sub-path.
+func TestDecodeCharStringCloseThenDraw(t *testing.T) {
+	var cs []byte
+	cs = append(cs, encInt(0)...)   // sidebearing
+	cs = append(cs, encInt(600)...) // width
+	cs = append(cs, 0x0d)           // hsbw
+	cs = appendPair(cs, 0, 0)
+	cs = append(cs, 0x15) // rmoveto
+	cs = appendPair(cs, 600, 0)
+	cs = append(cs, 0x05) // rlineto
+	cs = appendPair(cs, -300, 700)
+	cs = append(cs, 0x05) // rlineto
+	cs = append(cs, 0x09) // closepath
+	cs = appendPair(cs, -200, -300)
+	cs = append(cs, 0x05) // rlineto
+	cs = append(cs, 0x0e) // endchar
+
+	info := &decodeInfo{budget: newTestBudget()}
+	g := info.decodeCharString(cs, "test")
+
+	// The line after the closepath starts at the current point, which the
+	// closepath left at (300, 700).
+	want := &path.Data{}
+	want.MoveTo(vec.Vec2{X: 0, Y: 0})
+	want.LineTo(vec.Vec2{X: 600, Y: 0})
+	want.LineTo(vec.Vec2{X: 300, Y: 700})
+	want.Close()
+	want.MoveTo(vec.Vec2{X: 300, Y: 700})
+	want.LineTo(vec.Vec2{X: 100, Y: 400})
+	want.Close()
+
+	if d := cmp.Diff(want, g.Outline); d != "" {
+		t.Errorf("outline differs (-want +got):\n%s", d)
+	}
+}
+
+// TestDecodeCharStringCloseThenCurve checks that a curve which follows a
+// closepath starts a new sub-path at the current point, which the closepath
+// left unchanged.
+func TestDecodeCharStringCloseThenCurve(t *testing.T) {
+	var cs []byte
+	cs = append(cs, encInt(0)...)   // sidebearing
+	cs = append(cs, encInt(600)...) // width
+	cs = append(cs, 0x0d)           // hsbw
+	cs = appendPair(cs, 0, 0)
+	cs = append(cs, 0x15) // rmoveto
+	cs = appendPair(cs, 600, 0)
+	cs = append(cs, 0x05) // rlineto
+	cs = appendPair(cs, -300, 700)
+	cs = append(cs, 0x05) // rlineto
+	cs = append(cs, 0x09) // closepath
+	cs = appendPair(cs, -100, -100)
+	cs = appendPair(cs, -100, -200)
+	cs = appendPair(cs, -100, -400)
+	cs = append(cs, 0x08) // rrcurveto
+	cs = append(cs, 0x0e) // endchar
+
+	info := &decodeInfo{budget: newTestBudget()}
+	g := info.decodeCharString(cs, "test")
+
+	// The curve after the closepath starts at (300, 700); its control points
+	// and endpoint follow from the three relative pairs.
+	want := &path.Data{}
+	want.MoveTo(vec.Vec2{X: 0, Y: 0})
+	want.LineTo(vec.Vec2{X: 600, Y: 0})
+	want.LineTo(vec.Vec2{X: 300, Y: 700})
+	want.Close()
+	want.MoveTo(vec.Vec2{X: 300, Y: 700})
+	want.CubeTo(
+		vec.Vec2{X: 200, Y: 600},
+		vec.Vec2{X: 100, Y: 400},
+		vec.Vec2{X: 0, Y: 0},
+	)
+	want.Close()
+
+	if d := cmp.Diff(want, g.Outline); d != "" {
+		t.Errorf("outline differs (-want +got):\n%s", d)
+	}
+}
+
+// appendFlex appends a flex sequence to cs.  The sequence consists of othersubr
+// 1, seven rmoveto commands each followed by othersubr 2, and othersubr 0.
+// The first pair gives the reference point relative to the current point; the
+// remaining six give the control points and endpoints of the two curves, each
+// relative to its predecessor.  End is the absolute endpoint of the second
+// curve, which the trailing setcurrentpoint restores as the current point.
+func appendFlex(cs []byte, pairs [7][2]int, end [2]int) []byte {
+	cs = appendPair(cs, 0, 1)
+	cs = append(cs, 0x0c, 0x10) // callothersubr (flex start)
+	for _, p := range pairs {
+		cs = appendPair(cs, p[0], p[1])
+		cs = append(cs, 0x15) // rmoveto
+		cs = appendPair(cs, 0, 2)
+		cs = append(cs, 0x0c, 0x10) // callothersubr (flex coordinate pair)
+	}
+	cs = append(cs, encInt(50)...) // flex height
+	cs = appendPair(cs, end[0], end[1])
+	cs = appendPair(cs, 3, 0)
+	cs = append(cs, 0x0c, 0x10) // callothersubr (flex end)
+	cs = append(cs, 0x0c, 0x11) // pop
+	cs = append(cs, 0x0c, 0x11) // pop
+	cs = append(cs, 0x0c, 0x21) // setcurrentpoint
+	return cs
+}
+
+// TestDecodeCharStringFlex checks that a flex sequence decodes to the two
+// cubic curves it describes, dropping the reference point.  The curves start
+// at the current point from before the flex, so after a closepath the flex
+// must start a new sub-path there.
+func TestDecodeCharStringFlex(t *testing.T) {
+	// starting at (100, 0), with reference point (100, 50)
+	pairs := [7][2]int{
+		{0, 50},   // reference point
+		{10, -50}, // (110, 0)
+		{10, 10},  // (120, 10)
+		{10, 0},   // (130, 10)
+		{10, 0},   // (140, 10)
+		{10, -10}, // (150, 0)
+		{10, 0},   // (160, 0)
+	}
+	curves := func(d *path.Data) {
+		d.CubeTo(
+			vec.Vec2{X: 110, Y: 0},
+			vec.Vec2{X: 120, Y: 10},
+			vec.Vec2{X: 130, Y: 10},
+		)
+		d.CubeTo(
+			vec.Vec2{X: 140, Y: 10},
+			vec.Vec2{X: 150, Y: 0},
+			vec.Vec2{X: 160, Y: 0},
+		)
+	}
+
+	prefix := func() []byte {
+		var cs []byte
+		cs = append(cs, encInt(0)...)   // sidebearing
+		cs = append(cs, encInt(600)...) // width
+		cs = append(cs, 0x0d)           // hsbw
+		cs = appendPair(cs, 0, 0)
+		cs = append(cs, 0x15) // rmoveto
+		cs = appendPair(cs, 100, 0)
+		cs = append(cs, 0x05) // rlineto, current point is now (100, 0)
+		return cs
+	}
+
+	t.Run("openSubPath", func(t *testing.T) {
+		cs := appendFlex(prefix(), pairs, [2]int{160, 0})
+		cs = append(cs, 0x0e) // endchar
+
+		info := &decodeInfo{budget: newTestBudget()}
+		g := info.decodeCharString(cs, "test")
+
+		// the flex continues the sub-path opened by the rmoveto
+		want := &path.Data{}
+		want.MoveTo(vec.Vec2{X: 0, Y: 0})
+		want.LineTo(vec.Vec2{X: 100, Y: 0})
+		curves(want)
+		want.Close()
+
+		if d := cmp.Diff(want, g.Outline); d != "" {
+			t.Errorf("outline differs (-want +got):\n%s", d)
+		}
+	})
+
+	t.Run("afterClosePath", func(t *testing.T) {
+		cs := prefix()
+		cs = append(cs, 0x09) // closepath
+		cs = appendFlex(cs, pairs, [2]int{160, 0})
+		cs = append(cs, 0x0e) // endchar
+
+		info := &decodeInfo{budget: newTestBudget()}
+		g := info.decodeCharString(cs, "test")
+
+		// the flex starts a new sub-path at (100, 0)
+		want := &path.Data{}
+		want.MoveTo(vec.Vec2{X: 0, Y: 0})
+		want.LineTo(vec.Vec2{X: 100, Y: 0})
+		want.Close()
+		want.MoveTo(vec.Vec2{X: 100, Y: 0})
+		curves(want)
+		want.Close()
+
+		if d := cmp.Diff(want, g.Outline); d != "" {
+			t.Errorf("outline differs (-want +got):\n%s", d)
+		}
+	})
+}
+
+// TestDecodeCharStringRedundantClose checks that closepath commands which do
+// not close an open sub-path are ignored, instead of adding stray Close
+// commands to the outline.
+func TestDecodeCharStringRedundantClose(t *testing.T) {
+	prefix := func() []byte {
+		var cs []byte
+		cs = append(cs, encInt(0)...)   // sidebearing
+		cs = append(cs, encInt(600)...) // width
+		cs = append(cs, 0x0d)           // hsbw
+		return cs
+	}
+
+	t.Run("leading", func(t *testing.T) {
+		cs := prefix()
+		cs = append(cs, 0x09) // closepath
+		cs = append(cs, 0x0e) // endchar
+
+		info := &decodeInfo{budget: newTestBudget()}
+		g := info.decodeCharString(cs, "test")
+
+		want := &path.Data{}
+		if d := cmp.Diff(want, g.Outline); d != "" {
+			t.Errorf("outline differs (-want +got):\n%s", d)
+		}
+	})
+
+	t.Run("duplicate", func(t *testing.T) {
+		cs := prefix()
+		cs = appendPair(cs, 0, 0)
+		cs = append(cs, 0x15) // rmoveto
+		cs = appendPair(cs, 100, 0)
+		cs = append(cs, 0x05) // rlineto
+		cs = append(cs, 0x09) // closepath
+		cs = append(cs, 0x09) // closepath (redundant)
+		cs = append(cs, 0x0e) // endchar
+
+		info := &decodeInfo{budget: newTestBudget()}
+		g := info.decodeCharString(cs, "test")
+
+		want := &path.Data{}
+		want.MoveTo(vec.Vec2{X: 0, Y: 0})
+		want.LineTo(vec.Vec2{X: 100, Y: 0})
+		want.Close()
+		if d := cmp.Diff(want, g.Outline); d != "" {
+			t.Errorf("outline differs (-want +got):\n%s", d)
+		}
+	})
 }

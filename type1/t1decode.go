@@ -64,6 +64,7 @@ func (info *decodeInfo) decodeCharString(code []byte, name string) *Glyph {
 
 	var postscriptStack []float64
 	var flexData []float64
+	var flexStart vec.Vec2 // current point when the flex sequence started
 	inFlex := false
 
 	res := &Glyph{
@@ -91,10 +92,17 @@ func (info *decodeInfo) decodeCharString(code []byte, name string) *Glyph {
 	var posX, posY float64
 	var LsbX funit.Int16 // TODO(voss): use float64
 	var LsbY funit.Int16
-	isClosed := true
+	isClosed := true   // no sub-path is open
+	haveStart := false // a MoveTo has been emitted for the current sub-path
+	// A closepath with no sub-path open is a no-op.  Charstrings in the wild
+	// contain redundant closepath commands, and emitting a Close for them
+	// would leave the outline unreadable by the normal path rules.
 	rClosePath := func() {
-		res.Outline.Close()
+		if haveStart {
+			res.Outline.Close()
+		}
 		isClosed = true
+		haveStart = false
 	}
 	rMoveTo := func(dx, dy float64) {
 		posX += dx
@@ -108,14 +116,27 @@ func (info *decodeInfo) decodeCharString(code []byte, name string) *Glyph {
 			rClosePath()
 		}
 		res.Outline.MoveTo(vec.Vec2{X: posX, Y: posY})
+		haveStart = true
+	}
+	// Unlike the PostScript operator, the Type 1 closepath command leaves the
+	// current point where it is.  A drawing command which follows a closepath
+	// therefore starts a new sub-path at the current point, and we make this
+	// explicit so that the outline can be read using the normal path rules.
+	startSubPath := func(p vec.Vec2) {
+		if !haveStart {
+			res.Outline.MoveTo(p)
+			haveStart = true
+		}
 	}
 	rLineTo := func(dx, dy float64) {
+		startSubPath(vec.Vec2{X: posX, Y: posY})
 		posX += dx
 		posY += dy
 		res.Outline.LineTo(vec.Vec2{X: posX, Y: posY})
 		isClosed = false
 	}
 	rCurveTo := func(dxa, dya, dxb, dyb, dxc, dyc float64) {
+		startSubPath(vec.Vec2{X: posX, Y: posY})
 		xa := posX + dxa
 		ya := posY + dya
 		xb := xa + dxb
@@ -443,6 +464,7 @@ glyphLoop:
 					}
 					inFlex = false
 					if len(flexData) == 14 {
+						startSubPath(flexStart)
 						res.Outline.CubeTo(
 							vec.Vec2{X: flexData[2], Y: flexData[3]},
 							vec.Vec2{X: flexData[4], Y: flexData[5]},
@@ -461,6 +483,7 @@ glyphLoop:
 						return bail()
 					}
 					inFlex = true
+					flexStart = vec.Vec2{X: posX, Y: posY}
 					flexData = flexData[:0]
 				case 2: // flex coordinate pair (0 args)
 					if argN != 0 {
