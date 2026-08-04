@@ -19,6 +19,8 @@ package postscript
 import (
 	"fmt"
 	"io"
+	"math"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -140,7 +142,9 @@ func TestScanDSCMultiLineBomb(t *testing.T) {
 	var b strings.Builder
 	b.WriteString("%%X: short\n")
 	for range 10 {
-		b.WriteString("%%+ " + strings.Repeat("b", 200) + "\n")
+		b.WriteString("%%+ ")
+		b.WriteString(strings.Repeat("b", 200))
+		b.WriteString("\n")
 	}
 	s := newScanner(strings.NewReader(b.String()))
 	s.maxDSCBytes = limit
@@ -170,6 +174,15 @@ func TestScanToken(t *testing.T) {
 	23A
 	23E1
 	23#1
+	99999999999999999999
+	1e-400
+	+inf
+	1_0
+	1_000.5
+	0x1p-2
+	1e
+	.
+	-
 	`
 	exp := []Object{
 		Integer(123),
@@ -184,6 +197,18 @@ func TestScanToken(t *testing.T) {
 		Operator("23A"),
 		Real(23e1),
 		Integer(1),
+		// integers too large for an int are read as reals
+		Real(1e20),
+		// numbers too small for a float64 are read as zero
+		Real(0),
+		Operator("+inf"),
+		// literals which only Go allows are names, not numbers
+		Operator("1_0"),
+		Operator("1_000.5"),
+		Operator("0x1p-2"),
+		Operator("1e"),
+		Operator("."),
+		Operator("-"),
 	}
 	s := newScanner(strings.NewReader(in))
 	var oo []Object
@@ -198,6 +223,74 @@ func TestScanToken(t *testing.T) {
 	}
 	if d := cmp.Diff(exp, oo); d != "" {
 		t.Errorf("unexpected objects: %s", d)
+	}
+}
+
+// TestScanNumberOutOfRange checks the treatment of numbers outside the range
+// the number objects can represent: a real number too large gives a
+// limitcheck error, and one too close to zero gives zero.  Tokens which only
+// look like numbers stay names.  In particular, no input scans as an infinity
+// or a NaN.
+func TestScanNumberOutOfRange(t *testing.T) {
+	huge := strings.Repeat("9", 400)
+	// a radix number which fills an Integer exactly, and one digit too many
+	allOnes := strings.Repeat("F", strconv.IntSize/4)
+	tooLong := "1" + allOnes
+
+	cases := []struct {
+		in    string
+		exp   Object // the expected object, nil if limitcheck is expected
+		limit bool   // whether a limitcheck error is expected
+	}{
+		{in: "1e400", limit: true},
+		{in: "-1e400", limit: true},
+		{in: "1e999999999", limit: true},
+		{in: huge, limit: true},
+		{in: huge + ".5", limit: true},
+		{in: "1." + huge + "e400", limit: true},
+		{in: "16#" + tooLong, limit: true},
+		{in: "2#" + strings.Repeat("1", strconv.IntSize+1), limit: true},
+
+		{in: "1e-400", exp: Real(0)},
+		{in: "-1e-400", exp: Real(0)},
+		{in: "1e-999999999", exp: Real(0)},
+
+		// a radix number is unsigned and keeps its binary representation
+		{in: "16#" + allOnes, exp: Integer(-1)},
+
+		// tokens which are not numbers are names
+		{in: "inf", exp: Operator("inf")},
+		{in: "+inf", exp: Operator("+inf")},
+		{in: "-inf", exp: Operator("-inf")},
+		{in: "nan", exp: Operator("nan")},
+		{in: "16#FG", exp: Operator("16#FG")},
+		{in: "1#0", exp: Operator("1#0")},
+	}
+	for _, c := range cases {
+		s := newScanner(strings.NewReader(c.in))
+		obj, err := s.ScanToken()
+
+		if c.limit {
+			e, ok := err.(*postScriptError)
+			if !ok || e.tp != eLimitcheck {
+				t.Errorf("%s: got (%v, %v), want limitcheck", c.in, obj, err)
+			}
+			continue
+		}
+
+		if err != nil {
+			t.Errorf("%s: %v", c.in, err)
+			continue
+		}
+		if x, ok := obj.(Real); ok {
+			if math.IsInf(float64(x), 0) || math.IsNaN(float64(x)) {
+				t.Errorf("%s: scanned as %v", c.in, x)
+				continue
+			}
+		}
+		if obj != c.exp {
+			t.Errorf("%s: got %v, want %v", c.in, obj, c.exp)
+		}
 	}
 }
 
@@ -431,5 +524,33 @@ func TestDSC3(t *testing.T) {
 	}
 	if token != Name("A") {
 		t.Errorf("expected A, got %q", token)
+	}
+}
+
+// BenchmarkScanToken measures tokenisation of a stream in which operator
+// names dominate, as they do in font programs and CMap files.
+func BenchmarkScanToken(b *testing.B) {
+	var buf strings.Builder
+	for i := range 5000 {
+		buf.WriteString("/Glyph")
+		buf.WriteString(strconv.Itoa(i % 97))
+		buf.WriteString(" 123 -4.5 16#FF dup exch def rlineto closepath\n")
+		if i%8 == 0 {
+			buf.WriteString("{ 0 500 hsbw } (a string) cvx exec\n")
+		}
+	}
+	in := buf.String()
+	b.SetBytes(int64(len(in)))
+	b.ReportAllocs()
+	for b.Loop() {
+		s := newScanner(strings.NewReader(in))
+		for {
+			_, err := s.ScanToken()
+			if err == io.EOF {
+				break
+			} else if err != nil {
+				b.Fatal(err)
+			}
+		}
 	}
 }

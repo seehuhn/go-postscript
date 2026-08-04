@@ -21,7 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"regexp"
 	"strconv"
 )
@@ -50,6 +49,11 @@ type scanner struct {
 	crSeen      bool
 	peek        []byte
 	regurgitate bool
+
+	// tokenBuf collects the bytes of the name or operator token currently
+	// being scanned.  Tokens are converted to strings before they are
+	// returned, so the buffer can be reused for the next token.
+	tokenBuf []byte
 
 	eexecMode  int // 0 = off, 1 = ascii, 2 = binary
 	eexecState uint16
@@ -138,7 +142,7 @@ func (s *scanner) ScanToken() (Object, error) {
 			return nil, err
 		}
 	case '/':
-		var name []byte
+		name := s.tokenBuf[:0]
 		s.SkipByte()
 		// TODO(voss): implement "immediate names"
 		for {
@@ -157,10 +161,11 @@ func (s *scanner) ScanToken() (Object, error) {
 			s.SkipByte()
 			name = append(name, b)
 		}
+		s.tokenBuf = name
 		return Name(name), nil
 	default:
 		s.SkipByte()
-		opBytes := []byte{b}
+		opBytes := append(s.tokenBuf[:0], b)
 		if class[b] == regular {
 			for {
 				b, err := s.Peek()
@@ -179,9 +184,13 @@ func (s *scanner) ScanToken() (Object, error) {
 				opBytes = append(opBytes, b)
 			}
 		}
+		s.tokenBuf = opBytes
 
 		x, err := parseNumber(opBytes)
-		if err == nil {
+		if err != nil {
+			return nil, err
+		}
+		if x != nil {
 			return x, nil
 		}
 
@@ -736,31 +745,126 @@ var class = [256]characterClass{
 	'%': delimiter,
 }
 
+// parseNumber converts a token into an Integer or Real object.  Tokens which
+// are not numbers give a nil object and a nil error; the caller reads these as
+// operator names.  A number beyond the range of the corresponding Go type
+// gives a limitcheck error.
+//
+// The implementation limits are those of the Go types used for the two number
+// objects: [Integer] for integers and [Real] for real numbers.
 func parseNumber(s []byte) (Object, error) {
-	x, err := strconv.ParseInt(string(s), 10, 0)
-	if err == nil {
-		return Integer(x), nil
+	// Most tokens are operator names rather than numbers.  Rejecting these
+	// on the first byte keeps them out of the strconv and regexp code below.
+	if len(s) == 0 || !isNumberStart[s[0]] {
+		return nil, nil
 	}
 
-	y, err := strconv.ParseFloat(string(s), 64)
-	if errors.Is(err, strconv.ErrRange) {
-		return nil, &postScriptError{eLimitcheck, fmt.Sprintf("number %q out of range", s)}
-	} else if err == nil && !math.IsInf(y, 0) && !math.IsNaN(y) {
-		return Real(y), nil
+	if isDecimalInt(s) {
+		x, err := strconv.ParseInt(string(s), 10, 0)
+		if err == nil {
+			return Integer(x), nil
+		}
+		// an integer beyond the implementation limit becomes a real number
+	}
+
+	if isDecimalReal(s) {
+		y, err := strconv.ParseFloat(string(s), 64)
+		if err == nil {
+			return Real(y), nil
+		}
+		// The syntax has been checked, so ParseFloat can only fail because
+		// the value is too large.  Values too close to zero to represent
+		// give zero and no error.
+		return nil, outOfRange(s)
 	}
 
 	mm := radixNumberRe.FindSubmatch(s)
 	if mm != nil {
 		base, err := strconv.ParseInt(string(mm[1]), 10, 0)
 		if err == nil && base >= 2 && base <= 36 {
-			z, err := strconv.ParseInt(string(mm[2]), int(base), 0)
+			// A radix number is unsigned and keeps its binary representation
+			// when converted to an integer, so 16#FFFFFFFF is -1 where
+			// integers are 32 bits wide.
+			z, err := strconv.ParseUint(string(mm[2]), int(base), 0)
 			if err == nil {
 				return Integer(z), nil
 			}
+			if errors.Is(err, strconv.ErrRange) {
+				return nil, outOfRange(s)
+			}
+			// digits outside the base make this a name, not a number
 		}
 	}
 
-	return nil, &postScriptError{eSyntaxerror, fmt.Sprintf("invalid number %q", s)}
+	return nil, nil
 }
+
+func outOfRange(s []byte) error {
+	return &postScriptError{eLimitcheck, fmt.Sprintf("number %q out of range", s)}
+}
+
+// isDecimalInt reports whether s has the form of a decimal integer literal,
+// i.e. whether strconv.ParseInt can be expected to succeed on it.
+func isDecimalInt(s []byte) bool {
+	if s[0] == '+' || s[0] == '-' {
+		s = s[1:]
+	}
+	if len(s) == 0 {
+		return false
+	}
+	for _, b := range s {
+		if b < '0' || b > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// isDecimalReal reports whether s has the form of a PostScript real number:
+// an optional sign, digits with an optional decimal point, and an optional
+// decimal exponent.  The syntax is checked here because strconv.ParseFloat
+// also accepts underscores as digit separators, hexadecimal floats, and the
+// words "inf" and "nan", all of which are names in PostScript.
+func isDecimalReal(s []byte) bool {
+	i := 0
+	if s[i] == '+' || s[i] == '-' {
+		i++
+	}
+	digits := 0
+	for ; i < len(s) && s[i] >= '0' && s[i] <= '9'; i++ {
+		digits++
+	}
+	if i < len(s) && s[i] == '.' {
+		i++
+		for ; i < len(s) && s[i] >= '0' && s[i] <= '9'; i++ {
+			digits++
+		}
+	}
+	if digits == 0 {
+		return false
+	}
+	if i < len(s) && (s[i] == 'e' || s[i] == 'E') {
+		i++
+		if i < len(s) && (s[i] == '+' || s[i] == '-') {
+			i++
+		}
+		expDigits := 0
+		for ; i < len(s) && s[i] >= '0' && s[i] <= '9'; i++ {
+			expDigits++
+		}
+		if expDigits == 0 {
+			return false
+		}
+	}
+	return i == len(s)
+}
+
+// isNumberStart marks the bytes a PostScript number can start with.
+var isNumberStart = func() (res [256]bool) {
+	for _, b := range []byte("0123456789+-.") {
+		res[b] = true
+	}
+	return res
+}()
 
 var radixNumberRe = regexp.MustCompile(`^([0-9]{1,2})#([0-9a-zA-Z]+)$`)
