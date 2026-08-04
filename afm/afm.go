@@ -65,7 +65,8 @@ type Metrics struct {
 	// (monospaced) font.
 	IsFixedPitch bool
 
-	Kern []*KernPair
+	// Kern contains the kerning adjustments for pairs of glyphs.
+	Kern []KernPair
 }
 
 type GlyphInfo struct {

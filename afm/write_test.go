@@ -331,7 +331,7 @@ var (
 		UnderlineThickness: 5,
 		ItalicAngle:        -6,
 		IsFixedPitch:       false,
-		Kern: []*KernPair{
+		Kern: []KernPair{
 			{"f", "f", -20},
 		},
 	}
