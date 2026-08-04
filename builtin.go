@@ -928,7 +928,7 @@ func bLoad(intp *Interpreter) error {
 		return intp.e(eTypecheck, "load: invalid argument")
 	}
 	intp.Stack = intp.Stack[:len(intp.Stack)-1]
-	val, err := intp.load(name)
+	val, err := intp.loadName(name)
 	if err != nil {
 		return err
 	}
@@ -1412,22 +1412,15 @@ func equal(a, b Object) (bool, error) {
 func (intp *Interpreter) bindProc(proc Procedure) {
 	for i, elem := range proc {
 		switch obj := elem.(type) {
-		case Name:
-			val, err := intp.load(obj)
-			if err != nil {
-				continue
-			}
-			_, ok := val.(builtin)
-			if ok {
-				proc[i] = val
-			}
 		case Operator:
-			val, err := intp.load(obj)
+			// Only executable names are substituted, and only where the
+			// value found is an operator.  A literal name, e.g. the "/add"
+			// in "{/add}", is data and stays unchanged.
+			val, err := intp.loadName(Name(obj))
 			if err != nil {
 				continue
 			}
-			_, ok := val.(builtin)
-			if ok {
+			if _, ok := val.(builtin); ok {
 				proc[i] = val
 			}
 		case Procedure:

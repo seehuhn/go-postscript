@@ -253,7 +253,7 @@ recurseTail:
 
 	switch o := obj.(type) {
 	case Operator:
-		val, err := intp.load(o)
+		val, err := intp.loadName(Name(o))
 		if err != nil {
 			return err
 		}
@@ -300,16 +300,10 @@ recurseTail:
 	return nil
 }
 
-func (intp *Interpreter) load(key Object) (Object, error) {
-	var name Name
-	switch key := key.(type) {
-	case Name:
-		name = key
-	case Operator:
-		name = Name(key)
-	default:
-		return nil, intp.e(eTypecheck, "load: expected name or operator, got %T", key)
-	}
+// loadName looks up name in the dictionary stack, topmost dictionary first.
+// The key is taken as a name rather than an [Object] so that callers, which
+// always know the concrete type, need not box it into an interface value.
+func (intp *Interpreter) loadName(name Name) (Object, error) {
 	for j := len(intp.DictStack) - 1; j >= 0; j-- {
 		d := intp.DictStack[j]
 		if val, ok := d[name]; ok {

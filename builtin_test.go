@@ -214,6 +214,22 @@ func TestCmdBind2(t *testing.T) {
 	}
 }
 
+// TestCmdBindLiteralName tests that bind leaves literal names alone.  Only
+// executable names stand for operators; "/add" is data.
+func TestCmdBindLiteralName(t *testing.T) {
+	intp, err := run("{/add} bind", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proc := intp.Stack[0].(Procedure)
+	if len(proc) != 1 {
+		t.Fatalf("len(p): %d != 1", len(proc))
+	}
+	if name, ok := proc[0].(Name); !ok || name != "add" {
+		t.Errorf("p[0] is %T(%v), want Name(add)", proc[0], proc[0])
+	}
+}
+
 // TestCmdBind3 tests whether bind can be trapped in an infinite loop.
 func TestCmdBind3(t *testing.T) {
 	intp, err := run("{{}} dup dup 0 exch put bind", 1)
