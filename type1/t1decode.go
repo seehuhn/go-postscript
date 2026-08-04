@@ -19,6 +19,7 @@ package type1
 import (
 	"fmt"
 	"math"
+	"slices"
 
 	"seehuhn.de/go/geom/path"
 	"seehuhn.de/go/geom/vec"
@@ -26,6 +27,9 @@ import (
 	"seehuhn.de/go/postscript/funit"
 )
 
+// decodeInfo holds the state shared by all glyphs of one font while their
+// charstrings are decoded.  Buffers are reused from one glyph to the next, so
+// the glyphs of a font must be decoded one after another, not concurrently.
 type decodeInfo struct {
 	subrs [][]byte
 	seacs []seacInfo
@@ -40,7 +44,40 @@ type decodeInfo struct {
 	// by every glyph, so it bounds total decode work, not per-glyph work.
 	// Must not be nil.
 	budget *membudget.Budget
+
+	// scratch collects the outline of the glyph currently being decoded.  Its
+	// capacity is reused between glyphs, and the finished outline is copied
+	// into fresh slices before it is returned.
+	scratch path.Data
+
+	// flexData collects the coordinates of the flex sequence currently being
+	// decoded.  A charstring can name any number of them, so this grows with
+	// the input; like scratch, its capacity is reused between glyphs.
+	flexData []float64
+
+	// stackBuf backs the charstring operand stack.  The depth check runs at
+	// the start of each command, after the preceding command has pushed its
+	// value, so one slot beyond the largest limit is needed to hold a value
+	// which is about to be rejected.
+	stackBuf [stackLimitBlend + 1]float64
+
+	// psStackBuf backs the PostScript operand stack which passes values
+	// between callothersubr and the following pop commands.  It holds the
+	// argN operands taken off the charstring stack, so the charstring stack
+	// limit bounds it too.
+	psStackBuf [stackLimitBlend]float64
 }
+
+// Operand-stack depth limits.  The specification limits the charstring
+// operand stack to 24 entries, and a multiple master blend can use only 22
+// of them, because callothersubr takes the argument count and the othersubr
+// number on top of the values being blended.  Blending 6 values across 16
+// masters needs 98 entries and is therefore not permitted; such charstrings
+// are accepted anyway rather than dropping the glyph.
+const (
+	stackLimit      = 24
+	stackLimitBlend = 98
+)
 
 type seacInfo struct {
 	name         string
@@ -49,27 +86,32 @@ type seacInfo struct {
 }
 
 func (info *decodeInfo) decodeCharString(code []byte, name string) *Glyph {
-	// operand-stack depth limit.  the MM blend othersubrs 14-18 legitimately
-	// push up to 6 values * 16 masters = 96 operands, plus the argument count
-	// and othersubr number, so raise the limit for MM fonts; ordinary fonts
-	// keep the strict limit.
-	maxStack := 24
+	// operand-stack depth limit.  MM fonts get the raised limit so that
+	// over-long blend argument lists still decode; ordinary fonts keep the
+	// limit from the specification.
+	maxStack := stackLimit
 	if info.weightVector != nil {
-		maxStack = 98
+		maxStack = stackLimitBlend
 	}
-	stack := make([]float64, 0, maxStack)
+	stack := info.stackBuf[:0]
 	clearStack := func() {
 		stack = stack[:0]
 	}
 
-	var postscriptStack []float64
-	var flexData []float64
+	postscriptStack := info.psStackBuf[:0]
 	var flexStart vec.Vec2 // current point when the flex sequence started
 	inFlex := false
 
-	res := &Glyph{
-		Outline: &path.Data{},
-	}
+	res := &Glyph{}
+
+	outline := &info.scratch
+	outline.Cmds = outline.Cmds[:0]
+	outline.Coords = outline.Coords[:0]
+
+	// Reset the flex buffer here rather than only at the start of a flex
+	// sequence, so that a glyph ending inside one cannot leak its
+	// coordinates into a glyph which ends a flex it never started.
+	info.flexData = info.flexData[:0]
 
 	// On a malformed charstring, abandon the partial decode and
 	// return a blank stub carrying only WidthX/WidthY (zero before
@@ -99,7 +141,7 @@ func (info *decodeInfo) decodeCharString(code []byte, name string) *Glyph {
 	// would leave the outline unreadable by the normal path rules.
 	rClosePath := func() {
 		if haveStart {
-			res.Outline.Close()
+			outline.Close()
 		}
 		isClosed = true
 		haveStart = false
@@ -115,7 +157,7 @@ func (info *decodeInfo) decodeCharString(code []byte, name string) *Glyph {
 		if !isClosed {
 			rClosePath()
 		}
-		res.Outline.MoveTo(vec.Vec2{X: posX, Y: posY})
+		outline.MoveTo(vec.Vec2{X: posX, Y: posY})
 		haveStart = true
 	}
 	// Unlike the PostScript operator, the Type 1 closepath command leaves the
@@ -124,7 +166,7 @@ func (info *decodeInfo) decodeCharString(code []byte, name string) *Glyph {
 	// explicit so that the outline can be read using the normal path rules.
 	startSubPath := func(p vec.Vec2) {
 		if !haveStart {
-			res.Outline.MoveTo(p)
+			outline.MoveTo(p)
 			haveStart = true
 		}
 	}
@@ -132,7 +174,7 @@ func (info *decodeInfo) decodeCharString(code []byte, name string) *Glyph {
 		startSubPath(vec.Vec2{X: posX, Y: posY})
 		posX += dx
 		posY += dy
-		res.Outline.LineTo(vec.Vec2{X: posX, Y: posY})
+		outline.LineTo(vec.Vec2{X: posX, Y: posY})
 		isClosed = false
 	}
 	rCurveTo := func(dxa, dya, dxb, dyb, dxc, dyc float64) {
@@ -143,7 +185,7 @@ func (info *decodeInfo) decodeCharString(code []byte, name string) *Glyph {
 		yb := ya + dyb
 		posX = xb + dxc
 		posY = yb + dyc
-		res.Outline.CubeTo(
+		outline.CubeTo(
 			vec.Vec2{X: xa, Y: ya},
 			vec.Vec2{X: xb, Y: yb},
 			vec.Vec2{X: posX, Y: posY},
@@ -463,14 +505,14 @@ glyphLoop:
 						return bail()
 					}
 					inFlex = false
-					if len(flexData) == 14 {
+					if flexData := info.flexData; len(flexData) == 14 {
 						startSubPath(flexStart)
-						res.Outline.CubeTo(
+						outline.CubeTo(
 							vec.Vec2{X: flexData[2], Y: flexData[3]},
 							vec.Vec2{X: flexData[4], Y: flexData[5]},
 							vec.Vec2{X: flexData[6], Y: flexData[7]},
 						)
-						res.Outline.CubeTo(
+						outline.CubeTo(
 							vec.Vec2{X: flexData[8], Y: flexData[9]},
 							vec.Vec2{X: flexData[10], Y: flexData[11]},
 							vec.Vec2{X: flexData[12], Y: flexData[13]},
@@ -484,12 +526,12 @@ glyphLoop:
 					}
 					inFlex = true
 					flexStart = vec.Vec2{X: posX, Y: posY}
-					flexData = flexData[:0]
+					info.flexData = info.flexData[:0]
 				case 2: // flex coordinate pair (0 args)
 					if argN != 0 {
 						return bail()
 					}
-					flexData = append(flexData, posX, posY)
+					info.flexData = append(info.flexData, posX, posY)
 				case 3: // hint replacement (1 arg)
 					if argN != 1 {
 						return bail()
@@ -513,7 +555,8 @@ glyphLoop:
 					// forward operand p (0-indexed) is postscriptStack[argN-1-p].
 					// layout: m base values, then for each value its k-1 deltas
 					// for masters 2..k.
-					results := make([]float64, m)
+					// m is at most 6, the widest blend othersubr 18 performs
+					var results [6]float64
 					for i := range m {
 						v := postscriptStack[argN-1-i] // base value i
 						for mm := 1; mm < k; mm++ {
@@ -563,6 +606,13 @@ glyphLoop:
 		rClosePath()
 	}
 
+	// copy the outline out of the scratch buffer, using nil instead of empty
+	// slices so that a blank glyph looks the same as one from [bail]
+	res.Outline = &path.Data{}
+	if len(outline.Cmds) > 0 {
+		res.Outline.Cmds = slices.Clone(outline.Cmds)
+		res.Outline.Coords = slices.Clone(outline.Coords)
+	}
 	return res
 }
 

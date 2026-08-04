@@ -219,6 +219,8 @@ func TestDecodeCharStringBlendWrongArgN(t *testing.T) {
 // TestDecodeCharStringBlendStackLimit checks the conditional operand-stack
 // limit: a 16-master blend of 6 values pushes 96 operands, which decodes
 // when weightVector is set but trips the ordinary limit when it is not.
+// The specification does not permit a stack this deep, so the first case
+// tests deliberate leniency rather than conforming input.
 func TestDecodeCharStringBlendStackLimit(t *testing.T) {
 	wv := make([]float64, 16)
 	wv[0] = 0.5
@@ -239,6 +241,57 @@ func TestDecodeCharStringBlendStackLimit(t *testing.T) {
 	g2 := info2.decodeCharString(cs, "blend")
 	if len(g2.Outline.Cmds) != 0 {
 		t.Errorf("expected blank stub from tripped limit, got %d cmds", len(g2.Outline.Cmds))
+	}
+}
+
+// TestDecodeCharStringStackDepth checks both edges of the operand-stack
+// limit: a charstring may fill the stack to exactly the limit and still have
+// a command consume it, but one operand more is rejected.
+func TestDecodeCharStringStackDepth(t *testing.T) {
+	wv := make([]float64, 16)
+	wv[0] = 0.5
+	wv[15] = 0.5
+
+	// Draws a line and then leaves n operands on the stack.  The drawing
+	// comes first so that the outline is non-empty whenever the charstring
+	// runs to completion; tripping the limit discards it via bail.
+	build := func(n int) []byte {
+		var cs []byte
+		cs = append(cs, encInt(0)...)   // sidebearing
+		cs = append(cs, encInt(500)...) // width
+		cs = append(cs, 0x0d)           // hsbw
+		cs = append(cs, encInt(10)...)
+		cs = append(cs, encInt(10)...)
+		cs = append(cs, 0x15) // rmoveto, clears the stack
+		cs = append(cs, encInt(50)...)
+		cs = append(cs, encInt(0)...)
+		cs = append(cs, 0x05) // rlineto, clears the stack
+		for range n {
+			cs = append(cs, encInt(1)...)
+		}
+		cs = append(cs, 0x0e) // endchar
+		return cs
+	}
+
+	cases := []struct {
+		name    string
+		wv      []float64
+		nPushed int
+		ok      bool
+	}{
+		{"plain at limit", nil, stackLimit, true},
+		{"plain past limit", nil, stackLimit + 1, false},
+		{"blend at limit", wv, stackLimitBlend, true},
+		{"blend past limit", wv, stackLimitBlend + 1, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			info := &decodeInfo{budget: newTestBudget(), weightVector: c.wv}
+			g := info.decodeCharString(build(c.nPushed), "test")
+			if got := len(g.Outline.Cmds) > 0; got != c.ok {
+				t.Errorf("%d operands: decoded=%v, want %v", c.nPushed, got, c.ok)
+			}
+		})
 	}
 }
 
@@ -665,4 +718,228 @@ func TestDecodeCharStringRedundantClose(t *testing.T) {
 			t.Errorf("outline differs (-want +got):\n%s", d)
 		}
 	})
+}
+
+// lineGlyphCharstring builds a charstring drawing a closed path of n line
+// segments, so that the size of the resulting outline is known.
+func lineGlyphCharstring(n int) []byte {
+	var cs []byte
+	cs = append(cs, encInt(0)...)   // sidebearing
+	cs = append(cs, encInt(500)...) // width
+	cs = append(cs, 0x0d)           // hsbw
+	cs = append(cs, encInt(10)...)
+	cs = append(cs, encInt(20)...)
+	cs = append(cs, 0x15) // rmoveto
+	for i := range n {
+		cs = append(cs, encInt(30+i)...)
+		cs = append(cs, encInt(i-40)...)
+		cs = append(cs, 0x05) // rlineto
+	}
+	cs = append(cs, 0x09) // closepath
+	cs = append(cs, 0x0e) // endchar
+	return cs
+}
+
+// TestDecodeCharStringScratchReuse checks that decoding a sequence of glyphs
+// through one decodeInfo gives the same outlines as decoding each with a
+// fresh one.  The outline scratch buffer is shared between glyphs, so it
+// must neither carry commands over from the preceding glyph nor stay aliased
+// by an outline which has already been returned.
+func TestDecodeCharStringScratchReuse(t *testing.T) {
+	long := lineGlyphCharstring(12)
+	short := lineGlyphCharstring(1)
+
+	wantLong := (&decodeInfo{budget: newTestBudget()}).decodeCharString(long, "long")
+	wantShort := (&decodeInfo{budget: newTestBudget()}).decodeCharString(short, "short")
+	if len(wantLong.Outline.Cmds) <= len(wantShort.Outline.Cmds) {
+		t.Fatal("test glyphs are not of different sizes")
+	}
+
+	// A shorter glyph follows a longer one, so leftover commands would show
+	// up, and the longer glyph is then decoded again.
+	shared := &decodeInfo{budget: newTestBudget()}
+	gotLong := shared.decodeCharString(long, "long")
+	gotShort := shared.decodeCharString(short, "short")
+	gotLongAgain := shared.decodeCharString(long, "long")
+
+	// The comparisons run only after the last decode, so an outline still
+	// pointing into the scratch buffer shows up as a mismatch.
+	if diff := cmp.Diff(wantLong, gotLong); diff != "" {
+		t.Errorf("first glyph (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff(wantShort, gotShort); diff != "" {
+		t.Errorf("shorter following glyph (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff(wantLong, gotLongAgain); diff != "" {
+		t.Errorf("repeated glyph (-want +got):\n%s", diff)
+	}
+
+	// The returned outlines must not share storage with each other.
+	if &gotLong.Outline.Coords[0] == &gotShort.Outline.Coords[0] {
+		t.Error("outlines of successive glyphs share their coordinates")
+	}
+	if &gotLong.Outline.Cmds[0] == &gotLongAgain.Outline.Cmds[0] {
+		t.Error("outlines of successive glyphs share their commands")
+	}
+}
+
+// flexEndCharstring builds a charstring which ends a flex sequence it never
+// started, drawing a single line.  The flex end is honoured only if seven
+// coordinate pairs have been collected, which this charstring never does.
+func flexEndCharstring() []byte {
+	var cs []byte
+	cs = append(cs, encInt(0)...)   // sidebearing
+	cs = append(cs, encInt(500)...) // width
+	cs = append(cs, 0x0d)           // hsbw
+	cs = appendPair(cs, 10, 20)
+	cs = append(cs, 0x15) // rmoveto
+	cs = appendPair(cs, 60, 0)
+	cs = append(cs, 0x05)          // rlineto
+	cs = append(cs, encInt(50)...) // flex height
+	cs = appendPair(cs, 70, 20)    // endpoint
+	cs = appendPair(cs, 3, 0)      // argument count, othersubr 0
+	cs = append(cs, 0x0c, 0x10)    // callothersubr (flex end)
+	cs = append(cs, 0x0c, 0x11)    // pop
+	cs = append(cs, 0x0c, 0x11)    // pop
+	cs = append(cs, 0x0c, 0x21)    // setcurrentpoint
+	cs = append(cs, 0x0e)          // endchar
+	return cs
+}
+
+// TestDecodeCharStringFlexReuse checks that the flex coordinates collected
+// for one glyph do not reach the next.  The buffer is shared between the
+// glyphs of a font, and a flex end does not require a matching flex start,
+// so a stale buffer would draw the preceding glyph's curves here.
+func TestDecodeCharStringFlexReuse(t *testing.T) {
+	want := (&decodeInfo{budget: newTestBudget()}).decodeCharString(flexEndCharstring(), "flexEnd")
+
+	shared := &decodeInfo{budget: newTestBudget()}
+	shared.decodeCharString(flexGlyphCharstring(3), "flex")
+	got := shared.decodeCharString(flexEndCharstring(), "flexEnd")
+
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("flex data carried over (-want +got):\n%s", diff)
+	}
+}
+
+// flexGlyphCharstring builds a charstring of the shape a text glyph in a real
+// font has: stem hints, a hint replacement, n line segments and a flex.  Hint
+// replacement and flex drive the PostScript operand stack, which the plain
+// line glyphs leave untouched.
+func flexGlyphCharstring(n int) []byte {
+	var cs []byte
+	cs = append(cs, encInt(0)...)   // sidebearing
+	cs = append(cs, encInt(500)...) // width
+	cs = append(cs, 0x0d)           // hsbw
+	cs = append(cs, encInt(-20)...)
+	cs = append(cs, encInt(40)...)
+	cs = append(cs, 0x01) // hstem
+	cs = append(cs, encInt(0)...)
+	cs = append(cs, encInt(60)...)
+	cs = append(cs, 0x03) // vstem
+
+	// hint replacement, "subr# 1 3 callothersubr pop callsubr"
+	cs = append(cs, encInt(3)...) // subr number
+	cs = append(cs, encInt(1)...) // argument count
+	cs = append(cs, encInt(3)...) // othersubr number
+	cs = append(cs, 0x0c, 0x10)   // callothersubr
+	cs = append(cs, 0x0c, 0x11)   // pop
+	cs = append(cs, 0x0a)         // callsubr
+
+	x, y := 10, 20
+	cs = appendPair(cs, x, y)
+	cs = append(cs, 0x15) // rmoveto
+	for i := range n {
+		dx, dy := 30+i, i-40
+		x, y = x+dx, y+dy
+		cs = appendPair(cs, dx, dy)
+		cs = append(cs, 0x05) // rlineto
+	}
+
+	pairs := [7][2]int{{20, 0}, {10, 5}, {10, 10}, {10, 5}, {10, -5}, {10, -10}, {10, -5}}
+	for _, p := range pairs {
+		x, y = x+p[0], y+p[1]
+	}
+	cs = appendFlex(cs, pairs, [2]int{x, y})
+
+	cs = append(cs, 0x09) // closepath
+	cs = append(cs, 0x0e) // endchar
+	return cs
+}
+
+// BenchmarkDecodeCharString measures decoding a font-sized set of glyphs
+// through a single decodeInfo, the way decodeGlyphs does.  The glyph shapes
+// differ in which of the decoder's buffers they use.
+func BenchmarkDecodeCharString(b *testing.B) {
+	cases := []struct {
+		name  string
+		build func(n int) []byte
+		wv    []float64
+	}{
+		{name: "lines", build: lineGlyphCharstring},
+		{name: "flex", build: flexGlyphCharstring},
+		{name: "blend", build: blendGlyphCharstring, wv: benchWeightVector()},
+	}
+	for _, c := range cases {
+		b.Run(c.name, func(b *testing.B) {
+			charstrings := make([][]byte, 200)
+			total := 0
+			for i := range charstrings {
+				charstrings[i] = c.build(10 + i%50)
+				total += len(charstrings[i])
+			}
+			b.SetBytes(int64(total))
+			b.ReportAllocs()
+			for b.Loop() {
+				info := &decodeInfo{
+					weightVector: c.wv,
+					budget:       membudget.New(64 << 20),
+				}
+				for _, cs := range charstrings {
+					info.decodeCharString(cs, "glyph")
+				}
+			}
+		})
+	}
+}
+
+// TestBenchmarkGlyphs checks that the charstrings used by the benchmarks
+// decode in full.  A malformed one would still be timed, but would measure
+// the bail-out path instead of the glyph it describes.
+func TestBenchmarkGlyphs(t *testing.T) {
+	cases := []struct {
+		name     string
+		cs       []byte
+		wv       []float64
+		wantCmds int
+	}{
+		// moveto, 10 linetos, closepath
+		{name: "lines", cs: lineGlyphCharstring(10), wantCmds: 12},
+		// as above, plus the two curves of the flex
+		{name: "flex", cs: flexGlyphCharstring(10), wantCmds: 14},
+		// one moveto per blended value
+		{name: "blend", cs: blendGlyphCharstring(0), wv: benchWeightVector(), wantCmds: 6},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			info := &decodeInfo{weightVector: c.wv, budget: newTestBudget()}
+			g := info.decodeCharString(c.cs, c.name)
+			if got := len(g.Outline.Cmds); got != c.wantCmds {
+				t.Errorf("got %d path commands, want %d", got, c.wantCmds)
+			}
+		})
+	}
+}
+
+// benchWeightVector returns the blend weights of a four-master font.
+func benchWeightVector() []float64 {
+	return []float64{0.4, 0.3, 0.2, 0.1}
+}
+
+// blendGlyphCharstring builds a charstring which blends six values across the
+// four masters of [benchWeightVector], the widest blend othersubr 18 allows.
+// n is ignored; the operand count is fixed by the othersubr.
+func blendGlyphCharstring(n int) []byte {
+	base, deltas := blendInputs(6, len(benchWeightVector()))
+	return buildBlendCharstring(18, base, deltas)
 }
