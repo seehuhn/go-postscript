@@ -163,7 +163,7 @@ creationDateLoop:
 	}
 
 	fi := &FontInfo{
-		FontName:           string(fontName),
+		FontName:           RepairFontName(string(fontName)),
 		Version:            string(Version),
 		Notice:             string(Notice),
 		Copyright:          string(Copyright),

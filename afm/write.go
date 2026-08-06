@@ -21,10 +21,16 @@ import (
 	"io"
 	"strconv"
 	"strings"
+
+	"seehuhn.de/go/postscript/type1"
 )
 
 // Write writes the metrics to the given writer in AFM format.
 func (m *Metrics) Write(w io.Writer) error {
+	if err := type1.CheckFontName(m.FontName); err != nil {
+		return err
+	}
+
 	write := func(format string, a ...any) error {
 		_, err := fmt.Fprintf(w, format+"\n", a...)
 		return err
@@ -106,10 +112,10 @@ func (m *Metrics) Write(w io.Writer) error {
 		ury := strconv.FormatFloat(g.BBox.URy, 'f', -1, 64)
 		wx := strconv.FormatFloat(g.WidthX, 'f', -1, 64)
 		var line strings.Builder
-		line.WriteString(fmt.Sprintf("C %d ; WX %s ; N %s ; B %s %s %s %s ;",
-			charCode, wx, name, llx, lly, urx, ury))
+		fmt.Fprintf(&line, "C %d ; WX %s ; N %s ; B %s %s %s %s ;",
+			charCode, wx, name, llx, lly, urx, ury)
 		for succ, lig := range g.Ligatures {
-			line.WriteString(fmt.Sprintf(" L %s %s ;", succ, lig))
+			fmt.Fprintf(&line, " L %s %s ;", succ, lig)
 		}
 		if err := write("%s", line.String()); err != nil {
 			return err

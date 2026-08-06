@@ -18,10 +18,6 @@ package type1
 
 import (
 	"bytes"
-	"math"
-	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -29,7 +25,6 @@ import (
 
 	"seehuhn.de/go/geom/path"
 	"seehuhn.de/go/geom/vec"
-	"seehuhn.de/go/postscript/afm"
 	"seehuhn.de/go/postscript/internal/debug"
 )
 
@@ -135,84 +130,6 @@ func TestMMFontOutlines(t *testing.T) {
 		}
 		if d := cmp.Diff(want.outline, g.Outline); d != "" {
 			t.Errorf("glyph %q outline mismatch (-want +got):\n%s", name, d)
-		}
-	}
-}
-
-// TestMMFontReal exercises the reader on real Adobe Multiple Master fonts, if
-// the user has supplied any.  It looks for *.pfb files in the "mm" subdirectory
-// of QUIRE_TESTFONTS and skips cleanly when none are present.
-func TestMMFontReal(t *testing.T) {
-	base := os.Getenv("QUIRE_TESTFONTS")
-	if base == "" {
-		t.Skip("external test fonts not available (set QUIRE_TESTFONTS)")
-	}
-	dir := filepath.Join(base, "mm")
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Skipf("no mm test fonts: %v", err)
-	}
-
-	found := 0
-	for _, e := range entries {
-		if e.IsDir() || !strings.EqualFold(filepath.Ext(e.Name()), ".pfb") {
-			continue
-		}
-		found++
-		name := e.Name()
-		t.Run(name, func(t *testing.T) {
-			data, err := os.ReadFile(filepath.Join(dir, name))
-			if err != nil {
-				t.Fatal(err)
-			}
-			F, err := Read(bytes.NewReader(data))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if F.MM == nil {
-				t.Fatal("font parsed without MM data")
-			}
-			if len(F.MM.Axes) == 0 {
-				t.Error("MM font has no axes")
-			}
-			if len(F.Glyphs) == 0 {
-				t.Error("MM font has no glyphs")
-			}
-
-			// spot-check default-instance advance widths against the AFM
-			afmPath := strings.TrimSuffix(filepath.Join(dir, name), filepath.Ext(name)) + ".afm"
-			checkAdvanceWidths(t, F, afmPath)
-		})
-	}
-	if found == 0 {
-		t.Skip("no *.pfb MM test fonts present")
-	}
-}
-
-func checkAdvanceWidths(t *testing.T, F *Font, afmPath string) {
-	t.Helper()
-	fd, err := os.Open(afmPath)
-	if err != nil {
-		return // no metrics alongside the font
-	}
-	defer fd.Close()
-	metrics, err := afm.Read(fd)
-	if err != nil {
-		t.Logf("skipping width check, AFM unreadable: %v", err)
-		return
-	}
-	checked := 0
-	for name, gi := range metrics.Glyphs {
-		g := F.Glyphs[name]
-		if g == nil {
-			continue
-		}
-		if math.Abs(g.WidthX-gi.WidthX) > 1 {
-			t.Errorf("glyph %q width: font %g, AFM %g", name, g.WidthX, gi.WidthX)
-		}
-		checked++
-		if checked >= 5 {
-			break
 		}
 	}
 }

@@ -23,6 +23,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"seehuhn.de/go/postscript/funit"
 )
@@ -116,6 +117,19 @@ func (f *Font) Instantiate(coords map[string]float64) (*Font, error) {
 		w[i] = prod
 	}
 
+	// instance name: base + "_" + design coordinate per axis (TN #5088).
+	// This comes before the glyph decode below, so that a font whose design
+	// coordinates cannot be spelled out is rejected without the work.
+	var suffix strings.Builder
+	for j := range mm.Axes {
+		suffix.WriteByte('_')
+		suffix.WriteString(strconv.FormatFloat(design[j], 'f', -1, 64))
+	}
+	name, err := instanceName(f.FontName, suffix.String())
+	if err != nil {
+		return nil, err
+	}
+
 	// re-decode the glyphs at the instance weight vector, mirroring Read;
 	// mm.codeBytes reuses the decode budget input computed by Read.
 	encoding := slices.Clone(f.Encoding)
@@ -124,6 +138,7 @@ func (f *Font) Instantiate(coords map[string]float64) (*Font, error) {
 	// blended Private and FontInfo entries
 	private := *f.Private
 	fi := *f.FontInfo
+	fi.FontName = name
 	if b := mm.Blend; b != nil {
 		if b.BlueValues != nil {
 			private.BlueValues = blendInt16(b.BlueValues, w)
@@ -151,15 +166,6 @@ func (f *Font) Instantiate(coords map[string]float64) (*Font, error) {
 		}
 	}
 
-	// instance name: base + "_" + design coordinate per axis (TN #5088)
-	var nameBuilder strings.Builder
-	nameBuilder.WriteString(f.FontName)
-	for j := range mm.Axes {
-		nameBuilder.WriteByte('_')
-		nameBuilder.WriteString(strconv.FormatFloat(design[j], 'f', -1, 64))
-	}
-	fi.FontName = nameBuilder.String()
-
 	return &Font{
 		CreationDate: f.CreationDate,
 		FontInfo:     &fi,
@@ -170,6 +176,31 @@ func (f *Font) Instantiate(coords map[string]float64) (*Font, error) {
 			Encoding: encoding,
 		},
 	}, nil
+}
+
+// instanceName joins the base font name and the design-coordinate suffix of an
+// instance.  The base is shortened where needed, so that the result fits into
+// [MaxFontNameLen] bytes and the writer can emit it.  The cut is made at a rune
+// boundary, so that a base name outside ASCII stays valid UTF-8.
+//
+// A suffix which does not fit on its own gives an error, since there is then
+// no name to return.
+func instanceName(base, suffix string) (string, error) {
+	if len(suffix) > MaxFontNameLen {
+		return "", fmt.Errorf("instance name suffix too long (%d bytes)", len(suffix))
+	}
+	if room := MaxFontNameLen - len(suffix); len(base) > room {
+		base = base[:room]
+		for len(base) > 0 {
+			// a rune of size 1 decoded as RuneError is an incomplete
+			// encoding, rather than a U+FFFD the base name holds itself
+			if r, size := utf8.DecodeLastRuneInString(base); r != utf8.RuneError || size != 1 {
+				break
+			}
+			base = base[:len(base)-1]
+		}
+	}
+	return base + suffix, nil
 }
 
 // defaultDesignCoords derives the design-space coordinates of the font's own

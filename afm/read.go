@@ -26,6 +26,7 @@ import (
 
 	"seehuhn.de/go/geom/rect"
 	"seehuhn.de/go/postscript/funit"
+	"seehuhn.de/go/postscript/type1"
 )
 
 // maxPrealloc bounds the number of entries allocated in advance from a count
@@ -180,7 +181,7 @@ func Read(fd io.Reader) (*Metrics, error) {
 		}
 		switch fields[0] {
 		case "FontName":
-			res.FontName = fields[1]
+			res.FontName = type1.RepairFontName(fields[1])
 		case "FullName":
 			res.FullName = lineValue(line)
 		case "Version":

@@ -60,6 +60,10 @@ func (f *Font) Write(w io.Writer, opt *WriterOptions) error {
 		format = FormatPFA
 	}
 
+	if err := CheckFontName(f.FontInfo.FontName); err != nil {
+		return err
+	}
+
 	info := f.makeTemplateData(opt)
 
 	switch format {
@@ -187,6 +191,11 @@ func (f *Font) Write(w io.Writer, opt *WriterOptions) error {
 // WritePDF writes the font in the format required for embedding in a PDF file.
 func (f *Font) WritePDF(w io.Writer) (int, int, error) {
 	opt := &WriterOptions{Format: FormatBinary}
+
+	if err := CheckFontName(f.FontInfo.FontName); err != nil {
+		return 0, 0, err
+	}
+
 	info := f.makeTemplateData(opt)
 
 	wc := &countingWriter{w: w}

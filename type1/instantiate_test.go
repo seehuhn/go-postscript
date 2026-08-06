@@ -19,6 +19,7 @@ package type1
 import (
 	"bytes"
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -204,6 +205,90 @@ func TestInstantiateName(t *testing.T) {
 	}
 	if corner.FontName != "QuireMMTest_900_200" {
 		t.Errorf("corner FontName: got %q, want %q", corner.FontName, "QuireMMTest_900_200")
+	}
+}
+
+// The design-coordinate suffix must not push the instance name past the length
+// the writer accepts, otherwise a multiple master font which reads and writes
+// could not be instantiated and written again.
+func TestInstantiateNameLength(t *testing.T) {
+	F := readMMFixture(t)
+	base := strings.Repeat("x", MaxFontNameLen)
+	F.FontName = base
+
+	inst, err := F.Instantiate(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckFontName(inst.FontName); err != nil {
+		t.Errorf("instance name %q: %v", inst.FontName, err)
+	}
+	if want := base[:MaxFontNameLen-len("_400_100")] + "_400_100"; inst.FontName != want {
+		t.Errorf("got %q, want %q", inst.FontName, want)
+	}
+	if err := inst.Write(&bytes.Buffer{}, &WriterOptions{Format: FormatBinary}); err != nil {
+		t.Errorf("write: %v", err)
+	}
+}
+
+// A design coordinate is finite but otherwise unbounded, and the 'f' format
+// never uses an exponent, so a single axis reaching 1e300 spells out 301
+// digits.  Instantiate must report this rather than build a name the writer
+// cannot emit.
+func TestInstantiateHugeDesignCoords(t *testing.T) {
+	src := strings.Replace(string(debug.MakeMMFont()),
+		"[[100 0][400 0.5][900 1]]", "[[100 0][400 0.5][1e300 1]]", 1)
+	if strings.Contains(src, "[900 1]") {
+		t.Fatal("design map not patched")
+	}
+
+	F, err := Read(strings.NewReader(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if F.MM == nil {
+		t.Fatal("MM data dropped")
+	}
+	if _, err := F.Instantiate(map[string]float64{"Weight": 1e300}); err == nil {
+		t.Error("an over-long design coordinate must fail")
+	}
+}
+
+// TestInstanceName checks the trimming rule, including a base name outside
+// ASCII, which must stay valid UTF-8.
+func TestInstanceName(t *testing.T) {
+	for _, tc := range []struct {
+		base, suffix, want string
+	}{
+		{"Quire", "_400", "Quire_400"},
+		{"", "_400", "_400"},
+		{strings.Repeat("x", MaxFontNameLen), "_400",
+			strings.Repeat("x", MaxFontNameLen-4) + "_400"},
+
+		// the cut lands inside a three-byte rune, which is then dropped
+		{strings.Repeat("宋", 42), "_4", strings.Repeat("宋", 41) + "_4"},
+
+		// a suffix filling the name on its own leaves no base name
+		{"Quire", strings.Repeat("_", MaxFontNameLen),
+			strings.Repeat("_", MaxFontNameLen)},
+	} {
+		got, err := instanceName(tc.base, tc.suffix)
+		if err != nil {
+			t.Errorf("instanceName(%q, %q): %v", tc.base, tc.suffix, err)
+			continue
+		}
+		if got != tc.want {
+			t.Errorf("instanceName(%q, %q) = %q, want %q",
+				tc.base, tc.suffix, got, tc.want)
+		}
+		if err := CheckFontName(got); err != nil {
+			t.Errorf("instanceName(%q, %q) = %q: %v", tc.base, tc.suffix, got, err)
+		}
+	}
+
+	// a suffix which does not fit on its own is an error
+	if _, err := instanceName("Quire", strings.Repeat("_", MaxFontNameLen+1)); err == nil {
+		t.Error("an over-long suffix must fail")
 	}
 }
 
