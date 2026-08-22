@@ -23,6 +23,7 @@ import (
 	"io"
 	"maps"
 	"math"
+	"slices"
 	"strconv"
 
 	"seehuhn.de/go/postscript/psenc"
@@ -328,8 +329,8 @@ func bBind(intp *Interpreter) error {
 }
 
 func bCleartomark(intp *Interpreter) error {
-	for k := len(intp.Stack) - 1; k >= 0; k-- {
-		if intp.Stack[k] == theMark {
+	for k, v := range slices.Backward(intp.Stack) {
+		if v == theMark {
 			intp.Stack = intp.Stack[:k]
 			return nil
 		}
@@ -1366,8 +1367,7 @@ func bWhere(intp *Interpreter) error {
 		return intp.e(eTypecheck, "where: invalid argument")
 	}
 	intp.Stack = intp.Stack[:len(intp.Stack)-1]
-	for j := len(intp.DictStack) - 1; j >= 0; j-- {
-		d := intp.DictStack[j]
+	for _, d := range slices.Backward(intp.DictStack) {
 		if _, ok := d[key]; ok {
 			intp.Stack = append(intp.Stack, d, Boolean(true))
 			return nil

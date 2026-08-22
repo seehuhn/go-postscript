@@ -19,6 +19,7 @@ package postscript
 import (
 	"io"
 	"maps"
+	"slices"
 	"strings"
 
 	"seehuhn.de/go/membudget"
@@ -304,8 +305,7 @@ recurseTail:
 // The key is taken as a name rather than an [Object] so that callers, which
 // always know the concrete type, need not box it into an interface value.
 func (intp *Interpreter) loadName(name Name) (Object, error) {
-	for j := len(intp.DictStack) - 1; j >= 0; j-- {
-		d := intp.DictStack[j]
+	for _, d := range slices.Backward(intp.DictStack) {
 		if val, ok := d[name]; ok {
 			return val, nil
 		}
