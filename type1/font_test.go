@@ -200,3 +200,108 @@ func FuzzFont(f *testing.F) {
 		}
 	})
 }
+
+// TestGlyphHeightPDF checks the measured cap height and x-height, including
+// the cases where the glyph is absent, blank, or below the baseline.
+func TestGlyphHeightPDF(t *testing.T) {
+	newFont := func(fontMatrix matrix.Matrix) *Font {
+		return &Font{
+			FontInfo: &FontInfo{
+				FontName:   "Test",
+				FontMatrix: fontMatrix,
+			},
+			Outlines: &Outlines{
+				Private:  &PrivateDict{},
+				Glyphs:   map[string]*Glyph{},
+				Encoding: makeEmptyEncoding(),
+			},
+		}
+	}
+
+	// a box glyph of the given height, in font design units
+	addBox := func(F *Font, name string, height float64) {
+		g := F.NewGlyph(name, 500)
+		g.MoveTo(0, 0)
+		g.LineTo(400, 0)
+		g.LineTo(400, height)
+		g.LineTo(0, height)
+		g.ClosePath()
+	}
+
+	t.Run("measured", func(t *testing.T) {
+		F := newFont(matrix.Matrix{0.001, 0, 0, 0.001, 0, 0})
+		addBox(F, "H", 700)
+		addBox(F, "x", 450)
+		if got := F.CapHeightPDF(); got != 700 {
+			t.Errorf("CapHeightPDF = %g, want 700", got)
+		}
+		if got := F.XHeightPDF(); got != 450 {
+			t.Errorf("XHeightPDF = %g, want 450", got)
+		}
+	})
+
+	// the font matrix scales the measurement into PDF glyph space
+	t.Run("font matrix", func(t *testing.T) {
+		F := newFont(matrix.Matrix{0.0005, 0, 0, 0.0005, 0, 0})
+		addBox(F, "H", 1400)
+		if got := F.CapHeightPDF(); got != 700 {
+			t.Errorf("CapHeightPDF = %g, want 700", got)
+		}
+	})
+
+	// where the preferred glyph is absent, the next one is measured
+	t.Run("fallback", func(t *testing.T) {
+		F := newFont(matrix.Matrix{0.001, 0, 0, 0.001, 0, 0})
+		addBox(F, "L", 680)
+		addBox(F, "v", 430)
+		if got := F.CapHeightPDF(); got != 680 {
+			t.Errorf("CapHeightPDF = %g, want 680", got)
+		}
+		if got := F.XHeightPDF(); got != 430 {
+			t.Errorf("XHeightPDF = %g, want 430", got)
+		}
+	})
+
+	// a blank glyph is skipped in favour of the next candidate
+	t.Run("blank then fallback", func(t *testing.T) {
+		F := newFont(matrix.Matrix{0.001, 0, 0, 0.001, 0, 0})
+		F.NewGlyph("H", 500)
+		addBox(F, "I", 690)
+		if got := F.CapHeightPDF(); got != 690 {
+			t.Errorf("CapHeightPDF = %g, want 690", got)
+		}
+	})
+
+	// a missing glyph must not be measured via the .notdef substitute
+	t.Run("missing", func(t *testing.T) {
+		F := newFont(matrix.Matrix{0.001, 0, 0, 0.001, 0, 0})
+		addBox(F, ".notdef", 700)
+		if got := F.CapHeightPDF(); got != 0 {
+			t.Errorf("CapHeightPDF = %g, want 0", got)
+		}
+		if got := F.XHeightPDF(); got != 0 {
+			t.Errorf("XHeightPDF = %g, want 0", got)
+		}
+	})
+
+	t.Run("blank", func(t *testing.T) {
+		F := newFont(matrix.Matrix{0.001, 0, 0, 0.001, 0, 0})
+		F.NewGlyph("H", 500)
+		if got := F.CapHeightPDF(); got != 0 {
+			t.Errorf("CapHeightPDF = %g, want 0", got)
+		}
+	})
+
+	// a glyph which sits entirely below the baseline has no usable height
+	t.Run("below baseline", func(t *testing.T) {
+		F := newFont(matrix.Matrix{0.001, 0, 0, 0.001, 0, 0})
+		g := F.NewGlyph("H", 500)
+		g.MoveTo(0, -300)
+		g.LineTo(400, -300)
+		g.LineTo(400, -100)
+		g.ClosePath()
+		if got := F.CapHeightPDF(); got != 0 {
+			t.Errorf("CapHeightPDF = %g, want 0", got)
+		}
+	})
+}
