@@ -22,10 +22,13 @@ import (
 	"sort"
 
 	"seehuhn.de/go/geom/rect"
-	"seehuhn.de/go/postscript/funit"
 )
 
 // Metrics contains the information from an AFM file.
+//
+// All lengths are in units of 1/1000 of the em square.  The file format has no
+// way of marking a value as absent, so fields the file does not give are zero
+// and cannot be told apart from a recorded zero.
 type Metrics struct {
 	Glyphs   map[string]*GlyphInfo
 	Encoding []string
@@ -36,8 +39,14 @@ type Metrics struct {
 	// FullName is a unique, human-readable name for an individual font.
 	FullName string
 
+	// FamilyName is the name of the typeface family the font belongs to.
+	FamilyName string
+
+	// Weight is the name of the font's weight, for example "Bold".
+	Weight string
+
 	// Version (optional) is the version number of the font.  This should match
-	// the found in the `FontInfo` dictionary of the font file.
+	// the version found in the FontInfo dictionary of the font file.
 	Version string
 
 	// Notice (optional) is the font name trademark or copyright notice.
@@ -78,7 +87,7 @@ type GlyphInfo struct {
 // KernPair represents a kerning pair.
 type KernPair struct {
 	Left, Right string
-	Adjust      funit.Int16 // negative = move glyphs closer together
+	Adjust      float64 // negative = move glyphs closer together
 }
 
 // NumGlyphs returns the number of glyphs in the font (including the .notdef glyph).
@@ -119,6 +128,8 @@ func (f *Metrics) GlyphList() []string {
 	return glyphNames
 }
 
+// FontBBoxPDF returns the smallest rectangle enclosing the bounding boxes of
+// all glyphs, in PDF glyph space units.
 func (f *Metrics) FontBBoxPDF() (bbox rect.Rect) {
 	for _, g := range f.Glyphs {
 		bbox.Extend(g.BBox)

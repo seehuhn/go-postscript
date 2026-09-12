@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"seehuhn.de/go/geom/matrix"
 )
@@ -196,4 +197,92 @@ func makeNamedFont(t *testing.T, name string) []byte {
 		t.Fatal(err)
 	}
 	return buf.Bytes()
+}
+
+func TestCheckGlyphName(t *testing.T) {
+	valid := []string{
+		"A", ".notdef", "uni0041", "a_b", "one-half", "9", "Aä",
+		"Overlapping-thick\\thin-line-border-design---character-3",
+		strings.Repeat("x", maxGlyphNameLen),
+		strings.Repeat("ä", maxGlyphNameLen/2),
+	}
+	for _, s := range valid {
+		if err := CheckGlyphName(s); err != nil {
+			t.Errorf("%q rejected: %v", s, err)
+		}
+	}
+
+	invalid := []string{
+		"", "A B", "A\tB", "A\nB", "A(B", "A)B", "A/B", "A%B",
+		"A<B", "A>B", "A[B", "A]B", "A{B", "A}B", "A\x01B",
+		"A\xffB", "A B",
+		strings.Repeat("x", maxGlyphNameLen+1),
+		strings.Repeat("ä", maxGlyphNameLen),
+	}
+	for _, s := range invalid {
+		if err := CheckGlyphName(s); err == nil {
+			t.Errorf("%q accepted", s)
+		}
+	}
+}
+
+func TestRepairGlyphName(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"A", "A"},
+		{".notdef", ".notdef"},
+		{"A(B", "AB"},
+		{"A B", "AB"},
+		{"A\xffB", "AB"},
+		{"(/)", ""},
+		{strings.Repeat("x", maxGlyphNameLen), strings.Repeat("x", maxGlyphNameLen)},
+		{strings.Repeat("x", maxGlyphNameLen+1), ""},
+		// the repair can bring an over-long name back under the limit
+		{strings.Repeat("x", maxGlyphNameLen) + "()", strings.Repeat("x", maxGlyphNameLen)},
+	}
+	for _, c := range cases {
+		if got := RepairGlyphName(c.in); got != c.want {
+			t.Errorf("RepairGlyphName(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+
+	// a repaired name is always one which can be written again
+	for _, s := range []string{"A B", "A(B", "A\xffB", "x"} {
+		if r := RepairGlyphName(s); r != "" {
+			if err := CheckGlyphName(r); err != nil {
+				t.Errorf("repaired %q to %q, still invalid: %v", s, r, err)
+			}
+		}
+	}
+}
+
+// TestGlyphNameFastPath checks that the ASCII fast path agrees with the
+// rune-by-rune rule it stands in for.
+func TestGlyphNameFastPath(t *testing.T) {
+	reference := func(s string) bool {
+		if s == "" || len(s) > maxGlyphNameLen || !utf8.ValidString(s) {
+			return false
+		}
+		for _, r := range s {
+			if !allowedInName(r) {
+				return false
+			}
+		}
+		return true
+	}
+
+	var samples []string
+	for c := range 256 {
+		samples = append(samples, string([]byte{byte(c)}), "A"+string([]byte{byte(c)})+"B")
+	}
+	samples = append(samples, "", "Aä", "ä", "A B", "A​B", "\xff", "A\xffB")
+
+	for _, s := range samples {
+		want := reference(s)
+		if got := CheckGlyphName(s) == nil; got != want {
+			t.Errorf("CheckGlyphName(%q) == nil is %v, want %v", s, got, want)
+		}
+		if want && RepairGlyphName(s) != s {
+			t.Errorf("RepairGlyphName(%q) changed a valid name", s)
+		}
+	}
 }

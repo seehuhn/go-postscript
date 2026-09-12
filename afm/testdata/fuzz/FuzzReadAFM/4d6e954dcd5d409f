@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("StartKernPairs 0\nKPX ; 0 0")
