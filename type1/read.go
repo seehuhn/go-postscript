@@ -20,6 +20,7 @@ import (
 	"errors"
 	"io"
 	"maps"
+	"math"
 	"slices"
 	"time"
 
@@ -181,51 +182,22 @@ creationDateLoop:
 	if !ok {
 		return nil, errors.New("missing/invalid Private dictionary")
 	}
-	var blueValues []funit.Int16
-	if blueValuesArray, ok := pd["BlueValues"].(postscript.Array); ok && len(blueValuesArray) > 0 {
-		blueValues = make([]funit.Int16, len(blueValuesArray))
-		for i, v := range blueValuesArray {
-			vInt, ok := v.(postscript.Integer)
-			if !ok {
-				blueValues = nil
-				break
-			}
-			blueValues[i] = funit.Int16(vInt)
-		}
-	}
-	var otherBlues []funit.Int16 // optional
-	otherBluesArray, ok := pd["OtherBlues"].(postscript.Array)
-	if ok && len(otherBluesArray) > 0 {
-		otherBlues = make([]funit.Int16, len(otherBluesArray))
-		for i, v := range otherBluesArray {
-			vInt, ok := v.(postscript.Integer)
-			if !ok {
-				otherBlues = nil
-				break
-			}
-			otherBlues[i] = funit.Int16(vInt)
-		}
-	}
+	blueValues := getWholeRealArray(pd["BlueValues"])
+	otherBlues := getWholeRealArray(pd["OtherBlues"])
 	var blueScale float64 // optional
 	blueScaleReal, ok := getReal(pd["BlueScale"])
 	if ok {
 		blueScale = blueScaleReal
 	} else {
-		blueScale = 0.039625
+		blueScale = DefaultBlueScale
 	}
-	var blueShift int32 // optional
-	blueShiftInt, ok := pd["BlueShift"].(postscript.Integer)
-	if ok {
-		blueShift = int32(blueShiftInt)
-	} else {
-		blueShift = 7
+	blueShift, ok := getWholeReal(pd["BlueShift"])
+	if !ok {
+		blueShift = DefaultBlueShift
 	}
-	var blueFuzz int32 // optional
-	blueFuzzInt, ok := pd["BlueFuzz"].(postscript.Integer)
-	if ok {
-		blueFuzz = int32(blueFuzzInt)
-	} else {
-		blueFuzz = 1
+	blueFuzz, ok := getWholeReal(pd["BlueFuzz"])
+	if !ok {
+		blueFuzz = DefaultBlueFuzz
 	}
 	var stdHW float64
 	stdHWArray, ok := pd["StdHW"].(postscript.Array)
@@ -275,6 +247,7 @@ creationDateLoop:
 		StdVW:      stdVW,
 		ForceBold:  forceBold,
 	}
+	private.Repair()
 
 	// =============================================================
 
@@ -426,6 +399,42 @@ func decodeGlyphs(charstrings map[string][]byte, subrs [][]byte, weightVector []
 	}
 
 	return glyphs
+}
+
+// getWholeReal is getReal for a value the format spells as an integer.  A
+// fraction is rounded rather than dropped: the writer cannot spell one, and
+// rounding keeps the value to the precision the format has, where dropping
+// would claim the font had asked for nothing.  A value which, once rounded,
+// does not fit a PostScript integer is dropped, since no integer the format
+// can hold stands near it.
+func getWholeReal(x postscript.Object) (float64, bool) {
+	v, ok := getReal(x)
+	if !ok {
+		return 0, false
+	}
+	v = math.Round(v)
+	if v < math.MinInt32 || v > math.MaxInt32 {
+		return 0, false
+	}
+	return v, true
+}
+
+// getWholeRealArray reads an array of values the format spells as integers,
+// rounding each as getWholeReal does.  An array holding anything else, or
+// nothing at all, reads as absent.
+func getWholeRealArray(x postscript.Object) []float64 {
+	arr, ok := x.(postscript.Array)
+	if !ok || len(arr) == 0 {
+		return nil
+	}
+	res := make([]float64, len(arr))
+	for i, v := range arr {
+		res[i], ok = getWholeReal(v)
+		if !ok {
+			return nil
+		}
+	}
+	return res
 }
 
 func getReal(x postscript.Object) (float64, bool) {

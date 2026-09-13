@@ -70,25 +70,55 @@ type FontInfo struct {
 
 // PrivateDict contains information about a font's private dictionary.
 type PrivateDict struct {
-	// BlueValues is an array containing an even number of integers.
-	// The first integer in each pair is less than or equal to the second integer.
-	// The first pair is the baseline overshoot position and the baseline.
-	// All subsequent pairs describe alignment zones for the tops of character features.
-	BlueValues []funit.Int16
+	// BlueValues is an array containing an even number of values, in glyph
+	// space units.  The first value in each pair is less than or equal to
+	// the second value.  The first pair is the baseline overshoot position
+	// and the baseline.  All subsequent pairs describe alignment zones for
+	// the tops of character features.  At most [MaxBlueValuePairs] pairs may
+	// be given.
+	//
+	// The Type 1 format allows only whole numbers here, so a font with a
+	// fractional zone edge cannot be written as Type 1.
+	BlueValues []float64
 
-	OtherBlues []funit.Int16
+	// OtherBlues describes alignment zones for the bottoms of character
+	// features, in the same form as BlueValues and with at most
+	// [MaxOtherBluePairs] pairs.
+	OtherBlues []float64
 
+	// BlueScale is the text size at which overshoot suppression stops,
+	// expressed as (pointsize - 0.49) / 240 on a 300 dpi device. Valid values
+	// are (0, [MaxBlueScale]], and BlueScale times the height of the tallest
+	// alignment zone must stay below 1.
+	//
+	// On write, 0 can be used as a shorthand for [DefaultBlueScale].
 	BlueScale float64
 
-	BlueShift int32
+	// BlueShift is the height a character feature must overshoot its zone by
+	// before it is rendered curved rather than flat, in glyph space units.
+	// Valid values are finite and zero or above.
+	//
+	// The Type 1 format allows only whole numbers here, so a font with a
+	// fractional BlueShift cannot be written as Type 1.
+	BlueShift float64
 
-	BlueFuzz int32
+	// BlueFuzz is the distance by which an alignment zone is extended when
+	// deciding whether a horizontal stem falls inside it, in glyph space
+	// units.  Valid values are finite and zero or above.
+	//
+	// The Type 1 format allows only whole numbers here, so a font with a
+	// fractional BlueFuzz cannot be written as Type 1.
+	BlueFuzz float64
 
 	// StdHW is the dominant width of horizontal stems for glyphs in the font.
+	// Valid values are (0, [MaxStemWidth] ].
+	// Zero indicates that the font gives no dominant width.
 	StdHW float64
 
 	// StdVW the dominant width of vertical stems.
 	// Typically, this will be the width of straight stems in lower case letters.
+	// Valid values are (0, [MaxStemWidth] ].
+	// Zero indicates that the font gives no dominant width.
 	StdVW float64
 
 	// TODO(voss): StemSnapH, StemSnapV

@@ -26,7 +26,6 @@ import (
 	"time"
 
 	"seehuhn.de/go/postscript"
-	"seehuhn.de/go/postscript/funit"
 	"seehuhn.de/go/postscript/psenc"
 )
 
@@ -60,11 +59,10 @@ func (f *Font) Write(w io.Writer, opt *WriterOptions) error {
 		format = FormatPFA
 	}
 
-	if err := CheckFontName(f.FontInfo.FontName); err != nil {
+	info, err := f.makeTemplateData(opt)
+	if err != nil {
 		return err
 	}
-
-	info := f.makeTemplateData(opt)
 
 	switch format {
 	case FormatPFA:
@@ -192,15 +190,14 @@ func (f *Font) Write(w io.Writer, opt *WriterOptions) error {
 func (f *Font) WritePDF(w io.Writer) (int, int, error) {
 	opt := &WriterOptions{Format: FormatBinary}
 
-	if err := CheckFontName(f.FontInfo.FontName); err != nil {
+	info, err := f.makeTemplateData(opt)
+	if err != nil {
 		return 0, 0, err
 	}
 
-	info := f.makeTemplateData(opt)
-
 	wc := &countingWriter{w: w}
 
-	err := tmpl.ExecuteTemplate(wc, "SectionA", info)
+	err = tmpl.ExecuteTemplate(wc, "SectionA", info)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -234,17 +231,51 @@ func (w *countingWriter) Write(p []byte) (n int, err error) {
 	return n, err
 }
 
-func (f *Font) makeTemplateData(opt *WriterOptions) *fontInfo {
+func (f *Font) makeTemplateData(opt *WriterOptions) (*fontInfo, error) {
+	if err := CheckFontName(f.FontInfo.FontName); err != nil {
+		return nil, err
+	}
+	if err := f.Private.Validate(); err != nil {
+		return nil, err
+	}
+	// the format spells these as integers, unlike CFF
+	blueValues, err := toIntegers("BlueValues", f.Private.BlueValues)
+	if err != nil {
+		return nil, err
+	}
+	otherBlues, err := toIntegers("OtherBlues", f.Private.OtherBlues)
+	if err != nil {
+		return nil, err
+	}
+	blueShift, err := toInteger("BlueShift", f.Private.BlueShift)
+	if err != nil {
+		return nil, err
+	}
+	blueFuzz, err := toInteger("BlueFuzz", f.Private.BlueFuzz)
+	if err != nil {
+		return nil, err
+	}
+
 	fontMatrix := f.FontInfo.FontMatrix
 	if len(fontMatrix) != 6 {
 		fontMatrix = [6]float64{0.001, 0, 0, 0.001, 0, 0}
 	}
 
+	// zero stands for the value an omitted entry takes
+	blueScale := f.Private.BlueScale
+	if blueScale == 0 {
+		blueScale = DefaultBlueScale
+	}
+
 	info := &fontInfo{
-		BlueFuzz:           f.Private.BlueFuzz,
-		BlueScale:          f.Private.BlueScale,
-		BlueShift:          f.Private.BlueShift,
-		BlueValues:         f.Private.BlueValues,
+		BlueFuzz:  blueFuzz,
+		BlueScale: blueScale,
+		BlueShift: blueShift,
+		// an entry which has a default is omitted when it holds it
+		WriteBlueScale:     blueScale != DefaultBlueScale,
+		WriteBlueShift:     f.Private.BlueShift != DefaultBlueShift,
+		WriteBlueFuzz:      f.Private.BlueFuzz != DefaultBlueFuzz,
+		BlueValues:         blueValues,
 		CharStrings:        f.encodeCharstrings(),
 		Copyright:          f.FontInfo.Copyright,
 		CreationDate:       f.CreationDate,
@@ -257,7 +288,7 @@ func (f *Font) makeTemplateData(opt *WriterOptions) *fontInfo {
 		IsFixedPitch:       f.FontInfo.IsFixedPitch,
 		ItalicAngle:        f.FontInfo.ItalicAngle,
 		Notice:             f.FontInfo.Notice,
-		OtherBlues:         f.Private.OtherBlues,
+		OtherBlues:         otherBlues,
 		UnderlinePosition:  float64(f.FontInfo.UnderlinePosition),
 		UnderlineThickness: float64(f.FontInfo.UnderlineThickness),
 		Version:            f.FontInfo.Version,
@@ -270,7 +301,33 @@ func (f *Font) makeTemplateData(opt *WriterOptions) *fontInfo {
 	if f.Private.StdVW != 0 {
 		info.StdVW = []float64{f.Private.StdVW}
 	}
-	return info
+	return info, nil
+}
+
+// toInteger converts a value the format spells as an integer.  Any value
+// prints in exponent form once it is large enough, so the conversion is what
+// keeps the entry an integer in the file.
+func toInteger(name string, v float64) (int32, error) {
+	if v != math.Trunc(v) || v < math.MinInt32 || v > math.MaxInt32 {
+		return 0, fmt.Errorf("%s %v is not an integer", name, v)
+	}
+	return int32(v), nil
+}
+
+// toIntegers is toInteger for an array.  A nil array stays nil.
+func toIntegers(name string, vals []float64) ([]int32, error) {
+	if vals == nil {
+		return nil, nil
+	}
+	res := make([]int32, len(vals))
+	for i, v := range vals {
+		x, err := toInteger(name, v)
+		if err != nil {
+			return nil, err
+		}
+		res[i] = x
+	}
+	return res, nil
 }
 
 func (f *Font) encodeCharstrings() map[string]string {
@@ -391,16 +448,15 @@ dup /Private 15 dict dup begin
 {{ range $index, $subr := .Subrs -}}
 dup {{ $index }} {{ len $subr }} RD {{ $subr }} NP
 {{ end -}}
-{{ if .BlueValues}}/BlueValues {{ .BlueValues }} def
-{{end -}}
+/BlueValues {{ .BlueValues }} def
 {{ if .OtherBlues}}/OtherBlues {{ .OtherBlues }} def
 {{end -}}
-{{ if (or (lt .BlueScale .039624) (gt .BlueScale .039626)) -}}
+{{ if .WriteBlueScale -}}
 /BlueScale {{.BlueScale}} def
 {{end -}}
-{{ if ne .BlueShift 7 }}/BlueShift {{.BlueShift}} def
+{{ if .WriteBlueShift }}/BlueShift {{.BlueShift}} def
 {{end -}}
-{{ if ne .BlueFuzz 1 }}/BlueFuzz {{.BlueFuzz}} def
+{{ if .WriteBlueFuzz }}/BlueFuzz {{.BlueFuzz}} def
 {{end -}}
 {{ if .StdHW }}/StdHW {{ .StdHW }} def
 {{end -}}
@@ -443,10 +499,14 @@ cleartomark
 `))
 
 type fontInfo struct {
-	BlueFuzz           int32
-	BlueScale          float64
-	BlueShift          int32
-	BlueValues         []funit.Int16
+	BlueFuzz  int32
+	BlueScale float64
+	BlueShift int32
+
+	WriteBlueScale     bool
+	WriteBlueShift     bool
+	WriteBlueFuzz      bool
+	BlueValues         []int32
 	CharStrings        map[string]string
 	Copyright          string
 	CreationDate       time.Time
@@ -459,7 +519,7 @@ type fontInfo struct {
 	IsFixedPitch       bool
 	ItalicAngle        float64
 	Notice             string
-	OtherBlues         []funit.Int16
+	OtherBlues         []int32
 	StdHW              []float64
 	StdVW              []float64
 	Subrs              []string

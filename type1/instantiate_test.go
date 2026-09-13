@@ -25,7 +25,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"seehuhn.de/go/geom/path"
-	"seehuhn.de/go/postscript/funit"
 	"seehuhn.de/go/postscript/internal/debug"
 )
 
@@ -152,10 +151,10 @@ func TestInstantiateMetrics(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if d := cmp.Diff([]funit.Int16{0, 715}, inst.Private.BlueValues); d != "" {
+	if d := cmp.Diff([]float64{0, 715}, inst.Private.BlueValues); d != "" {
 		t.Errorf("BlueValues mismatch (-want +got):\n%s", d)
 	}
-	if d := cmp.Diff([]funit.Int16{-100, -90}, inst.Private.OtherBlues); d != "" {
+	if d := cmp.Diff([]float64{-100, -90}, inst.Private.OtherBlues); d != "" {
 		t.Errorf("OtherBlues mismatch (-want +got):\n%s", d)
 	}
 	if inst.Private.StdHW != 43 {
@@ -179,7 +178,7 @@ func TestInstantiateMetrics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if d := cmp.Diff([]funit.Int16{0, 710}, corner.Private.BlueValues); d != "" {
+	if d := cmp.Diff([]float64{0, 710}, corner.Private.BlueValues); d != "" {
 		t.Errorf("corner BlueValues mismatch (-want +got):\n%s", d)
 	}
 	if corner.Private.StdVW != 82 {

@@ -141,10 +141,10 @@ func (f *Font) Instantiate(coords map[string]float64) (*Font, error) {
 	fi.FontName = name
 	if b := mm.Blend; b != nil {
 		if b.BlueValues != nil {
-			private.BlueValues = blendInt16(b.BlueValues, w)
+			private.BlueValues = blendWhole(b.BlueValues, w)
 		}
 		if b.OtherBlues != nil {
-			private.OtherBlues = blendInt16(b.OtherBlues, w)
+			private.OtherBlues = blendWhole(b.OtherBlues, w)
 		}
 		if b.StdHW != nil {
 			private.StdHW = blend1D(b.StdHW, w)
@@ -165,6 +165,11 @@ func (f *Font) Instantiate(coords map[string]float64) (*Font, error) {
 			fi.ItalicAngle = blend1D(b.ItalicAngle, w)
 		}
 	}
+
+	// blending is interpolation between values, but the constraints on the
+	// Private dictionary are not preserved by it: a zone pair can come out
+	// reversed, or a stem width negative
+	private.Repair()
 
 	return &Font{
 		CreationDate: f.CreationDate,
@@ -280,12 +285,13 @@ func blend1D(v, w []float64) float64 {
 	return sum
 }
 
-// blendInt16 blends element-major per-master values with weights w, rounding
-// each blended element to funit.Int16.
-func blendInt16(vals [][]float64, w []float64) []funit.Int16 {
-	res := make([]funit.Int16, len(vals))
+// blendWhole blends element-major per-master values with weights w, rounding
+// each blended element to a whole number, as the Type 1 format requires of
+// the instance.
+func blendWhole(vals [][]float64, w []float64) []float64 {
+	res := make([]float64, len(vals))
 	for i, v := range vals {
-		res[i] = funit.Int16(math.Round(blend1D(v, w)))
+		res[i] = math.Round(blend1D(v, w))
 	}
 	return res
 }

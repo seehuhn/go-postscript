@@ -27,7 +27,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"seehuhn.de/go/geom/matrix"
-	"seehuhn.de/go/postscript/funit"
 	"seehuhn.de/go/postscript/internal/debug"
 )
 
@@ -111,8 +110,8 @@ func FuzzFont(f *testing.F) {
 		},
 		Outlines: &Outlines{
 			Private: &PrivateDict{
-				BlueValues: []funit.Int16{0, 10, 40, 50, 100, 120},
-				OtherBlues: []funit.Int16{-20, -10},
+				BlueValues: []float64{0, 10, 40, 50, 100, 120},
+				OtherBlues: []float64{-20, -10},
 				BlueScale:  0.1,
 				BlueShift:  8,
 				BlueFuzz:   2,
