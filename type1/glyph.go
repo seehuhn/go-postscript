@@ -44,7 +44,7 @@ func (f *Font) NewGlyph(name string, width float64) *Glyph {
 
 // IsBlank returns true if the glyph has no visible outline.
 func (g *Glyph) IsBlank() bool {
-	return g.Outline.IsBlank()
+	return g.Outline == nil || g.Outline.IsBlank()
 }
 
 // MoveTo starts a new sub-path and moves the current point to (x, y).
@@ -83,7 +83,7 @@ func (g *Glyph) ClosePath() {
 // Path returns the glyph outline as a path.
 func (g *Glyph) Path() path.Path {
 	if g.Outline == nil {
-		return func(yield func(path.Command, []vec.Vec2) bool) {}
+		return path.Empty
 	}
 	return g.Outline.Iter()
 }
