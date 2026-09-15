@@ -78,7 +78,7 @@ func (o *Outlines) BuiltinEncoding() []string {
 	return o.Encoding
 }
 
-// IsBlank returns true if the glyph with the given name does not add marks to the page.
+// IsBlank returns true if the glyph with the given name has an empty outline.
 func (o *Outlines) IsBlank(name string) bool {
 	g, exists := o.Glyphs[name]
 	if !exists {

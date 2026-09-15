@@ -1,6 +1,6 @@
 github.com/google/go-cmp v0.7.0 h1:wk8382ETsv4JYUZwIsn6YpYiWiBsYLSJiTsyBybVuN8=
 github.com/google/go-cmp v0.7.0/go.mod h1:pXiqmnSA92OHEEa9HXL2W4E7lf9JzCmGVUdgjX3N/iU=
-seehuhn.de/go/geom v0.7.5-0.20260914191744-4ad9af0152fb h1:sWz8lCd4uy+2hmwoVoVIleXb+GN9C448KXTq2NSvrMU=
-seehuhn.de/go/geom v0.7.5-0.20260914191744-4ad9af0152fb/go.mod h1:0diHpKsEzgxI6SC1YY7525/TXIkXj0W2EjBvDXXN+Vc=
+seehuhn.de/go/geom v0.7.5-0.20260915125052-839cc5a26880 h1:APzjS9nk5fTG7s+IuCujtiYVSKG5hE3UOiIKouch2nA=
+seehuhn.de/go/geom v0.7.5-0.20260915125052-839cc5a26880/go.mod h1:0diHpKsEzgxI6SC1YY7525/TXIkXj0W2EjBvDXXN+Vc=
 seehuhn.de/go/membudget v0.7.4 h1:G8f921Bi28xfPkuf3Kr425qE6P+NDP/i1jkVbcFCEa8=
 seehuhn.de/go/membudget v0.7.4/go.mod h1:iDiUmeAojPjk77vwdxBBBEF7bFuwz/ggMjEuACvU8UQ=

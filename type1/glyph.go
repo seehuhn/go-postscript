@@ -42,7 +42,7 @@ func (f *Font) NewGlyph(name string, width float64) *Glyph {
 	return g
 }
 
-// IsBlank returns true if the glyph has no visible outline.
+// IsBlank returns true if the glyph has an empty outline.
 func (g *Glyph) IsBlank() bool {
 	return g.Outline == nil || g.Outline.IsBlank()
 }
