@@ -186,7 +186,7 @@ func (s *scanner) ScanToken() (Object, error) {
 		}
 		s.tokenBuf = opBytes
 
-		x, err := parseNumber(opBytes)
+		x, err := ParseNumber(opBytes)
 		if err != nil {
 			return nil, err
 		}
@@ -757,14 +757,15 @@ func trimSpace(b []byte) []byte {
 	return b
 }
 
-// parseNumber converts a token into an Integer or Real object.  Tokens which
-// are not numbers give a nil object and a nil error; the caller reads these as
-// operator names.  A number beyond the range of the corresponding Go type
+// ParseNumber converts a token into an Integer or Real object, following the
+// PostScript syntax for integers, reals and radix numbers.  Tokens which are
+// not numbers give a nil object and a nil error; the PostScript scanner reads
+// these as names.  A number beyond the range of the corresponding Go type
 // gives a limitcheck error.
 //
 // The implementation limits are those of the Go types used for the two number
 // objects: [Integer] for integers and [Real] for real numbers.
-func parseNumber(s []byte) (Object, error) {
+func ParseNumber(s []byte) (Object, error) {
 	// Most tokens are operator names rather than numbers.  Rejecting these
 	// on the first byte keeps them out of the strconv and regexp code below.
 	if len(s) == 0 || !isNumberStart[s[0]] {

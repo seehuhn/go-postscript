@@ -1654,7 +1654,7 @@ func (intp *Interpreter) pushRealAsInt(r Real) error {
 // parseNumberString interprets s, ignoring surrounding white space, as a
 // PostScript number, for the operator op.
 func (intp *Interpreter) parseNumberString(s String, op string) (Object, error) {
-	x, err := parseNumber(trimSpace(s))
+	x, err := ParseNumber(trimSpace(s))
 	var psErr *postScriptError
 	if errors.As(err, &psErr) {
 		return nil, intp.e(psErr.tp, "%s: %s", op, psErr.msg)
