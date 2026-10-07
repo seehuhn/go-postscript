@@ -1051,6 +1051,7 @@ func TestIntegerOverflowToReal(t *testing.T) {
 	for _, prog := range []string{
 		"-1 " + minInt + " mul",
 		minInt + " -1 mul",
+		"0 " + minInt + " sub",
 		minInt + " neg",
 		minInt + " abs",
 	} {

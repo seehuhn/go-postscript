@@ -1309,7 +1309,7 @@ func bSub(intp *Interpreter) error {
 	} else {
 		ci := ai - bi
 		// check for integer overflow
-		if (ai < 0 && bi > 0 && ci >= 0) || (ai > 0 && bi < 0 && ci <= 0) {
+		if (ai < 0 && bi > 0 && ci >= 0) || (ai >= 0 && bi < 0 && ci < 0) {
 			intp.Stack = append(intp.Stack, Real(ai)-Real(bi))
 		} else {
 			intp.Stack = append(intp.Stack, ci)
