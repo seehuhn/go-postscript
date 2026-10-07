@@ -554,3 +554,20 @@ func BenchmarkScanToken(b *testing.B) {
 		}
 	}
 }
+
+func TestTrimSpace(t *testing.T) {
+	cases := []struct{ in, out string }{
+		{"", ""},
+		{" \t\r\n\f\x00", ""},
+		{"\x00 12 \n", "12"},
+		{"1 2", "1 2"},
+		{"\xc2\x85x\xc2\x85", "\xc2\x85x\xc2\x85"},
+		{"\xa0x\xa0", "\xa0x\xa0"},
+	}
+	for _, c := range cases {
+		got := string(trimSpace([]byte(c.in)))
+		if got != c.out {
+			t.Errorf("trimSpace(%q) = %q, want %q", c.in, got, c.out)
+		}
+	}
+}

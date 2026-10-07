@@ -17,6 +17,7 @@
 package postscript
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"testing"
@@ -971,6 +972,10 @@ func TestCmdCvi(t *testing.T) {
 		{"(3.3E1) cvi", Integer(33)},
 		{"-47.8 cvi", Integer(-47)},
 		{"520.9 cvi", Integer(520)},
+		{"( 12\n) cvi", Integer(12)},
+		{"(16#ff) cvi", Integer(255)},
+		{"(-7.9) cvi", Integer(-7)},
+		{fmt.Sprintf("%d.0 cvi", math.MinInt), Integer(math.MinInt)},
 	}
 	for _, c := range cases {
 		intp, err := run(c.in, 1)
@@ -991,6 +996,9 @@ func TestCmdCvr(t *testing.T) {
 	cases := []testCase{
 		{Integer(42), Real(42.0)},
 		{Real(3.14), Real(3.14)},
+		{String("2"), Real(2)},
+		{String(" 1.5\n"), Real(1.5)},
+		{String("8#17"), Real(15)},
 	}
 	for _, c := range cases {
 		intp := NewInterpreter()
@@ -1005,6 +1013,56 @@ func TestCmdCvr(t *testing.T) {
 		if intp.Stack[0] != c.out {
 			t.Fatalf("cvr(%v): %v != %v", c.in, intp.Stack[0], c.out)
 		}
+	}
+}
+
+func TestNumberConversionErrors(t *testing.T) {
+	type testCase struct {
+		prog string
+		tp   Name
+	}
+	cases := []testCase{
+		{"(Inf) cvr", eSyntaxerror},
+		{"(NaN) cvi", eSyntaxerror},
+		{"(0x1p4) cvr", eSyntaxerror},
+		{"(1_0) cvi", eSyntaxerror},
+		{"(1 2) cvi", eSyntaxerror},
+		{"() cvr", eSyntaxerror},
+		{"(1e999) cvr", eLimitcheck},
+		{fmt.Sprintf("%.1f cvi", float64(-math.MinInt)), eRangecheck},
+		{fmt.Sprintf("(%.1f) cvi", float64(-math.MinInt)), eRangecheck},
+		{"(1e999) cvi", eRangecheck},
+	}
+	for _, c := range cases {
+		t.Run(c.prog, func(t *testing.T) {
+			intp := NewInterpreter()
+			err := intp.ExecuteString(c.prog)
+			var psErr *postScriptError
+			if !errors.As(err, &psErr) || psErr.tp != c.tp {
+				t.Fatalf("got %v, want %s", err, c.tp)
+			}
+		})
+	}
+}
+
+func TestIntegerOverflowToReal(t *testing.T) {
+	minInt := fmt.Sprint(math.MinInt)
+	want := Real(-float64(math.MinInt))
+	for _, prog := range []string{
+		"-1 " + minInt + " mul",
+		minInt + " -1 mul",
+		minInt + " neg",
+		minInt + " abs",
+	} {
+		t.Run(prog, func(t *testing.T) {
+			intp, err := run(prog, 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if intp.Stack[0] != want {
+				t.Errorf("got %v, want %v", intp.Stack[0], want)
+			}
+		})
 	}
 }
 
@@ -1330,6 +1388,11 @@ func TestCmdRound(t *testing.T) {
 		{Real(6.5), Real(7.0)},
 		{Real(-4.8), Real(-5.0)},
 		{Real(-6.5), Real(-6.0)},
+		{Real(-0.5), Real(0.0)},
+		{Real(0.49999999999999994), Real(0.0)},
+		{Real(-0.49999999999999994), Real(0.0)},
+		{Real(4503599627370497), Real(4503599627370497)},
+		{Real(-4503599627370497), Real(-4503599627370497)},
 		{Integer(99), Integer(99)},
 	}
 	for _, c := range cases {
@@ -1453,5 +1516,26 @@ func TestCmdXor(t *testing.T) {
 		if intp.Stack[0] != c.out {
 			t.Fatalf("xor(%v, %v): %v != %v", c.a, c.b, intp.Stack[0], c.out)
 		}
+	}
+}
+
+func TestArithmeticUndefinedResult(t *testing.T) {
+	programs := []string{
+		"10 400 exp",
+		"1e200 dup mul",
+		"1e308 1e308 add",
+		"1e308 neg 1e308 sub",
+		"1e300 1e-300 div",
+		fmt.Sprint(math.MinInt) + " -1 idiv",
+	}
+	for _, prog := range programs {
+		t.Run(prog, func(t *testing.T) {
+			intp := NewInterpreter()
+			err := intp.ExecuteString(prog)
+			var psErr *postScriptError
+			if !errors.As(err, &psErr) || psErr.tp != eUndefinedresult {
+				t.Fatalf("got %v, want undefinedresult", err)
+			}
+		})
 	}
 }

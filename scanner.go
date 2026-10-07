@@ -745,6 +745,18 @@ var class = [256]characterClass{
 	'%': delimiter,
 }
 
+// trimSpace returns b with leading and trailing PostScript white space
+// removed.
+func trimSpace(b []byte) []byte {
+	for len(b) > 0 && class[b[0]] == space {
+		b = b[1:]
+	}
+	for len(b) > 0 && class[b[len(b)-1]] == space {
+		b = b[:len(b)-1]
+	}
+	return b
+}
+
 // parseNumber converts a token into an Integer or Real object.  Tokens which
 // are not numbers give a nil object and a nil error; the caller reads these as
 // operator names.  A number beyond the range of the corresponding Go type

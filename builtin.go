@@ -24,7 +24,6 @@ import (
 	"maps"
 	"math"
 	"slices"
-	"strconv"
 
 	"seehuhn.de/go/postscript/psenc"
 )
@@ -241,7 +240,7 @@ func bAdd(intp *Interpreter) error {
 		if bIsInt {
 			br = Real(bi)
 		}
-		intp.Stack = append(intp.Stack, ar+br)
+		return intp.pushReal(ar+br, "add")
 	} else {
 		ci := ai + bi
 		// check for integer overflow
@@ -995,11 +994,11 @@ func bMul(intp *Interpreter) error {
 		if bIsInt {
 			br = Real(bi)
 		}
-		intp.Stack = append(intp.Stack, ar*br)
+		return intp.pushReal(ar*br, "mul")
 	} else {
 		ci := ai * bi
 		// check for integer overflow
-		if ai != 0 && ci/ai != bi {
+		if (ai == -1 && bi == math.MinInt) || (ai != 0 && ci/ai != bi) {
 			intp.Stack = append(intp.Stack, Real(ai)*Real(bi))
 		} else {
 			intp.Stack = append(intp.Stack, ci)
@@ -1306,7 +1305,7 @@ func bSub(intp *Interpreter) error {
 		if bIsInt {
 			br = Real(bi)
 		}
-		intp.Stack = append(intp.Stack, ar-br)
+		return intp.pushReal(ar-br, "sub")
 	} else {
 		ci := ai - bi
 		// check for integer overflow
@@ -1589,27 +1588,20 @@ func bCvi(intp *Interpreter) error {
 	case Integer:
 		intp.Stack = append(intp.Stack, op)
 	case Real:
-		// Truncate toward zero
-		truncated := math.Trunc(float64(op))
-		// Check for overflow
-		if truncated > math.MaxInt64 || truncated < math.MinInt64 {
-			return intp.e(eRangecheck, "cvi: number too large to convert to integer")
-		}
-		intp.Stack = append(intp.Stack, Integer(truncated))
+		return intp.pushRealAsInt(op)
 	case String:
-		// Parse string as number - simplified implementation
-		str := string(op)
-		if val, err := strconv.ParseFloat(str, 64); err == nil {
-			truncated := math.Trunc(val)
-			if truncated > math.MaxInt64 || truncated < math.MinInt64 {
+		x, err := intp.parseNumberString(op, "cvi")
+		if err != nil {
+			var psErr *postScriptError
+			if errors.As(err, &psErr) && psErr.tp == eLimitcheck {
 				return intp.e(eRangecheck, "cvi: number too large to convert to integer")
 			}
-			intp.Stack = append(intp.Stack, Integer(truncated))
-		} else if val, err := strconv.ParseInt(str, 10, 64); err == nil {
-			intp.Stack = append(intp.Stack, Integer(val))
-		} else {
-			return intp.e(eSyntaxerror, "cvi: invalid number in string")
+			return err
 		}
+		if r, isReal := x.(Real); isReal {
+			return intp.pushRealAsInt(r)
+		}
+		intp.Stack = append(intp.Stack, x)
 	default:
 		return intp.e(eTypecheck, "cvi: invalid argument type")
 	}
@@ -1632,18 +1624,47 @@ func bCvr(intp *Interpreter) error {
 	case Real:
 		intp.Stack = append(intp.Stack, op)
 	case String:
-		// Parse string as number - simplified implementation
-		str := string(op)
-		if val, err := strconv.ParseFloat(str, 64); err == nil {
-			intp.Stack = append(intp.Stack, Real(val))
-		} else {
-			return intp.e(eSyntaxerror, "cvr: invalid number in string")
+		x, err := intp.parseNumberString(op, "cvr")
+		if err != nil {
+			return err
 		}
+		if i, isInt := x.(Integer); isInt {
+			x = Real(i)
+		}
+		intp.Stack = append(intp.Stack, x)
 	default:
 		return intp.e(eTypecheck, "cvr: invalid argument type")
 	}
 
 	return nil
+}
+
+// pushRealAsInt truncates r toward zero and pushes the result onto the
+// operand stack as an integer.
+func (intp *Interpreter) pushRealAsInt(r Real) error {
+	truncated := math.Trunc(float64(r))
+	// The limits are powers of two and so exact as float64 values.
+	if !(truncated >= math.MinInt && truncated < -math.MinInt) {
+		return intp.e(eRangecheck, "cvi: number too large to convert to integer")
+	}
+	intp.Stack = append(intp.Stack, Integer(truncated))
+	return nil
+}
+
+// parseNumberString interprets s, ignoring surrounding white space, as a
+// PostScript number, for the operator op.
+func (intp *Interpreter) parseNumberString(s String, op string) (Object, error) {
+	x, err := parseNumber(trimSpace(s))
+	var psErr *postScriptError
+	if errors.As(err, &psErr) {
+		return nil, intp.e(psErr.tp, "%s: %s", op, psErr.msg)
+	} else if err != nil {
+		return nil, err
+	}
+	if x == nil {
+		return nil, intp.e(eSyntaxerror, "%s: invalid number in string", op)
+	}
+	return x, nil
 }
 
 // div: num1 num2 div quotient
@@ -1682,9 +1703,7 @@ func bDiv(intp *Interpreter) error {
 		return intp.e(eUndefinedresult, "div: division by zero")
 	}
 
-	result := val1 / val2
-	intp.Stack = append(intp.Stack, Real(result))
-	return nil
+	return intp.pushReal(Real(val1/val2), "div")
 }
 
 // exp: base exponent exp real
@@ -1724,14 +1743,16 @@ func bExp(intp *Interpreter) error {
 		return intp.e(eUndefinedresult, "exp: negative base with fractional exponent")
 	}
 
-	result := math.Pow(baseVal, expVal)
+	return intp.pushReal(Real(math.Pow(baseVal, expVal)), "exp")
+}
 
-	// Check for infinite or NaN result
-	if math.IsInf(result, 0) || math.IsNaN(result) {
-		return intp.e(eUndefinedresult, "exp: undefined result")
+// pushReal pushes r onto the operand stack, or returns an undefinedresult
+// error for the operator op where r is not a finite number.
+func (intp *Interpreter) pushReal(r Real, op string) error {
+	if math.IsInf(float64(r), 0) || math.IsNaN(float64(r)) {
+		return intp.e(eUndefinedresult, "%s: undefined result", op)
 	}
-
-	intp.Stack = append(intp.Stack, Real(result))
+	intp.Stack = append(intp.Stack, r)
 	return nil
 }
 
@@ -1835,6 +1856,9 @@ func bIdiv(intp *Interpreter) error {
 
 	if int2 == 0 {
 		return intp.e(eUndefinedresult, "idiv: division by zero")
+	}
+	if int1 == math.MinInt && int2 == -1 {
+		return intp.e(eUndefinedresult, "idiv: quotient too large")
 	}
 
 	// Integer division with truncation toward zero
@@ -1997,8 +2021,8 @@ func bNeg(intp *Interpreter) error {
 
 	switch n := num.(type) {
 	case Integer:
-		if n == math.MinInt64 {
-			// Handle most negative integer overflow
+		if n == math.MinInt {
+			// the negation does not fit into an integer
 			intp.Stack = append(intp.Stack, Real(-float64(n)))
 		} else {
 			intp.Stack = append(intp.Stack, -n)
@@ -2025,23 +2049,14 @@ func bRound(intp *Interpreter) error {
 	case Integer:
 		intp.Stack = append(intp.Stack, n)
 	case Real:
-		// PostScript spec: if equally close to two integers, return the greater
+		// Ties go to the greater integer.  The subtraction is exact, unlike
+		// val+0.5, which can round up before the floor is taken.
 		val := float64(n)
-		if val >= 0 {
-			intp.Stack = append(intp.Stack, Real(math.Floor(val+0.5)))
-		} else {
-			// For negative numbers: -6.5 should round to -6 (the greater)
-			// Check if it's exactly halfway
-			floor := math.Floor(val)
-			ceil := math.Ceil(val)
-			if math.Abs(val-floor) == math.Abs(val-ceil) {
-				// Exactly halfway, return the greater (closer to zero)
-				intp.Stack = append(intp.Stack, Real(ceil))
-			} else {
-				// Normal rounding
-				intp.Stack = append(intp.Stack, Real(math.Round(val)))
-			}
+		f := math.Floor(val)
+		if val-f >= 0.5 {
+			f++
 		}
+		intp.Stack = append(intp.Stack, Real(f))
 	default:
 		return intp.e(eTypecheck, "round: argument must be a number")
 	}
