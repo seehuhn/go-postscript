@@ -5,6 +5,74 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.7.5] (2026-10-10)
+
+### Added
+- Multiple Master fonts: `type1` reads them, and `Font.Instantiate`
+  turns one into an ordinary single-master font at a given design
+  coordinate.  `Font.VariationAxes` reports the design axes and the
+  default coordinate.  Writing a Multiple Master font writes its
+  default instance.
+- `type1.Font.CapHeightPDF` and `Font.XHeightPDF` measure cap height
+  and x-height from the glyph outlines, since the Type 1 format
+  records neither.
+- `type1.CheckFontName`, `RepairFontName`, `CheckGlyphName`,
+  `RepairGlyphName` and `MaxFontNameLen` validate and repair
+  PostScript font and glyph names.  The Type 1 and AFM readers and
+  writers use them, so a name a font file cannot carry is never
+  emitted.
+- `type1.PrivateDict.Repair` and `Validate` repair and validate a
+  font's Private dictionary (`BlueValues`, `OtherBlues`, `BlueScale`,
+  `BlueShift`, `BlueFuzz`, `StdHW`, `StdVW`).
+- `ParseNumber` is exported, parsing a PostScript number token
+  following PLRM 3.1 syntax.
+
+### Changed
+- `afm.Metrics.Kern` now holds `[]KernPair` instead of `[]*KernPair`,
+  and `KernPair.Adjust` is `float64` instead of `funit.Int16`,
+  matching the AFM format's real-valued kerning adjustments.
+- `afm.Metrics` gains `FamilyName` and `Weight` fields, read from and
+  written to the file directly instead of being derived by splitting
+  `FullName` at its first space.
+- `type1.PrivateDict.BlueValues`, `OtherBlues`, `BlueShift` and
+  `BlueFuzz` are now `float64` rather than `funit.Int16`/`int32`,
+  since CFF allows fractional and larger values there.  The Type 1
+  reader rounds and range-limits these on read, and the writer
+  refuses a value it cannot write as a Type 1 integer.
+- `FontInfo.PostScriptName` is removed; it only returned `FontName`.
+- The scanner's number parser now follows PLRM 3.2: a token
+  that is not a number becomes an operator name, a decimal integer
+  beyond the implementation limit becomes a real, and a real beyond
+  the limit raises `limitcheck`; a radix number such as
+  `16#FFFFFFFFFFFFFFFF` keeps its twos-complement value.
+- The interpreter's `bind` no longer substitutes a builtin operator
+  for a literal name, only for an executable name, since a literal
+  name is data rather than an operator reference.
+- The Type 1 `closepath` charstring command no longer moves the
+  current point; drawing that continues after it now starts a new
+  sub-path, matching the Type 1 format rather than the PostScript
+  `closepath` operator.
+- The charstring operand-stack limit is raised to 98 for Multiple
+  Master fonts, to admit a 16-master blend of 6 values; other fonts
+  keep the limit of 24.
+
+### Fixed
+- `cvi` and `cvr` parse strings with the scanner's number syntax,
+  accepting radix numbers and surrounding white space and rejecting
+  forms only `strconv` accepts.
+- Integer overflow in the arithmetic operators no longer wraps
+  silently, and `round` no longer rounds up values just below one half
+  or odd values beyond 2^52.
+- AFM reading no longer fails on a malformed file: an unusable number
+  is replaced by its default, a name the format cannot carry is
+  repaired, and an entry that survives neither is dropped, so one bad
+  field no longer costs the rest of the file.  A size claimed by a
+  repeated section header no longer triggers a fresh allocation each
+  time it recurs (previously up to 2.9 GB for 1 MB of repeated
+  headers), and lines, kerning pairs and ligatures are bounded so that
+  what is read can always be written back.
+- `type1.Glyph.IsBlank` no longer panics on a glyph with no outline.
+
 ## [v0.7.4] (2026-06-25)
 
 ### Added
