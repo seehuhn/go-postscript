@@ -464,7 +464,7 @@ func TestLineCol2(t *testing.T) {
 			t.Fatal(err)
 		}
 		if token != Integer(1) {
-			t.Errorf("expected %q, got %q", Integer(1), token)
+			t.Errorf("expected %v, got %v", Integer(1), token)
 		}
 		if s.Line != c.line || s.Col != c.col {
 			t.Errorf("expected line %d col %d, got %d %d", c.line, c.col, s.Line, s.Col)

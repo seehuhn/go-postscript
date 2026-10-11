@@ -1592,8 +1592,7 @@ func bCvi(intp *Interpreter) error {
 	case String:
 		x, err := intp.parseNumberString(op, "cvi")
 		if err != nil {
-			var psErr *postScriptError
-			if errors.As(err, &psErr) && psErr.tp == eLimitcheck {
+			if psErr, ok := errors.AsType[*postScriptError](err); ok && psErr.tp == eLimitcheck {
 				return intp.e(eRangecheck, "cvi: number too large to convert to integer")
 			}
 			return err
@@ -1655,8 +1654,7 @@ func (intp *Interpreter) pushRealAsInt(r Real) error {
 // PostScript number, for the operator op.
 func (intp *Interpreter) parseNumberString(s String, op string) (Object, error) {
 	x, err := ParseNumber(trimSpace(s))
-	var psErr *postScriptError
-	if errors.As(err, &psErr) {
+	if psErr, ok := errors.AsType[*postScriptError](err); ok {
 		return nil, intp.e(psErr.tp, "%s: %s", op, psErr.msg)
 	} else if err != nil {
 		return nil, err

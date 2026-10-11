@@ -1037,8 +1037,7 @@ func TestNumberConversionErrors(t *testing.T) {
 		t.Run(c.prog, func(t *testing.T) {
 			intp := NewInterpreter()
 			err := intp.ExecuteString(c.prog)
-			var psErr *postScriptError
-			if !errors.As(err, &psErr) || psErr.tp != c.tp {
+			if psErr, ok := errors.AsType[*postScriptError](err); !ok || psErr.tp != c.tp {
 				t.Fatalf("got %v, want %s", err, c.tp)
 			}
 		})
@@ -1533,8 +1532,7 @@ func TestArithmeticUndefinedResult(t *testing.T) {
 		t.Run(prog, func(t *testing.T) {
 			intp := NewInterpreter()
 			err := intp.ExecuteString(prog)
-			var psErr *postScriptError
-			if !errors.As(err, &psErr) || psErr.tp != eUndefinedresult {
+			if psErr, ok := errors.AsType[*postScriptError](err); !ok || psErr.tp != eUndefinedresult {
 				t.Fatalf("got %v, want undefinedresult", err)
 			}
 		})
