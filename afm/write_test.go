@@ -28,6 +28,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"seehuhn.de/go/geom/rect"
+	"seehuhn.de/go/postscript/type1"
 )
 
 var (
@@ -335,6 +336,8 @@ var (
 		XHeight:            451,
 		Ascent:             812,
 		Descent:            -203,
+		StdHW:              84,
+		StdVW:              92.5,
 		UnderlinePosition:  -400,
 		UnderlineThickness: 5,
 		ItalicAngle:        -6,
@@ -432,6 +435,11 @@ func TestWriteRejectsUnusableValues(t *testing.T) {
 	}{
 		{"CapHeight", func(m *Metrics) { m.CapHeight = math.NaN() }},
 		{"Descender", func(m *Metrics) { m.Descent = math.Inf(-1) }},
+		{"StdHW", func(m *Metrics) { m.StdHW = math.NaN() }},
+		{"StdVW", func(m *Metrics) { m.StdVW = 2 * metricMax }},
+		{"negativeStdHW", func(m *Metrics) { m.StdHW = -50 }},
+		{"negativeStdVW", func(m *Metrics) { m.StdVW = -50 }},
+		{"largeStdHW", func(m *Metrics) { m.StdHW = 2 * type1.MaxStemWidth }},
 		{"ItalicAngle", func(m *Metrics) { m.ItalicAngle = 2 * metricMax }},
 		{"width", func(m *Metrics) { m.Glyphs["A"].WidthX = math.Inf(1) }},
 		{"bbox", func(m *Metrics) { m.Glyphs["A"].BBox.URy = -2 * metricMax }},
@@ -457,6 +465,27 @@ func TestWriteRejectsUnusableValues(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+// TestWriteOmitsUnknownStems checks that a zero stem width is not written.
+func TestWriteOmitsUnknownStems(t *testing.T) {
+	m := &Metrics{
+		FontName: "Test",
+		Glyphs:   map[string]*GlyphInfo{".notdef": {WidthX: 500}},
+		Encoding: make([]string, 256),
+		StdVW:    88,
+	}
+	buf := &bytes.Buffer{}
+	if err := m.Write(buf); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	if strings.Contains(out, "StdHW") {
+		t.Error("unknown StdHW was written")
+	}
+	if !strings.Contains(out, "\nStdVW 88\n") {
+		t.Error("StdVW missing")
 	}
 }
 

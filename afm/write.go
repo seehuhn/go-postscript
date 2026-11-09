@@ -55,9 +55,22 @@ func (m *Metrics) checkMetrics() error {
 		{"XHeight", m.XHeight},
 		{"Ascender", m.Ascent},
 		{"Descender", m.Descent},
+		{"StdHW", m.StdHW},
+		{"StdVW", m.StdVW},
 	} {
 		if err := checkMetric(f.name, f.x); err != nil {
 			return err
+		}
+	}
+	for _, f := range []struct {
+		name string
+		x    float64
+	}{
+		{"StdHW", m.StdHW},
+		{"StdVW", m.StdVW},
+	} {
+		if f.x != 0 && !type1.UsableStemWidth(f.x) {
+			return fmt.Errorf("%s value %g outside (0, %g]", f.name, f.x, type1.MaxStemWidth)
 		}
 	}
 	for name, g := range m.Glyphs {
@@ -296,6 +309,18 @@ func (m *Metrics) Write(w io.Writer) error {
 	}
 	if err := write("Descender %s", strconv.FormatFloat(m.Descent, 'f', -1, 64)); err != nil {
 		return err
+	}
+
+	// a zero stem width means the value is unknown
+	if m.StdHW != 0 {
+		if err := write("StdHW %s", strconv.FormatFloat(m.StdHW, 'f', -1, 64)); err != nil {
+			return err
+		}
+	}
+	if m.StdVW != 0 {
+		if err := write("StdVW %s", strconv.FormatFloat(m.StdVW, 'f', -1, 64)); err != nil {
+			return err
+		}
 	}
 
 	// Write character metrics

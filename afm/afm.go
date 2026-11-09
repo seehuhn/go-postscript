@@ -26,9 +26,9 @@ import (
 
 // Metrics contains the information from an AFM file.
 //
-// All lengths are in units of 1/1000 of the em square.  The file format has no
-// way of marking a value as absent, so fields the file does not give are zero
-// and cannot be told apart from a recorded zero.
+// All lengths are in units of 1/1000 of the em square.  A numeric field the
+// file does not give is zero, so an omitted value cannot be told apart from a
+// recorded zero.
 type Metrics struct {
 	Glyphs   map[string]*GlyphInfo
 	Encoding []string
@@ -52,10 +52,29 @@ type Metrics struct {
 	// Notice (optional) is the font name trademark or copyright notice.
 	Notice string
 
+	// CapHeight (optional) is the height of flat capital letters, usually the
+	// y coordinate of the top of "H".
 	CapHeight float64
-	XHeight   float64
-	Ascent    float64
-	Descent   float64 // negative
+
+	// XHeight (optional) is the height of flat lowercase letters, usually the
+	// y coordinate of the top of "x".
+	XHeight float64
+
+	// Ascent (optional) is the height of lowercase ascenders, usually the y
+	// coordinate of the top of "d".
+	Ascent float64
+
+	// Descent (optional) is the depth of lowercase descenders, usually the y
+	// coordinate of the bottom of "p".  The value is normally negative.
+	Descent float64
+
+	// StdHW (optional) is the dominant horizontal stem width.  The value lies
+	// in (0, [type1.MaxStemWidth]], or is zero if unknown.
+	StdHW float64
+
+	// StdVW (optional) is the dominant vertical stem width.  The value lies
+	// in (0, [type1.MaxStemWidth]], or is zero if unknown.
+	StdVW float64
 
 	// UnderlinePosition is the recommended distance from the baseline for
 	// positioning underlining strokes. This number is the y coordinate (in the
@@ -78,9 +97,16 @@ type Metrics struct {
 	Kern []KernPair
 }
 
+// GlyphInfo holds the metrics of a single glyph.
 type GlyphInfo struct {
-	WidthX    float64
-	BBox      rect.Rect
+	// WidthX is the horizontal advance width of the glyph.
+	WidthX float64
+
+	// BBox is the bounding box of the glyph.
+	BBox rect.Rect
+
+	// Ligatures maps a successor glyph name to the name of the ligature which
+	// replaces this glyph followed by the successor.
 	Ligatures map[string]string
 }
 

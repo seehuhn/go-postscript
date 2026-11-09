@@ -466,6 +466,14 @@ func Read(fd io.Reader) (*Metrics, error) {
 			if x, ok := readNumber(fields[1]); ok {
 				res.Descent = x
 			}
+		case "StdHW":
+			if x, ok := readNumber(fields[1]); ok && type1.UsableStemWidth(x) {
+				res.StdHW = x
+			}
+		case "StdVW":
+			if x, ok := readNumber(fields[1]); ok && type1.UsableStemWidth(x) {
+				res.StdVW = x
+			}
 		case "UnderlinePosition":
 			if x, ok := readNumber(fields[1]); ok {
 				res.UnderlinePosition = x

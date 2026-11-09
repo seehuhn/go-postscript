@@ -225,6 +225,34 @@ func TestUnusableValues(t *testing.T) {
 		}
 	})
 
+	t.Run("stems", func(t *testing.T) {
+		in := header + "StdHW 76\nStdHW nan\nStdVW +Inf\nEndFontMetrics\n"
+		m, err := Read(strings.NewReader(in))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if m.StdHW != 76 || m.StdVW != 0 {
+			t.Errorf("got StdHW %g, StdVW %g", m.StdHW, m.StdVW)
+		}
+		// a stem width which is not positive, or too large, is dropped
+		in = header + "StdHW 76\nStdHW 0\nStdVW -88\nEndFontMetrics\n"
+		m, err = Read(strings.NewReader(in))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if m.StdHW != 76 || m.StdVW != 0 {
+			t.Errorf("got StdHW %g, StdVW %g", m.StdHW, m.StdVW)
+		}
+		in = header + "StdHW 76\nStdHW 10001\nStdVW 20000\nEndFontMetrics\n"
+		m, err = Read(strings.NewReader(in))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if m.StdHW != 76 || m.StdVW != 0 {
+			t.Errorf("got StdHW %g, StdVW %g", m.StdHW, m.StdVW)
+		}
+	})
+
 	t.Run("glyphWidth", func(t *testing.T) {
 		// a fractional width is legal, a placeholder is not
 		in := header + "StartCharMetrics 2\nC 65 ; WX 500.5 ; N A ;\nC 66 ; WX -2147483648 ; N B ;\nEndCharMetrics\nEndFontMetrics\n"
