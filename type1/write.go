@@ -338,13 +338,21 @@ func toIntegers(name string, vals []float64) ([]int32, error) {
 func (f *Font) encodeCharstrings() (map[string]string, error) {
 	charStrings := make(map[string]string)
 	for name, g := range f.Glyphs {
+		g = g.snapped()
+		if !numberUsable(g.WidthX) || !numberUsable(g.WidthY) {
+			return nil, fmt.Errorf("glyph %q: width (%v, %v) out of range",
+				name, g.WidthX, g.WidthY)
+		}
+		if !outlineUsable(g.Outline) {
+			return nil, fmt.Errorf("glyph %q: outline coordinates out of range", name)
+		}
 		if err := checkStems(name, g.HStem); err != nil {
 			return nil, err
 		}
 		if err := checkStems(name, g.VStem); err != nil {
 			return nil, err
 		}
-		cs := g.encodeCharString(int32(math.Round(g.WidthX)), int32(math.Round(g.WidthY)))
+		cs := g.encodeCharString()
 
 		var obf []byte
 		iv := []byte{0, 0, 0, 0}

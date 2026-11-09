@@ -261,7 +261,7 @@ glyphLoop:
 				posY = 0
 				sbX = stack[0]
 				sbY = 0
-				res.WidthX = stack[1]
+				res.WidthX = snap(stack[1])
 				res.WidthY = 0
 				clearStack()
 			case t1seac:
@@ -285,8 +285,8 @@ glyphLoop:
 					name:   name,
 					base:   bchar,
 					accent: achar,
-					dx:     adX + sbX - asb,
-					dy:     adY,
+					dx:     snap(adX + sbX - asb),
+					dy:     snap(adY),
 				})
 				// clearStack()
 				break glyphLoop
@@ -299,8 +299,8 @@ glyphLoop:
 				posY = stack[1]
 				sbX = stack[0]
 				sbY = stack[1]
-				res.WidthX = stack[2]
-				res.WidthY = stack[3]
+				res.WidthX = snap(stack[2])
+				res.WidthY = snap(stack[3])
 				clearStack()
 
 			case t1closepath:
@@ -594,6 +594,12 @@ glyphLoop:
 	if len(outline.Cmds) > 0 {
 		res.Outline.Cmds = slices.Clone(outline.Cmds)
 		res.Outline.Coords = slices.Clone(outline.Coords)
+		for i, p := range res.Outline.Coords {
+			res.Outline.Coords[i] = vec.Vec2{X: snap(p.X), Y: snap(p.Y)}
+		}
+	}
+	if !outlineUsable(res.Outline) {
+		return bail()
 	}
 
 	// The stems of all hint replacement sets have been collected, which

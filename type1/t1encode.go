@@ -17,23 +17,26 @@
 package type1
 
 import (
-	"math"
-
 	"seehuhn.de/go/geom/path"
+	"seehuhn.de/go/geom/vec"
 )
 
-func (g *Glyph) encodeCharString(wx, wy int32) []byte {
+// encodeCharString returns the charstring for the glyph, using a zero
+// sidebearing.  All values must lie on the grid (see [snap]) and pass the
+// checks in [Font.encodeCharstrings], so that every operand is written
+// exactly.
+func (g *Glyph) encodeCharString() []byte {
 	var buf []byte
 
-	if wy == 0 {
+	if g.WidthY == 0 {
 		buf = appendInt(buf, 0)
-		buf = appendInt(buf, wx)
+		buf = appendNumber(buf, g.WidthX)
 		buf = appendOp(buf, t1hsbw)
 	} else {
 		buf = appendInt(buf, 0)
 		buf = appendInt(buf, 0)
-		buf = appendInt(buf, wx)
-		buf = appendInt(buf, wy)
+		buf = appendNumber(buf, g.WidthX)
+		buf = appendNumber(buf, g.WidthY)
 		buf = appendOp(buf, t1sbw)
 	}
 
@@ -41,91 +44,67 @@ func (g *Glyph) encodeCharString(wx, wy int32) []byte {
 	buf = appendStemOps(buf, g.HStem, t1hstem)
 	buf = appendStemOps(buf, g.VStem, t1vstem)
 
-	posX := 0.0
-	posY := 0.0
-	var dx, dy float64
-	if g.Outline != nil {
-		i := 0 // coordinate index
-		for _, cmd := range g.Outline.Cmds {
-			switch cmd {
-			case path.CmdMoveTo:
-				x, y := g.Outline.Coords[i].X, g.Outline.Coords[i].Y
-				i++
-				if math.Abs(y-posY) < 1e-6 {
-					buf, dx = appendNumber(buf, x-posX)
-					buf = appendOp(buf, t1hmoveto)
-					posX += dx
-				} else if math.Abs(x-posX) < 1e-6 {
-					buf, dy = appendNumber(buf, y-posY)
-					buf = appendOp(buf, t1vmoveto)
-					posY += dy
-				} else {
-					buf, dx = appendNumber(buf, x-posX)
-					buf, dy = appendNumber(buf, y-posY)
-					buf = appendOp(buf, t1rmoveto)
-					posX += dx
-					posY += dy
-				}
-			case path.CmdLineTo:
-				x, y := g.Outline.Coords[i].X, g.Outline.Coords[i].Y
-				i++
-				if math.Abs(y-posY) < 1e-6 {
-					buf, dx = appendNumber(buf, x-posX)
-					buf = appendOp(buf, t1hlineto)
-					posX += dx
-				} else if math.Abs(x-posX) < 1e-6 {
-					buf, dy = appendNumber(buf, y-posY)
-					buf = appendOp(buf, t1vlineto)
-					posY += dy
-				} else {
-					buf, dx = appendNumber(buf, x-posX)
-					buf, dy = appendNumber(buf, y-posY)
-					buf = appendOp(buf, t1rlineto)
-					posX += dx
-					posY += dy
-				}
-			case path.CmdCubeTo:
-				x1, y1 := g.Outline.Coords[i].X, g.Outline.Coords[i].Y
-				x2, y2 := g.Outline.Coords[i+1].X, g.Outline.Coords[i+1].Y
-				x3, y3 := g.Outline.Coords[i+2].X, g.Outline.Coords[i+2].Y
-				i += 3
-				if math.Abs(y1-posY) < 1e-6 && math.Abs(x3-x2) < 1e-6 {
-					var dxa, dxb, dyb, dyc float64
-					buf, dxa = appendNumber(buf, x1-posX)
-					buf, dxb = appendNumber(buf, x2-posX-dxa)
-					buf, dyb = appendNumber(buf, y2-posY)
-					buf, dyc = appendNumber(buf, y3-posY-dyb)
-					buf = appendOp(buf, t1hvcurveto)
-					posX += dxa + dxb
-					posY += dyb + dyc
-				} else if math.Abs(x1-posX) < 1e-6 && math.Abs(y3-y2) < 1e-6 {
-					var dya, dxb, dyb, dxc float64
-					buf, dya = appendNumber(buf, y1-posY)
-					buf, dxb = appendNumber(buf, x2-posX)
-					buf, dyb = appendNumber(buf, y2-posY-dya)
-					buf, dxc = appendNumber(buf, x3-posX-dxb)
-					buf = appendOp(buf, t1vhcurveto)
-					posX += dxb + dxc
-					posY += dya + dyb
-				} else {
-					var dxa, dxb, dxc, dya, dyb, dyc float64
-					buf, dxa = appendNumber(buf, x1-posX)
-					buf, dya = appendNumber(buf, y1-posY)
-					buf, dxb = appendNumber(buf, x2-posX-dxa)
-					buf, dyb = appendNumber(buf, y2-posY-dya)
-					buf, dxc = appendNumber(buf, x3-posX-dxa-dxb)
-					buf, dyc = appendNumber(buf, y3-posY-dya-dyb)
-					buf = appendOp(buf, t1rrcurveto)
-					posX += dxa + dxb + dxc
-					posY += dya + dyb + dyc
-				}
-			case path.CmdClose:
-				buf = appendOp(buf, t1closepath)
+	if g.Outline == nil {
+		return appendOp(buf, t1endchar)
+	}
+
+	var pos vec.Vec2 // current point
+	i := 0           // coordinate index
+	for _, cmd := range g.Outline.Cmds {
+		switch cmd {
+		case path.CmdMoveTo, path.CmdLineTo:
+			p := g.Outline.Coords[i]
+			i++
+			d := p.Sub(pos)
+			hOp, vOp, rOp := t1hmoveto, t1vmoveto, t1rmoveto
+			if cmd == path.CmdLineTo {
+				hOp, vOp, rOp = t1hlineto, t1vlineto, t1rlineto
 			}
+			switch {
+			case d.Y == 0:
+				buf = appendNumber(buf, d.X)
+				buf = appendOp(buf, hOp)
+			case d.X == 0:
+				buf = appendNumber(buf, d.Y)
+				buf = appendOp(buf, vOp)
+			default:
+				buf = appendNumber(buf, d.X)
+				buf = appendNumber(buf, d.Y)
+				buf = appendOp(buf, rOp)
+			}
+			pos = p
+		case path.CmdCubeTo:
+			p1, p2, p3 := g.Outline.Coords[i], g.Outline.Coords[i+1], g.Outline.Coords[i+2]
+			i += 3
+			da, db, dc := p1.Sub(pos), p2.Sub(p1), p3.Sub(p2)
+			switch {
+			case da.Y == 0 && dc.X == 0:
+				buf = appendNumber(buf, da.X)
+				buf = appendNumber(buf, db.X)
+				buf = appendNumber(buf, db.Y)
+				buf = appendNumber(buf, dc.Y)
+				buf = appendOp(buf, t1hvcurveto)
+			case da.X == 0 && dc.Y == 0:
+				buf = appendNumber(buf, da.Y)
+				buf = appendNumber(buf, db.X)
+				buf = appendNumber(buf, db.Y)
+				buf = appendNumber(buf, dc.X)
+				buf = appendOp(buf, t1vhcurveto)
+			default:
+				buf = appendNumber(buf, da.X)
+				buf = appendNumber(buf, da.Y)
+				buf = appendNumber(buf, db.X)
+				buf = appendNumber(buf, db.Y)
+				buf = appendNumber(buf, dc.X)
+				buf = appendNumber(buf, dc.Y)
+				buf = appendOp(buf, t1rrcurveto)
+			}
+			pos = p3
+		case path.CmdClose:
+			buf = appendOp(buf, t1closepath)
 		}
 	}
-	buf = appendOp(buf, t1endchar)
-	return buf
+	return appendOp(buf, t1endchar)
 }
 
 func appendOp(buf []byte, op t1op) []byte {
@@ -140,9 +119,8 @@ func appendOp(buf []byte, op t1op) []byte {
 // encodeCharString writes.
 func appendStemOps(buf []byte, stems []float64, op t1op) []byte {
 	for i := 0; i+1 < len(stems); i += 2 {
-		var a float64
-		buf, a = appendNumber(buf, stems[i])
-		buf, _ = appendNumber(buf, stems[i+1]-a)
+		buf = appendNumber(buf, stems[i])
+		buf = appendNumber(buf, stems[i+1]-stems[i])
 		buf = appendOp(buf, op)
 	}
 	return buf
@@ -163,31 +141,20 @@ func appendInt(buf []byte, x int32) []byte {
 	}
 }
 
-func appendNumber(buf []byte, x float64) ([]byte, float64) {
-	xInt := int32(x)
-	if float64(xInt) == x {
-		return appendInt(buf, xInt), x
+// appendNumber appends the charstring encoding of x, which must lie on the
+// grid and satisfy [numberUsable].  An integer is written directly, any
+// other value as p/q with q a power of two, using the div operator.
+func appendNumber(buf []byte, x float64) []byte {
+	p := int32(x * gridScale)
+	q := int32(gridScale)
+	for q > 1 && p%2 == 0 {
+		p /= 2
+		q /= 2
 	}
-
-	var bestP, bestQ int32
-	bestDelta := math.Inf(1)
-	for q := int32(1); q <= 107; q++ {
-		pf := math.Round(x * float64(q))
-		if pf > math.MaxInt32 {
-			pf = math.MaxInt32
-		} else if pf < math.MinInt32 {
-			pf = math.MinInt32
-		}
-		p := int32(pf)
-		delta := math.Abs(pf/float64(q) - x)
-		if delta <= bestDelta {
-			bestDelta = delta
-			bestP = p
-			bestQ = q
-		}
+	buf = appendInt(buf, p)
+	if q == 1 {
+		return buf
 	}
-	buf = appendInt(buf, bestP)
-	buf = appendInt(buf, bestQ)
-	buf = appendOp(buf, t1div)
-	return buf, float64(bestP) / float64(bestQ)
+	buf = appendInt(buf, q)
+	return appendOp(buf, t1div)
 }

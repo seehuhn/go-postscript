@@ -19,7 +19,6 @@ package type1
 import (
 	"cmp"
 	"fmt"
-	"math"
 	"slices"
 )
 
@@ -33,16 +32,18 @@ const maxOperand = 32000
 // sidebearing, followed by the width b - a, and each operand must be finite
 // and stay below [maxOperand] in absolute value.
 func stemUsable(a, b float64) bool {
-	return math.Abs(a) < maxOperand && math.Abs(b-a) < maxOperand
+	return numberUsable(a) && numberUsable(b-a)
 }
 
 // appendStems appends the edges of the stems given by the (position, width)
 // operand pairs in args, measured from the sidebearing coordinate sb.
-// Stems which cannot be written back are dropped.
+// The edges are rounded to the grid, and stems which cannot be written back
+// are dropped.
 func appendStems(stems []float64, sb float64, args []float64) []float64 {
 	for i := 0; i+1 < len(args); i += 2 {
 		a := sb + args[i]
-		b := a + args[i+1]
+		b := snap(a + args[i+1])
+		a = snap(a)
 		if stemUsable(a, b) {
 			stems = append(stems, a, b)
 		}

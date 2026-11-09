@@ -391,9 +391,18 @@ func decodeGlyphs(charstrings map[string][]byte, subrs [][]byte, weightVector []
 			}
 		}
 
+		if !outlineUsable(g.Outline) {
+			continue
+		}
 		composed[seac.name] = g
 	}
 	maps.Copy(glyphs, composed)
+
+	// A width which cannot be written back has no valid repair, so the
+	// glyph is dropped.
+	maps.DeleteFunc(glyphs, func(_ string, g *Glyph) bool {
+		return !numberUsable(g.WidthX) || !numberUsable(g.WidthY)
+	})
 
 	// TODO(voss): remove?
 	if _, ok := glyphs[".notdef"]; !ok {
