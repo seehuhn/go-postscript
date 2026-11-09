@@ -18,6 +18,7 @@ package type1
 
 import (
 	"bytes"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -148,5 +149,76 @@ func TestCreationDate(t *testing.T) {
 		if dateFound != dateWanted {
 			t.Errorf("date: got %t, want %t", dateFound, dateWanted)
 		}
+	}
+}
+
+// stemTestFont returns a font with a single glyph carrying the given stems.
+func stemTestFont(hStem, vStem []float64) *Font {
+	F := &Font{
+		FontInfo: &FontInfo{
+			FontName:   "Test",
+			FontMatrix: matrix.Matrix{0.001, 0, 0, 0.001, 0, 0},
+		},
+		Outlines: &Outlines{
+			Private:  &PrivateDict{BlueScale: DefaultBlueScale},
+			Glyphs:   map[string]*Glyph{},
+			Encoding: makeEmptyEncoding(),
+		},
+	}
+	g := F.NewGlyph(".notdef", 500)
+	g.MoveTo(0, 0)
+	g.LineTo(400, 0)
+	g.LineTo(400, 700)
+	g.ClosePath()
+	g.HStem = hStem
+	g.VStem = vStem
+	return F
+}
+
+// TestWriteStemRoundTrip checks that fractional stem hints survive a
+// write/read cycle.
+func TestWriteStemRoundTrip(t *testing.T) {
+	hStem := []float64{10.5, 30.25, 700, 679}
+	vStem := []float64{-20, 15.5}
+	F := stemTestFont(hStem, vStem)
+
+	buf := &bytes.Buffer{}
+	if err := F.Write(buf, nil); err != nil {
+		t.Fatal(err)
+	}
+	G, err := Read(bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := G.Glyphs[".notdef"]
+	if d := cmp.Diff(hStem, g.HStem); d != "" {
+		t.Errorf("HStem round trip failed (-want +got):\n%s", d)
+	}
+	if d := cmp.Diff(vStem, g.VStem); d != "" {
+		t.Errorf("VStem round trip failed (-want +got):\n%s", d)
+	}
+}
+
+// TestWriteStemInvalid checks that the writer rejects stem hints which a
+// charstring cannot express.
+func TestWriteStemInvalid(t *testing.T) {
+	cases := []struct {
+		name         string
+		hStem, vStem []float64
+	}{
+		{"odd count", []float64{0, 10, 20}, nil},
+		{"edge out of range", nil, []float64{32000, 32010}},
+		{"width out of range", []float64{-100, 31950}, nil},
+		{"not finite", []float64{0, math.Inf(1)}, nil},
+		{"overlap", nil, []float64{100, 130, 0, 110}},
+		{"duplicate", []float64{0, 20, 0, 20}, nil},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			F := stemTestFont(c.hStem, c.vStem)
+			if err := F.Write(&bytes.Buffer{}, nil); err == nil {
+				t.Error("expected an error")
+			}
+		})
 	}
 }

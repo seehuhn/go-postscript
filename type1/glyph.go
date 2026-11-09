@@ -19,18 +19,24 @@ package type1
 import (
 	"seehuhn.de/go/geom/path"
 	"seehuhn.de/go/geom/vec"
-	"seehuhn.de/go/postscript/funit"
 )
 
 // Glyph represents a glyph in a Type 1 font.
-//
-// TODO(voss): use float64 instead of funit.Int16?
 type Glyph struct {
 	Outline *path.Data
-	HStem   []funit.Int16
-	VStem   []funit.Int16
-	WidthX  float64
-	WidthY  float64
+
+	// HStem and VStem hold the horizontal and vertical stem hints, as
+	// pairs of edge coordinates in glyph space.  The edges of a pair are
+	// normally in increasing order; a ghost hint lists them in decreasing
+	// order.  The first edge of each pair, and the difference between its
+	// two edges, must be less than
+	// 32000 in absolute value.  Stems in the same direction must not
+	// overlap; [RepairStems] can be used to remove overlapping pairs.
+	HStem []float64
+	VStem []float64
+
+	WidthX float64
+	WidthY float64
 }
 
 // NewGlyph creates a new glyph with the given name and width.

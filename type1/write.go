@@ -256,6 +256,11 @@ func (f *Font) makeTemplateData(opt *WriterOptions) (*fontInfo, error) {
 		return nil, err
 	}
 
+	charStrings, err := f.encodeCharstrings()
+	if err != nil {
+		return nil, err
+	}
+
 	fontMatrix := f.FontInfo.FontMatrix
 	if len(fontMatrix) != 6 {
 		fontMatrix = [6]float64{0.001, 0, 0, 0.001, 0, 0}
@@ -276,7 +281,7 @@ func (f *Font) makeTemplateData(opt *WriterOptions) (*fontInfo, error) {
 		WriteBlueShift:     f.Private.BlueShift != DefaultBlueShift,
 		WriteBlueFuzz:      f.Private.BlueFuzz != DefaultBlueFuzz,
 		BlueValues:         blueValues,
-		CharStrings:        f.encodeCharstrings(),
+		CharStrings:        charStrings,
 		Copyright:          f.FontInfo.Copyright,
 		CreationDate:       f.CreationDate,
 		Encoding:           f.Encoding,
@@ -330,9 +335,15 @@ func toIntegers(name string, vals []float64) ([]int32, error) {
 	return res, nil
 }
 
-func (f *Font) encodeCharstrings() map[string]string {
+func (f *Font) encodeCharstrings() (map[string]string, error) {
 	charStrings := make(map[string]string)
 	for name, g := range f.Glyphs {
+		if err := checkStems(name, g.HStem); err != nil {
+			return nil, err
+		}
+		if err := checkStems(name, g.VStem); err != nil {
+			return nil, err
+		}
 		cs := g.encodeCharString(int32(math.Round(g.WidthX)), int32(math.Round(g.WidthY)))
 
 		var obf []byte
@@ -363,7 +374,7 @@ func (f *Font) encodeCharstrings() map[string]string {
 		}
 		charStrings[name] = string(obf)
 	}
-	return charStrings
+	return charStrings, nil
 }
 
 func writeEncoding(encoding []string) string {

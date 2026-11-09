@@ -31,6 +31,7 @@ import (
 	"seehuhn.de/go/postscript"
 	"seehuhn.de/go/postscript/funit"
 	"seehuhn.de/go/postscript/pfb"
+	"seehuhn.de/go/postscript/psenc"
 )
 
 // charstring decode budget sizing, mirroring go-sfnt/parser/budget.go.
@@ -341,27 +342,42 @@ func decodeGlyphs(charstrings map[string][]byte, subrs [][]byte, weightVector []
 		glyphs[name] = ctx.decodeCharString(charstrings[name], name)
 	}
 
+	// components are taken from the outlines as decoded, so that the result
+	// does not depend on the processing order
+	composed := make(map[string]*Glyph, len(ctx.seacs))
 	for _, seac := range ctx.seacs {
-		if seac.base < 0 || len(encoding) <= seac.base || seac.accent < 0 || len(encoding) <= seac.accent {
+		// bchar and achar are StandardEncoding codes, independent of the
+		// font's own encoding
+		if seac.base < 0 || len(psenc.StandardEncoding) <= seac.base ||
+			seac.accent < 0 || len(psenc.StandardEncoding) <= seac.accent {
 			continue
 		}
-		base := glyphs[encoding[byte(seac.base)]]
-		accent := glyphs[encoding[byte(seac.accent)]]
+		baseName := psenc.StandardEncoding[seac.base]
+		accentName := psenc.StandardEncoding[seac.accent]
+		if baseName == ".notdef" || accentName == ".notdef" {
+			continue // code unused in StandardEncoding
+		}
+		base := glyphs[baseName]
+		accent := glyphs[accentName]
 		if base == nil || accent == nil {
 			continue
 		}
-		g := glyphs[seac.name] // TODO(voss): do we need to make a copy here?
-		g.WidthX = base.WidthX
-		g.WidthY = base.WidthY
+
+		// the width comes from the composite's own hsbw or sbw, which
+		// governs the glyph's advance even if it differs from the base's
+		composite := glyphs[seac.name]
+		g := &Glyph{
+			Outline: &path.Data{},
+			HStem:   slices.Clone(base.HStem),
+			VStem:   slices.Clone(base.VStem),
+			WidthX:  composite.WidthX,
+			WidthY:  composite.WidthY,
+		}
 
 		// copy base outline
 		if base.Outline != nil {
-			g.Outline = &path.Data{
-				Cmds:   append([]path.Command(nil), base.Outline.Cmds...),
-				Coords: append([]vec.Vec2(nil), base.Outline.Coords...),
-			}
-		} else {
-			g.Outline = &path.Data{}
+			g.Outline.Cmds = slices.Clone(base.Outline.Cmds)
+			g.Outline.Coords = slices.Clone(base.Outline.Coords)
 		}
 
 		// append translated accent outline
@@ -375,10 +391,9 @@ func decodeGlyphs(charstrings map[string][]byte, subrs [][]byte, weightVector []
 			}
 		}
 
-		g.HStem = append(g.HStem[:0], base.HStem...)
-		g.VStem = append(g.VStem[:0], base.VStem...)
-		glyphs[seac.name] = g
+		composed[seac.name] = g
 	}
+	maps.Copy(glyphs, composed)
 
 	// TODO(voss): remove?
 	if _, ok := glyphs[".notdef"]; !ok {

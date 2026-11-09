@@ -943,3 +943,35 @@ func blendGlyphCharstring(n int) []byte {
 	base, deltas := blendInputs(6, len(benchWeightVector()))
 	return buildBlendCharstring(18, base, deltas)
 }
+
+// TestDecodeCharStringStems checks that stem hints are measured from the
+// unrounded sidebearing point, and that stems which a charstring cannot
+// express are dropped.
+func TestDecodeCharStringStems(t *testing.T) {
+	var cs []byte
+	// sidebearing (30.5, 0) and width 500
+	cs = append(cs, encInt(61)...)
+	cs = append(cs, encInt(2)...)
+	cs = append(cs, t1div.Bytes()...)
+	cs = append(cs, encInt(500)...)
+	cs = append(cs, t1hsbw.Bytes()...)
+	cs = appendPair(cs, 10, 20)
+	cs = append(cs, t1hstem.Bytes()...)
+	cs = appendPair(cs, 5, 30)
+	cs = append(cs, t1vstem.Bytes()...)
+	cs = appendPair(cs, 40000, 10) // edge out of range
+	cs = append(cs, t1vstem.Bytes()...)
+	cs = appendPair(cs, 100, -40000) // width out of range
+	cs = append(cs, t1hstem.Bytes()...)
+	cs = append(cs, t1endchar.Bytes()...)
+
+	info := &decodeInfo{budget: newTestBudget()}
+	g := info.decodeCharString(cs, "test")
+
+	if d := cmp.Diff([]float64{10, 30}, g.HStem); d != "" {
+		t.Errorf("HStem mismatch (-want +got):\n%s", d)
+	}
+	if d := cmp.Diff([]float64{35.5, 65.5}, g.VStem); d != "" {
+		t.Errorf("VStem mismatch (-want +got):\n%s", d)
+	}
+}

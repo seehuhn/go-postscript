@@ -38,16 +38,8 @@ func (g *Glyph) encodeCharString(wx, wy int32) []byte {
 	}
 
 	// TODO(voss): emit hstem3 and vstem3 operators where possible.
-	for i := 0; i+1 < len(g.HStem); i += 2 {
-		buf = appendInt(buf, int32(g.HStem[i]))
-		buf = appendInt(buf, int32(g.HStem[i+1])-int32(g.HStem[i]))
-		buf = appendOp(buf, t1hstem)
-	}
-	for i := 0; i+1 < len(g.VStem); i += 2 {
-		buf = appendInt(buf, int32(g.VStem[i]))
-		buf = appendInt(buf, int32(g.VStem[i+1])-int32(g.VStem[i]))
-		buf = appendOp(buf, t1vstem)
-	}
+	buf = appendStemOps(buf, g.HStem, t1hstem)
+	buf = appendStemOps(buf, g.VStem, t1vstem)
 
 	posX := 0.0
 	posY := 0.0
@@ -141,6 +133,19 @@ func appendOp(buf []byte, op t1op) []byte {
 		return append(buf, byte(op))
 	}
 	return append(buf, byte(op>>8), byte(op))
+}
+
+// appendStemOps appends one stem operator for each pair of edges in stems.
+// The edges are given relative to the zero sidebearing which
+// encodeCharString writes.
+func appendStemOps(buf []byte, stems []float64, op t1op) []byte {
+	for i := 0; i+1 < len(stems); i += 2 {
+		var a float64
+		buf, a = appendNumber(buf, stems[i])
+		buf, _ = appendNumber(buf, stems[i+1]-a)
+		buf = appendOp(buf, op)
+	}
+	return buf
 }
 
 func appendInt(buf []byte, x int32) []byte {

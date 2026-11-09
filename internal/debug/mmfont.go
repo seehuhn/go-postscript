@@ -36,7 +36,7 @@ import (
 // semantics directly, like this package.  Every blended coordinate's default-instance
 // value is an exact integer for analytical verification.
 func MakeMMFont() []byte {
-	priv := buildPrivate()
+	priv := buildPrivate(mmGlyphs())
 
 	buf := &bytes.Buffer{}
 	buf.WriteString(clearText)
@@ -107,7 +107,7 @@ cleartomark
 // buildPrivate assembles the plaintext of the eexec-encrypted Private
 // dictionary, including the RD/ND/NP definitions, the default-instance Private
 // entries and the CharStrings.
-func buildPrivate() []byte {
+func buildPrivate(glyphs map[string][]byte) []byte {
 	buf := &bytes.Buffer{}
 	buf.WriteString("dup /Private 15 dict dup begin\n")
 	buf.WriteString("/RD {string currentfile exch readstring pop} executeonly def\n")
@@ -123,7 +123,6 @@ func buildPrivate() []byte {
 	buf.WriteString("/MinFeature {16 16} def\n")
 	buf.WriteString("ND\n")
 
-	glyphs := mmGlyphs()
 	names := make([]string, 0, len(glyphs))
 	for name := range glyphs {
 		names = append(names, name)

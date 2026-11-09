@@ -18,13 +18,11 @@ package type1
 
 import (
 	"fmt"
-	"math"
 	"slices"
 
 	"seehuhn.de/go/geom/path"
 	"seehuhn.de/go/geom/vec"
 	"seehuhn.de/go/membudget"
-	"seehuhn.de/go/postscript/funit"
 )
 
 // decodeInfo holds the state shared by all glyphs of one font while their
@@ -132,10 +130,9 @@ func (info *decodeInfo) decodeCharString(code []byte, name string) *Glyph {
 	}
 
 	var posX, posY float64
-	var LsbX funit.Int16 // TODO(voss): use float64
-	var LsbY funit.Int16
-	isClosed := true   // no sub-path is open
-	haveStart := false // a MoveTo has been emitted for the current sub-path
+	var sbX, sbY float64 // left sidebearing point, set by hsbw or sbw
+	isClosed := true     // no sub-path is open
+	haveStart := false   // a MoveTo has been emitted for the current sub-path
 	// A closepath with no sub-path open is a no-op.  Charstrings in the wild
 	// contain redundant closepath commands, and emitting a Close for them
 	// would leave the outline unreadable by the normal path rules.
@@ -262,8 +259,8 @@ glyphLoop:
 				// fmt.Printf("hsbw(%g, %g)\n", stack[0], stack[1])
 				posX = stack[0]
 				posY = 0
-				LsbX = funit.Int16(math.Round(stack[0]))
-				LsbY = 0
+				sbX = stack[0]
+				sbY = 0
 				res.WidthX = stack[1]
 				res.WidthY = 0
 				clearStack()
@@ -271,8 +268,7 @@ glyphLoop:
 				if len(stack) < 5 {
 					return bail()
 				}
-				// fmt.Printf("seac(%g, %g, %g, %g, %g)\n", stack[0], stack[1], stack[2], stack[3], stack[4])
-				// asb := stack[0]
+				asb := stack[0]
 				adX := stack[1]
 				adY := stack[2]
 				bchar, err := getInt(stack[3])
@@ -283,11 +279,13 @@ glyphLoop:
 				if err != nil {
 					return bail()
 				}
+				// adx is the offset between the sidebearing points of base and
+				// accent, not between their origins as the spec's wording suggests
 				info.seacs = append(info.seacs, seacInfo{
 					name:   name,
 					base:   bchar,
 					accent: achar,
-					dx:     adX,
+					dx:     adX + sbX - asb,
 					dy:     adY,
 				})
 				// clearStack()
@@ -299,8 +297,8 @@ glyphLoop:
 				// fmt.Printf("sbw(%g, %g, %g, %g)\n", stack[0], stack[1], stack[2], stack[3])
 				posX = stack[0]
 				posY = stack[1]
-				LsbX = funit.Int16(math.Round(stack[0]))
-				LsbY = funit.Int16(math.Round(stack[1]))
+				sbX = stack[0]
+				sbY = stack[1]
 				res.WidthX = stack[2]
 				res.WidthY = stack[3]
 				clearStack()
@@ -380,44 +378,28 @@ glyphLoop:
 					return bail()
 				}
 				// fmt.Printf("hstem(%g, %g)\n", stack[0], stack[1])
-				a := LsbY + funit.Int16(math.Round(stack[0]))
-				b := a + funit.Int16(math.Round(stack[1]))
-				res.HStem = append(res.HStem, a, b)
+				res.HStem = appendStems(res.HStem, sbY, stack[:2])
 				clearStack()
 			case t1hstem3:
 				if len(stack) < 6 {
 					return bail()
 				}
 				// fmt.Printf("hstem3(%g, %g, %g, %g, %g, %g)\n", stack[0], stack[1], stack[2], stack[3], stack[4], stack[5])
-				a := LsbY + funit.Int16(math.Round(stack[0]))
-				b := a + funit.Int16(math.Round(stack[1]))
-				c := LsbY + funit.Int16(math.Round(stack[2]))
-				d := c + funit.Int16(math.Round(stack[3]))
-				e := LsbY + funit.Int16(math.Round(stack[4]))
-				f := e + funit.Int16(math.Round(stack[5]))
-				res.HStem = append(res.HStem[:0], a, b, c, d, e, f)
+				res.HStem = appendStems(res.HStem, sbY, stack[:6])
 				clearStack()
 			case t1vstem:
 				if len(stack) < 2 {
 					return bail()
 				}
 				// fmt.Printf("vstem(%g, %g)\n", stack[0], stack[1])
-				a := LsbX + funit.Int16(math.Round(stack[0]))
-				b := a + funit.Int16(math.Round(stack[1]))
-				res.VStem = append(res.VStem, a, b)
+				res.VStem = appendStems(res.VStem, sbX, stack[:2])
 				clearStack()
 			case t1vstem3:
 				if len(stack) < 6 {
 					return bail()
 				}
 				// fmt.Printf("vstem3(%g, %g, %g, %g, %g, %g)\n", stack[0], stack[1], stack[2], stack[3], stack[4], stack[5])
-				a := LsbX + funit.Int16(math.Round(stack[0]))
-				b := a + funit.Int16(math.Round(stack[1]))
-				c := LsbX + funit.Int16(math.Round(stack[2]))
-				d := c + funit.Int16(math.Round(stack[3]))
-				e := LsbX + funit.Int16(math.Round(stack[4]))
-				f := e + funit.Int16(math.Round(stack[5]))
-				res.VStem = append(res.VStem[:0], a, b, c, d, e, f)
+				res.VStem = appendStems(res.VStem, sbX, stack[:6])
 				clearStack()
 			case t1div:
 				if len(stack) < 2 {
@@ -613,6 +595,11 @@ glyphLoop:
 		res.Outline.Cmds = slices.Clone(outline.Cmds)
 		res.Outline.Coords = slices.Clone(outline.Coords)
 	}
+
+	// The stems of all hint replacement sets have been collected, which
+	// can leave overlapping and repeated pairs.
+	res.HStem = RepairStems(res.HStem)
+	res.VStem = RepairStems(res.VStem)
 	return res
 }
 
