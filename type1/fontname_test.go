@@ -274,7 +274,7 @@ func TestGlyphNameFastPath(t *testing.T) {
 	for c := range 256 {
 		samples = append(samples, string([]byte{byte(c)}), "A"+string([]byte{byte(c)})+"B")
 	}
-	samples = append(samples, "", "Aä", "ä", "A B", "A​B", "\xff", "A\xffB")
+	samples = append(samples, "", "Aä", "ä", "A B", "A\u200bB", "\xff", "A\xffB")
 
 	for _, s := range samples {
 		want := reference(s)
