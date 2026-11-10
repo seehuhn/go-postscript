@@ -1,0 +1,27 @@
+Third-Party Material in go-postscript
+=====================================
+
+Unless stated otherwise, the files in this repository are
+Copyright Jochen Voss and are distributed under the BSD 3-Clause License
+(see the file LICENSE).
+
+The material listed below was written by others.  It remains under the
+licence given in each entry, independently of the licence of the
+go-postscript code, and the stated copyright notices and licence texts must
+be kept when it is redistributed.
+
+
+type1/names/agl-aglfn/glyphlist.txt, aglfn.txt, zapfdingbats.txt
+----------------------------------------------------------------
+
+Description: The Adobe Glyph List (AGL), the Adobe Glyph List for New Fonts
+    (AGLFN) and the ZapfDingbats glyph list, embedded in the package using
+    go:embed.
+Upstream:    https://github.com/adobe-type-tools/agl-aglfn , commit
+    4036a9ca80a62f64f9de4f7321a9a045ad0ecfd6 (2019-10-31).  The three files
+    and LICENSE.md are unmodified copies.  Table versions: glyphlist.txt 2.0,
+    aglfn.txt 1.7, zapfdingbats.txt 2.0.
+Copyright:   Copyright 2002-2019 Adobe (http://www.adobe.com/).
+Licence:     BSD 3-Clause License.
+Full text:   type1/names/agl-aglfn/LICENSE.md, and in the header of each
+    file.
