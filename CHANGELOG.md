@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.7.6] (2026-11-10)
+
+### Added
+- `afm.Metrics` gains `StdHW` and `StdVW`, the dominant stem widths.
+  They are read from and written to AFM files, and are zero when
+  unknown.
+- `type1.RepairStems` removes overlapping and repeated pairs from a
+  list of stem hints.
+
+### Changed
+- `type1.Glyph.HStem` and `VStem` are now `[]float64` instead of
+  `[]funit.Int16`, which breaks existing code.  The writer rejects odd,
+  out-of-range or overlapping stems and writes fractional stems as
+  quotients.
+- `type1` holds glyph coordinates, stem edges and widths as multiples
+  of 1/16384 unit.  The reader and the writer round to this grid, so
+  that a read-write-read cycle reproduces the same glyphs.  The writer
+  rejects out-of-range widths and outline steps.
+- The module requires Go 1.27.
+
+### Fixed
+- In `type1`, `seac` components are looked up through
+  `StandardEncoding` instead of the font's own encoding.  The accent
+  offset accounts for the sidebearings of the composite and the accent,
+  and the composite keeps the width from its own `hsbw` or `sbw`.
+- In `type1`, the stem hints of all hint replacement sets are merged.
+
 ## [v0.7.5] (2026-10-10)
 
 ### Added
@@ -165,7 +192,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 - **Glyph.BBox() method** (replaced with Path() method for better integration with geom package)
-
 
 ## [v0.5.0] (2024-05-02)
 
