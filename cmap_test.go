@@ -6,6 +6,8 @@ package postscript
 import (
 	"strings"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 // TestReadCMapValid verifies that a minimal well-formed CMap is parsed into
@@ -42,6 +44,48 @@ end
 	}
 	if got, want := len(codeMap.CidChars), 2; got != want {
 		t.Errorf("CidChars: got %d entries, want %d", got, want)
+	}
+}
+
+// TestReadCMapKeepsOrder verifies that mappings are returned in file
+// order, since a later mapping takes precedence over an earlier one.
+func TestReadCMapKeepsOrder(t *testing.T) {
+	src := `/CIDInit /ProcSet findresource begin
+12 dict begin
+begincmap
+/CMapName /test def
+1 begincodespacerange
+<00> <ff>
+endcodespacerange
+2 begincidchar
+<42> 2
+<41> 1
+endcidchar
+2 begincidrange
+<10> <20> 100
+<00> <ff> 1
+endcidrange
+endcmap
+/test currentdict /CMap defineresource pop
+end
+`
+	_, codeMap, err := ReadCMap(strings.NewReader(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantChars := []CharMap{
+		{Src: []byte{0x42}, Dst: Integer(2)},
+		{Src: []byte{0x41}, Dst: Integer(1)},
+	}
+	if diff := cmp.Diff(wantChars, codeMap.CidChars); diff != "" {
+		t.Errorf("cid chars differ (-want +got):\n%s", diff)
+	}
+	wantRanges := []RangeMap{
+		{Low: []byte{0x10}, High: []byte{0x20}, Dst: Integer(100)},
+		{Low: []byte{0x00}, High: []byte{0xff}, Dst: Integer(1)},
+	}
+	if diff := cmp.Diff(wantRanges, codeMap.CidRanges); diff != "" {
+		t.Errorf("cid ranges differ (-want +got):\n%s", diff)
 	}
 }
 

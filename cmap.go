@@ -8,7 +8,6 @@ import (
 	"errors"
 	"io"
 	"slices"
-	"sort"
 )
 
 // cmapMaxMemory bounds the total memory the interpreter may allocate while
@@ -62,6 +61,7 @@ func ReadCMap(r io.Reader) (Dict, *CMapInfo, error) {
 }
 
 // CMapInfo contains the information for a CMap.
+// Each slice lists its entries in the order the CMap file gives them.
 type CMapInfo struct {
 	UseCMap         Name
 	CodeSpaceRanges []CodeSpaceRange
@@ -104,32 +104,6 @@ var cidInit = Dict{
 		if len(intp.DictStack) < 1 || intp.cmapMappings == nil {
 			return intp.e(eStackunderflow, "endcmap: cmap dictionary not found")
 		}
-
-		// TODO(voss): is the sorting necessary?
-		sort.Slice(intp.cmapMappings.CodeSpaceRanges, func(i, j int) bool {
-			if len(intp.cmapMappings.CodeSpaceRanges[i].Low) != len(intp.cmapMappings.CodeSpaceRanges[j].Low) {
-				return len(intp.cmapMappings.CodeSpaceRanges[i].Low) < len(intp.cmapMappings.CodeSpaceRanges[j].Low)
-			}
-			return bytes.Compare(intp.cmapMappings.CodeSpaceRanges[i].Low, intp.cmapMappings.CodeSpaceRanges[j].Low) < 0
-		})
-		sort.Slice(intp.cmapMappings.CidChars, func(i, j int) bool {
-			return bytes.Compare(intp.cmapMappings.CidChars[i].Src, intp.cmapMappings.CidChars[j].Src) < 0
-		})
-		sort.Slice(intp.cmapMappings.CidRanges, func(i, j int) bool {
-			return bytes.Compare(intp.cmapMappings.CidRanges[i].Low, intp.cmapMappings.CidRanges[j].Low) < 0
-		})
-		sort.Slice(intp.cmapMappings.BfChars, func(i, j int) bool {
-			return bytes.Compare(intp.cmapMappings.BfChars[i].Src, intp.cmapMappings.BfChars[j].Src) < 0
-		})
-		sort.Slice(intp.cmapMappings.BfRanges, func(i, j int) bool {
-			return bytes.Compare(intp.cmapMappings.BfRanges[i].Low, intp.cmapMappings.BfRanges[j].Low) < 0
-		})
-		sort.Slice(intp.cmapMappings.NotdefChars, func(i, j int) bool {
-			return bytes.Compare(intp.cmapMappings.NotdefChars[i].Src, intp.cmapMappings.NotdefChars[j].Src) < 0
-		})
-		sort.Slice(intp.cmapMappings.NotdefRanges, func(i, j int) bool {
-			return bytes.Compare(intp.cmapMappings.NotdefRanges[i].Low, intp.cmapMappings.NotdefRanges[j].Low) < 0
-		})
 
 		dict := intp.DictStack[len(intp.DictStack)-1]
 		dict["CodeMap"] = intp.cmapMappings
