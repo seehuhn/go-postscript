@@ -20,8 +20,9 @@ type Interpreter struct {
 	CheckStart bool
 
 	// MaxOps can be set to a positive value to limit the number of executed
-	// operations.  If this limit is exceeded, ErrExecutionLimitExceeded is
-	// returned.
+	// operations.  Operators which process many elements or bytes count as
+	// several operations.  If this limit is exceeded,
+	// ErrExecutionLimitExceeded is returned.
 	MaxOps int
 
 	// MaxMemory can be set to a positive value to limit the total number of
@@ -40,7 +41,8 @@ type Interpreter struct {
 	// DictStack is the PostScript dictionary stack.
 	DictStack []Dict
 
-	// NumOps is the number of executed operations so far.
+	// NumOps is the number of executed operations so far, counted as for
+	// MaxOps.
 	NumOps int
 
 	// SystemDict is the PostScript system dictionary.
@@ -331,6 +333,25 @@ func (intp *Interpreter) charge(n int) error {
 	}
 	if err := intp.budget.Charge(n); err != nil {
 		return intp.e(eLimitcheck, "memory limit exceeded")
+	}
+	return nil
+}
+
+// workPerStep is the number of elements or bytes an operator can touch for
+// the cost of one step of the operation budget.
+const workPerStep = 64
+
+// chargeWork accounts for an operator which touches n elements or bytes.
+// It adds n/workPerStep steps, rounded down, to the step the operator
+// itself already counts.  It returns ErrExecutionLimitExceeded if this
+// exceeds MaxOps.
+func (intp *Interpreter) chargeWork(n int) error {
+	if n <= 0 {
+		return nil
+	}
+	intp.NumOps += n / workPerStep
+	if intp.MaxOps > 0 && intp.NumOps > intp.MaxOps {
+		return ErrExecutionLimitExceeded
 	}
 	return nil
 }

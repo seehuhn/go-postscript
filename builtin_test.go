@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -230,6 +231,29 @@ func TestCmdBind3(t *testing.T) {
 	}
 	if _, ok := proc[0].(Procedure); !ok {
 		t.Fatalf("p[0] is not a Procedure: %v", proc[0])
+	}
+}
+
+// TestCmdBindShared tests bind on a procedure tree in which one procedure
+// occurs 2^60 times.  Visiting every occurrence would not terminate in
+// practice.
+func TestCmdBindShared(t *testing.T) {
+	var sb strings.Builder
+	sb.WriteString("/p {1 add} def\n")
+	for range 60 {
+		sb.WriteString("/p [ /p load dup ] cvx def\n")
+	}
+	sb.WriteString("/p load bind")
+	intp, err := run(sb.String(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proc := intp.Stack[0].(Procedure)
+	for range 60 {
+		proc = proc[0].(Procedure)
+	}
+	if _, ok := proc[1].(builtin); !ok {
+		t.Errorf("innermost p[1] is %T, want a builtin", proc[1])
 	}
 }
 
@@ -786,6 +810,10 @@ func TestCmdRoll(t *testing.T) {
 		{
 			"1 2 3 4 5 4 5 roll",
 			[]Object{Integer(1), Integer(5), Integer(2), Integer(3), Integer(4)},
+		},
+		{
+			"1 2 3 4 5 5 2 roll 3 -1 roll",
+			[]Object{Integer(4), Integer(5), Integer(2), Integer(3), Integer(1)},
 		},
 	}
 	for _, c := range cases {

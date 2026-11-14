@@ -134,6 +134,9 @@ func bListEnd(intp *Interpreter) error {
 	for i := n - 1; i >= 0; i-- {
 		if intp.Stack[i] == theMark {
 			size := n - i - 1
+			if err := intp.chargeWork(n - i); err != nil {
+				return err
+			}
 			if err := intp.charge(size * objectSize); err != nil {
 				return err
 			}
@@ -142,6 +145,9 @@ func bListEnd(intp *Interpreter) error {
 			intp.Stack = append(intp.Stack[:i], a)
 			return nil
 		}
+	}
+	if err := intp.chargeWork(n); err != nil {
+		return err
 	}
 	return intp.e(eUnmatchedmark, "]: missing '['")
 }
@@ -159,6 +165,9 @@ func bDictEnd(intp *Interpreter) error {
 			markPos = i
 			break
 		}
+	}
+	if err := intp.chargeWork(n - max(markPos, 0)); err != nil {
+		return err
 	}
 	if markPos < 0 {
 		return intp.e(eUnmatchedmark, ">>: missing '<<'")
@@ -278,6 +287,9 @@ func bArray(intp *Interpreter) error {
 	} else if size > maxArraySize {
 		return intp.e(eLimitcheck, "array: invalid size %d", size)
 	}
+	if err := intp.chargeWork(int(size)); err != nil {
+		return err
+	}
 	if err := intp.charge(int(size) * objectSize); err != nil {
 		return err
 	}
@@ -310,16 +322,21 @@ func bBind(intp *Interpreter) error {
 	if !ok {
 		return intp.e(eTypecheck, "bind: needs a procedure, not %T", obj)
 	}
-	intp.bindProc(obj)
-	return nil
+	return intp.bindProc(obj)
 }
 
 func bCleartomark(intp *Interpreter) error {
 	for k, v := range slices.Backward(intp.Stack) {
 		if v == theMark {
+			if err := intp.chargeWork(len(intp.Stack) - k); err != nil {
+				return err
+			}
 			intp.Stack = intp.Stack[:k]
 			return nil
 		}
+	}
+	if err := intp.chargeWork(len(intp.Stack)); err != nil {
+		return err
 	}
 	return intp.e(eUnmatchedmark, "cleartomark: no mark found")
 }
@@ -346,6 +363,9 @@ func bCopy(intp *Interpreter) error {
 		if n > Integer(len(intp.Stack)-1) {
 			return intp.e(eStackunderflow, "copy: not enough arguments")
 		}
+		if err := intp.chargeWork(int(n)); err != nil {
+			return err
+		}
 		intp.Stack = intp.Stack[:len(intp.Stack)-1]
 		intp.Stack = append(intp.Stack, intp.Stack[len(intp.Stack)-int(n):]...)
 		return nil
@@ -359,6 +379,9 @@ func bCopy(intp *Interpreter) error {
 	var res Object
 	switch a := a.(type) {
 	case Array:
+		if err := intp.chargeWork(len(a)); err != nil {
+			return err
+		}
 		b, ok := b.(Array)
 		if !ok {
 			return intp.e(eTypecheck, "copy: mismatched argument types")
@@ -372,9 +395,18 @@ func bCopy(intp *Interpreter) error {
 		if !ok {
 			return intp.e(eTypecheck, "copy: mismatched argument types")
 		}
+		if err := intp.chargeWork(len(a)); err != nil {
+			return err
+		}
+		if err := intp.charge(len(a) * dictEntrySize); err != nil {
+			return err
+		}
 		maps.Copy(b, a)
 		res = b
 	case String:
+		if err := intp.chargeWork(len(a)); err != nil {
+			return err
+		}
 		b, ok := b.(String)
 		if !ok {
 			return intp.e(eTypecheck, "copy: mismatched argument types")
@@ -412,6 +444,9 @@ func bCvx(intp *Interpreter) error {
 	}
 	obj := intp.Stack[len(intp.Stack)-1]
 	if a, ok := obj.(Array); ok {
+		if err := intp.chargeWork(len(a)); err != nil {
+			return err
+		}
 		if err := intp.charge(len(a) * objectSize); err != nil {
 			return err
 		}
@@ -500,11 +535,15 @@ func bDict(intp *Interpreter) error {
 	} else if size > maxDictSize {
 		return intp.e(eLimitcheck, "dict: invalid size %d", size)
 	}
+	if err := intp.chargeWork(int(size)); err != nil {
+		return err
+	}
 	if err := intp.charge(int(size) * dictEntrySize); err != nil {
 		return err
 	}
 	intp.Stack = intp.Stack[:len(intp.Stack)-1]
-	intp.Stack = append(intp.Stack, make(Dict, size))
+	// no size hint: iterating a map costs time in proportion to its capacity
+	intp.Stack = append(intp.Stack, make(Dict))
 	return nil
 }
 
@@ -549,6 +588,9 @@ func bEq(intp *Interpreter) error {
 	b := intp.Stack[len(intp.Stack)-1]
 	intp.Stack = intp.Stack[:len(intp.Stack)-2]
 
+	if err := intp.chargeWork(operandWork(a) + operandWork(b)); err != nil {
+		return err
+	}
 	isEqual, err := equal(a, b)
 	if err != nil {
 		return err
@@ -609,6 +651,9 @@ func bFindresource(intp *Interpreter) error {
 	case Name:
 		key = keyObj
 	case String:
+		if err := intp.chargeWork(len(keyObj)); err != nil {
+			return err
+		}
 		key = Name(keyObj)
 	default:
 		return intp.e(eUndefinedresource, "findresource: needs a name or string, not %T", keyObj)
@@ -1005,6 +1050,9 @@ func bNe(intp *Interpreter) error {
 	b := intp.Stack[len(intp.Stack)-1]
 	intp.Stack = intp.Stack[:len(intp.Stack)-2]
 
+	if err := intp.chargeWork(operandWork(a) + operandWork(b)); err != nil {
+		return err
+	}
 	isEqual, err := equal(a, b)
 	if err != nil {
 		return err
@@ -1143,6 +1191,9 @@ func bPutinterval(intp *Interpreter) error {
 		if Integer(len(src)) > Integer(len(dst))-index {
 			return intp.e(eRangecheck, "putinterval: index out of range")
 		}
+		if err := intp.chargeWork(len(src)); err != nil {
+			return err
+		}
 		copy(dst[index:], src)
 	case String:
 		src, ok := src.(String)
@@ -1151,6 +1202,9 @@ func bPutinterval(intp *Interpreter) error {
 		}
 		if Integer(len(src)) > Integer(len(dst))-index {
 			return intp.e(eRangecheck, "putinterval: index out of range")
+		}
+		if err := intp.chargeWork(len(src)); err != nil {
+			return err
 		}
 		copy(dst[index:], src)
 	default:
@@ -1172,6 +1226,9 @@ func bReadstring(intp *Interpreter) error {
 	buf, ok := intp.Stack[len(intp.Stack)-1].(String)
 	if !ok {
 		return intp.e(eTypecheck, "readstring: invalid argument")
+	}
+	if err := intp.chargeWork(len(buf)); err != nil {
+		return err
 	}
 	intp.Stack = intp.Stack[:len(intp.Stack)-2]
 	s := intp.scanners[len(intp.scanners)-1]
@@ -1227,7 +1284,7 @@ func bRoll(intp *Interpreter) error {
 	}
 	j, ok := intp.Stack[len(intp.Stack)-1].(Integer)
 	if !ok {
-		return intp.e(eTypecheck, "roll: count %d out of bounds", j)
+		return intp.e(eTypecheck, "roll: invalid count")
 	}
 	intp.Stack = intp.Stack[:len(intp.Stack)-2]
 	if n == 0 {
@@ -1237,17 +1294,21 @@ func bRoll(intp *Interpreter) error {
 	if j < 0 {
 		j += n
 	}
+	if j == 0 {
+		return nil
+	}
 
-	// Remove j elements from the top of the stack, and insert these
-	// between the intp.Stack[len(intp.Stack)-n:] and the rest of the
-	// stack.
+	// Move the top j elements below the other n-j of the top n, by three
+	// reversals in place.
 	ji := int(j)
 	ni := int(n)
+	if err := intp.chargeWork(2 * ni); err != nil {
+		return err
+	}
 	data := intp.Stack[len(intp.Stack)-ni:]
-	tmp := make([]Object, j)
-	copy(tmp, data[ni-ji:])
-	copy(data[ji:], data[:ni-ji])
-	copy(data, tmp)
+	slices.Reverse(data)
+	slices.Reverse(data[:ji])
+	slices.Reverse(data[ji:])
 
 	return nil
 }
@@ -1267,6 +1328,9 @@ func bString(intp *Interpreter) error {
 		return intp.e(eRangecheck, "string: invalid size %d", size)
 	} else if size > maxStringSize {
 		return intp.e(eLimitcheck, "string: invalid size %d", size)
+	}
+	if err := intp.chargeWork(int(size)); err != nil {
+		return err
 	}
 	if err := intp.charge(int(size)); err != nil {
 		return err
@@ -1366,6 +1430,17 @@ func bWhere(intp *Interpreter) error {
 	return nil
 }
 
+// operandWork returns the number of bytes inspected when o is compared.
+func operandWork(o Object) int {
+	switch o := o.(type) {
+	case String:
+		return len(o)
+	case Name:
+		return len(o)
+	}
+	return 0
+}
+
 func equal(a, b Object) (bool, error) {
 	_, aIsDict := a.(Dict)
 	_, bIsDict := b.(Dict)
@@ -1398,27 +1473,51 @@ func equal(a, b Object) (bool, error) {
 	return a == b, nil
 }
 
-func (intp *Interpreter) bindProc(proc Procedure) {
-	for i, elem := range proc {
-		switch obj := elem.(type) {
-		case Operator:
-			// Only executable names are substituted, and only where the
-			// value found is an operator.  A literal name, e.g. the "/add"
-			// in "{/add}", is data and stays unchanged.
-			val, err := intp.loadName(Name(obj))
-			if err != nil {
-				continue
+// bindProc implements bind for root and the procedures nested in it.  A
+// procedure may occur many times in the tree, or contain itself, so each
+// distinct procedure is visited only once.
+func (intp *Interpreter) bindProc(root Procedure) error {
+	type procKey struct {
+		first *Object
+		n     int
+	}
+	seen := make(map[procKey]bool)
+	todo := []Procedure{root}
+	for len(todo) > 0 {
+		proc := todo[len(todo)-1]
+		todo = todo[:len(todo)-1]
+		if len(proc) == 0 {
+			continue
+		}
+		key := procKey{&proc[0], len(proc)}
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+
+		// at least one step per procedure, for the bookkeeping in seen
+		if err := intp.chargeWork(workPerStep + len(proc)); err != nil {
+			return err
+		}
+		for i, elem := range proc {
+			switch obj := elem.(type) {
+			case Operator:
+				// Only executable names are substituted, and only where the
+				// value found is an operator.  A literal name, e.g. the "/add"
+				// in "{/add}", is data and stays unchanged.
+				val, err := intp.loadName(Name(obj))
+				if err != nil {
+					continue
+				}
+				if _, ok := val.(builtin); ok {
+					proc[i] = val
+				}
+			case Procedure:
+				todo = append(todo, obj)
 			}
-			if _, ok := val.(builtin); ok {
-				proc[i] = val
-			}
-		case Procedure:
-			// be careful to avoid infinite loops
-			proc[i] = nil
-			intp.bindProc(obj)
-			proc[i] = obj
 		}
 	}
+	return nil
 }
 
 // don't look!
@@ -1643,6 +1742,9 @@ func (intp *Interpreter) pushRealAsInt(r Real) error {
 // parseNumberString interprets s, ignoring surrounding white space, as a
 // PostScript number, for the operator op.
 func (intp *Interpreter) parseNumberString(s String, op string) (Object, error) {
+	if err := intp.chargeWork(len(s)); err != nil {
+		return nil, err
+	}
 	x, err := ParseNumber(trimSpace(s))
 	if psErr, ok := errors.AsType[*postScriptError](err); ok {
 		return nil, intp.e(psErr.tp, "%s: %s", op, psErr.msg)
@@ -1787,6 +1889,9 @@ func bGe(intp *Interpreter) error {
 	if str1, ok1 := obj1.(String); ok1 {
 		if str2, ok2 := obj2.(String); ok2 {
 			// Lexical comparison
+			if err := intp.chargeWork(len(str1) + len(str2)); err != nil {
+				return err
+			}
 			result := string(str1) >= string(str2)
 			intp.Stack = append(intp.Stack, Boolean(result))
 			return nil
@@ -1818,6 +1923,9 @@ func bGt(intp *Interpreter) error {
 	if str1, ok1 := obj1.(String); ok1 {
 		if str2, ok2 := obj2.(String); ok2 {
 			// Lexical comparison
+			if err := intp.chargeWork(len(str1) + len(str2)); err != nil {
+				return err
+			}
 			result := string(str1) > string(str2)
 			intp.Stack = append(intp.Stack, Boolean(result))
 			return nil
@@ -1877,6 +1985,9 @@ func bLe(intp *Interpreter) error {
 	if str1, ok1 := obj1.(String); ok1 {
 		if str2, ok2 := obj2.(String); ok2 {
 			// Lexical comparison
+			if err := intp.chargeWork(len(str1) + len(str2)); err != nil {
+				return err
+			}
 			result := string(str1) <= string(str2)
 			intp.Stack = append(intp.Stack, Boolean(result))
 			return nil
@@ -1964,6 +2075,9 @@ func bLt(intp *Interpreter) error {
 	if str1, ok1 := obj1.(String); ok1 {
 		if str2, ok2 := obj2.(String); ok2 {
 			// Lexical comparison
+			if err := intp.chargeWork(len(str1) + len(str2)); err != nil {
+				return err
+			}
 			result := string(str1) < string(str2)
 			intp.Stack = append(intp.Stack, Boolean(result))
 			return nil
