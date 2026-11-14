@@ -481,6 +481,9 @@ func bDefineresource(intp *Interpreter) error {
 	}
 
 	classDict[key] = instance
+	if class == "CMap" {
+		intp.cmapDefined = append(intp.cmapDefined, key)
+	}
 	intp.Stack = append(intp.Stack[:len(intp.Stack)-3], instance)
 	return nil
 }

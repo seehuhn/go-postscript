@@ -49,7 +49,7 @@ func TestMaxMemoryAllowsModestUse(t *testing.T) {
 // point (the path reached from untrusted PDF fonts) rather than exhausting
 // memory.
 func TestReadCMapMemoryLimit(t *testing.T) {
-	_, _, err := ReadCMap(strings.NewReader(allocationBomb))
+	_, _, err := ReadCMap(strings.NewReader(allocationBomb), "")
 	if err == nil {
 		t.Error("expected error from ReadCMap, got nil")
 	}

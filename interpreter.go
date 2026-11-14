@@ -86,12 +86,16 @@ type Interpreter struct {
 
 	execStackDepth int
 
-	// These variables hold temporary data while a `begincmap` ... `endcmap`
-	// block is being executed.
-	cmapMappings        *CMapInfo
-	cmapCodeSpaceRanges []CodeSpaceRange
-	cmapChars           []CharMap
-	cmapRanges          []RangeMap
+	// maxStack is the operand stack limit.
+	// Zero means maxOperandStackDepth.
+	maxStack int
+
+	// These variables hold temporary data while a CMap is being defined.
+	cmapMappings *CMapInfo  // the CMap being built, or nil
+	cmapDict     Dict       // the dictionary which receives the CMap
+	cmapBlock    *cmapBlock // the open begin…end block, or nil
+	cmapMark     int        // the operand stack height at the start of cmapBlock
+	cmapDefined  []Name     // the CMaps added by defineresource, in order
 }
 
 // NewInterpreter creates a new instance of the PostScript interpreter.
@@ -201,7 +205,11 @@ func (intp *Interpreter) executeOne(obj Object, execProc bool) error {
 		defer func() { intp.execStackDepth-- }()
 	}
 
-	if len(intp.Stack) > maxOperandStackDepth {
+	maxStack := intp.maxStack
+	if maxStack == 0 {
+		maxStack = maxOperandStackDepth
+	}
+	if len(intp.Stack) > maxStack {
 		return intp.e(eStackoverflow, "operand stack overflow")
 	}
 
