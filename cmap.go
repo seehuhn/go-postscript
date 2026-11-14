@@ -212,16 +212,16 @@ var cidInit = makeCIDInit()
 
 func makeCIDInit() Dict {
 	d := Dict{
-		"begincmap": builtin(func(intp *Interpreter) error {
+		"begincmap": &builtin{func(intp *Interpreter) error {
 			intp.cmapStart()
 			return nil
-		}),
-		"endcmap": builtin(func(intp *Interpreter) error {
+		}},
+		"endcmap": &builtin{func(intp *Interpreter) error {
 			intp.cmapStart()
 			intp.cmapFinish()
 			return nil
-		}),
-		"usecmap": builtin(func(intp *Interpreter) error {
+		}},
+		"usecmap": &builtin{func(intp *Interpreter) error {
 			m := intp.cmapStart()
 			if n := len(intp.Stack); n > 0 {
 				if name, ok := intp.Stack[n-1].(Name); ok {
@@ -230,17 +230,17 @@ func makeCIDInit() Dict {
 				}
 			}
 			return nil
-		}),
+		}},
 	}
 	for name, b := range cmapBlocks {
-		d["begin"+name] = builtin(func(intp *Interpreter) error {
+		d["begin"+name] = &builtin{func(intp *Interpreter) error {
 			intp.cmapBegin(b)
 			return nil
-		})
-		d["end"+name] = builtin(func(intp *Interpreter) error {
+		}}
+		d["end"+name] = &builtin{func(intp *Interpreter) error {
 			intp.cmapEnd(b)
 			return nil
-		})
+		}}
 	}
 	return d
 }

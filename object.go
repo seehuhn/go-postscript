@@ -113,4 +113,8 @@ type mark struct{}
 
 var theMark Object = mark{}
 
-type builtin func(*Interpreter) error
+// builtin is an operator implemented in Go.  Built-in operators are held
+// as *builtin, so that eq can compare them by identity.
+type builtin struct {
+	fn func(*Interpreter) error
+}

@@ -259,8 +259,8 @@ recurseTail:
 		execProc = true
 		goto recurseTail
 
-	case builtin:
-		err := o(intp)
+	case *builtin:
+		err := o.fn(intp)
 		if e2, ok := err.(*postScriptError); ok {
 			level := len(intp.errors)
 			if level < 5 {

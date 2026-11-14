@@ -155,7 +155,7 @@ func TestCmdBegin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !isSameDict(intp.Stack[0].(Dict), intp.DictStack[len(intp.DictStack)-1]) {
+	if !sameDict(intp.Stack[0].(Dict), intp.DictStack[len(intp.DictStack)-1]) {
 		t.Fatal("wrong dict on stack")
 	}
 }
@@ -170,7 +170,7 @@ func TestCmdBind(t *testing.T) {
 		t.Fatalf("len(p): %d != 2", len(proc))
 	}
 	switch obj := proc[1].(type) {
-	case builtin:
+	case *builtin:
 		// pass
 	case Operator:
 		t.Fatalf("p[1] is an Operator: %v", obj)
@@ -194,7 +194,7 @@ func TestCmdBind2(t *testing.T) {
 		t.Fatalf("len(p): %d != 2", len(inner))
 	}
 	switch obj := inner[1].(type) {
-	case builtin:
+	case *builtin:
 		// pass
 	case Operator:
 		t.Fatalf("p[1] is an Operator: %v", obj)
@@ -252,7 +252,7 @@ func TestCmdBindShared(t *testing.T) {
 	for range 60 {
 		proc = proc[0].(Procedure)
 	}
-	if _, ok := proc[1].(builtin); !ok {
+	if _, ok := proc[1].(*builtin); !ok {
 		t.Errorf("innermost p[1] is %T, want a builtin", proc[1])
 	}
 }
@@ -412,20 +412,210 @@ func TestCmdEnd(t *testing.T) {
 }
 
 func TestCmdEq(t *testing.T) {
+	cases := []struct {
+		operands string
+		want     bool
+	}{
+		{"1 2", false},
+		{"4.0 4", true},
+		{"4 4.5", false},
+		{"(abc) (abc)", true},
+		{"(abc) (abd)", false},
+		{"(abc) /abc", true},
+		{"/abc (abc)", true},
+		{"/abc /abd", false},
+		{"{abc} 0 get /abc", true},
+		{"(abc) {abc} 0 get", true},
+		{"1 (1)", false},
+		{"true true", true},
+		{"true false", false},
+		{"true 1", false},
+		{"mark mark", true},
+		{"mark 0", false},
+		{"[1 2 3] dup", true},
+		{"[1 2 3] [1 2 3]", false},
+		{"[1 2 3] dup 0 2 getinterval exch 0 2 getinterval", true},
+		{"[1 2 3] dup 0 2 getinterval exch 1 2 getinterval", false},
+		{"[1 2 3] dup 0 2 getinterval", false},
+		{"[] []", true},
+		{"{1 2} dup", true},
+		{"{1 2} {1 2}", false},
+		{"[1 2] dup cvx", true},
+		{"1 dict dup", true},
+		{"1 dict 1 dict", false},
+		{"1 dict 1", false},
+		{"1 dict [1]", false},
+		{"/add load dup", true},
+		{"/add load /add load", true},
+		{"/add load /sub load", false},
+		{"/add load /add", false},
+		{"/CIDInit /ProcSet findresource begin /begincidrange load /begincidchar load", false},
+	}
+	for _, c := range cases {
+		for _, op := range []string{"eq", "ne"} {
+			intp, err := run(c.operands+" "+op, 1)
+			if err != nil {
+				t.Errorf("%s %s: %v", c.operands, op, err)
+				continue
+			}
+			want := Boolean(c.want == (op == "eq"))
+			if got := intp.Stack[0]; got != want {
+				t.Errorf("%s %s: got %v, want %v", c.operands, op, got, want)
+			}
+		}
+	}
+}
+
+func TestEqualNull(t *testing.T) {
+	if !equal(nil, nil) {
+		t.Error("null is not equal to null")
+	}
+	if equal(nil, Integer(0)) || equal(Integer(0), nil) {
+		t.Error("null is equal to 0")
+	}
+}
+
+func TestEqualNaN(t *testing.T) {
+	nan := Real(math.NaN())
+	for _, b := range []Object{nan, Real(1), Integer(1)} {
+		if equal(nan, b) || equal(b, nan) {
+			t.Errorf("NaN is equal to %v", b)
+		}
+	}
+}
+
+// TestEqLargeIntegers checks that integers which round to the same float64
+// still compare unequal.
+func TestEqLargeIntegers(t *testing.T) {
+	if math.MaxInt < 1<<62 {
+		t.Skip("integers are 32 bits wide")
+	}
+	cases := []struct {
+		code string
+		want bool
+	}{
+		{"9007199254740993 9007199254740992 eq", false},
+		{"9007199254740993 9007199254740992 gt", true},
+		{"9007199254740993 9007199254740992.0 eq", false},
+		{"9007199254740992 9007199254740992.0 eq", true},
+		{"9223372036854775807 9223372036854775808.0 lt", true},
+	}
+	for _, c := range cases {
+		intp, err := run(c.code, 1)
+		if err != nil {
+			t.Errorf("%s: %v", c.code, err)
+			continue
+		}
+		if got := intp.Stack[0]; got != Boolean(c.want) {
+			t.Errorf("%s: got %v, want %v", c.code, got, c.want)
+		}
+	}
+}
+
+func TestCompareIntReal(t *testing.T) {
+	cases := []struct {
+		i    int64
+		r    float64
+		want int
+	}{
+		{0, 0, 0},
+		{0, math.Copysign(0, -1), 0},
+		{1, 0.5, 1},
+		{0, 0.5, -1},
+		{-2, -2.5, 1},
+		{-3, -2.5, -1},
+		{1<<53 + 1, 1 << 53, 1},
+		{1 << 53, 1<<53 + 2, -1},
+		{math.MaxInt64, 0x1p63, -1},
+		{math.MinInt64, -0x1p63, 0},
+		{math.MinInt64, -0x1p64, 1},
+		{0, math.Inf(1), -1},
+		{0, math.Inf(-1), 1},
+	}
+	for _, c := range cases {
+		if got := compareIntReal(c.i, c.r); got != c.want {
+			t.Errorf("compareIntReal(%d, %g) = %d, want %d", c.i, c.r, got, c.want)
+		}
+	}
+}
+
+func TestCmdRelational(t *testing.T) {
+	// results for ge, gt, le, lt
+	cases := []struct {
+		operands string
+		want     [4]bool
+	}{
+		{"1 2", [4]bool{false, false, true, true}},
+		{"2 2", [4]bool{true, false, true, false}},
+		{"4.2 4", [4]bool{true, true, false, false}},
+		{"4 4.0", [4]bool{true, false, true, false}},
+		{"(abc) (d)", [4]bool{false, false, true, true}},
+		{"(aba) (ab)", [4]bool{true, true, false, false}},
+		{"(aba) (aba)", [4]bool{true, false, true, false}},
+		{"<ff> <01>", [4]bool{true, true, false, false}},
+		{"() ()", [4]bool{true, false, true, false}},
+	}
+	ops := [4]string{"ge", "gt", "le", "lt"}
+	for _, c := range cases {
+		for k, op := range ops {
+			intp, err := run(c.operands+" "+op, 1)
+			if err != nil {
+				t.Errorf("%s %s: %v", c.operands, op, err)
+				continue
+			}
+			if got := intp.Stack[0]; got != Boolean(c.want[k]) {
+				t.Errorf("%s %s: got %v, want %v", c.operands, op, got, c.want[k])
+			}
+		}
+	}
+
+	for _, operands := range []string{"1 (1)", "(a) /a", "/a /b", "true false", "[] []", "1"} {
+		for _, op := range ops {
+			_, err := run(operands+" "+op, 0)
+			if err == nil {
+				t.Errorf("%s %s: no error", operands, op)
+			}
+		}
+	}
+}
+
+// TestCmdRelationalKeepsOperands checks that the operands stay on the stack
+// when a relational operator fails.
+func TestCmdRelationalKeepsOperands(t *testing.T) {
 	intp := NewInterpreter()
-	err := intp.ExecuteString(`
-		1 2 eq
-		4.0 4 eq
-		(abc) (abc) eq
-		(abc) /abc eq
-	`)
+	err := intp.ExecuteString("1 (1) lt")
+	if err == nil {
+		t.Fatal("no error")
+	}
+	if d := cmp.Diff([]Object{Integer(1), String("1")}, intp.Stack); d != "" {
+		t.Errorf("wrong stack (-want +got):\n%s", d)
+	}
+}
+
+func TestCmdCvx(t *testing.T) {
+	intp, err := run("[1 2] dup cvx exch 0 3 put", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	T := Boolean(true)
-	F := Boolean(false)
-	if d := cmp.Diff(intp.Stack, []Object{F, T, T, T}); d != "" {
-		t.Fatal(d)
+	want := Procedure{Integer(3), Integer(2)}
+	if d := cmp.Diff(want, intp.Stack[0]); d != "" {
+		t.Errorf("cvx does not share the array value (-want +got):\n%s", d)
+	}
+
+	intp, err = run("/foo cvx", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := intp.Stack[0]; got != Operator("foo") {
+		t.Errorf("/foo cvx: got %#v, want Operator(\"foo\")", got)
+	}
+}
+
+func TestStackUnderflow(t *testing.T) {
+	for _, code := range []string{"cvx", "1 eq", "1 ne"} {
+		if _, err := run(code, 0); err == nil {
+			t.Errorf("%s: no error", code)
+		}
 	}
 }
 
@@ -462,7 +652,7 @@ func TestFindResource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !isSameDict(intp.Stack[0].(Dict), intp.Resources["ProcSet"].(Dict)["CIDInit"].(Dict)) {
+	if !sameDict(intp.Stack[0].(Dict), intp.Resources["ProcSet"].(Dict)["CIDInit"].(Dict)) {
 		t.Fatalf("intp.Stack[0]: %v != CIDInit", intp.Stack[0])
 	}
 }

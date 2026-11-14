@@ -4,12 +4,13 @@
 package postscript
 
 import (
-	"crypto/rand"
+	"bytes"
+	"cmp"
 	"errors"
-	"fmt"
 	"io"
 	"maps"
 	"math"
+	"reflect"
 	"slices"
 
 	"seehuhn.de/go/postscript/psenc"
@@ -26,98 +27,98 @@ func makeSystemDict() Dict {
 	}
 
 	systemDict := Dict{
-		"[":                builtin(bListStart),
-		"]":                builtin(bListEnd),
-		"<<":               builtin(bDictStart),
-		">>":               builtin(bDictEnd),
-		"abs":              builtin(bAbs),
-		"add":              builtin(bAdd),
-		"and":              builtin(bAnd),
-		"atan":             builtin(bAtan),
-		"array":            builtin(bArray),
-		"begin":            builtin(bBegin),
-		"bind":             builtin(bBind),
-		"bitshift":         builtin(bBitshift),
-		"ceiling":          builtin(bCeiling),
-		"cleartomark":      builtin(bCleartomark),
-		"closefile":        builtin(bClosefile),
-		"cos":              builtin(bCos),
-		"copy":             builtin(bCopy),
-		"count":            builtin(bCount),
-		"currentdict":      builtin(bCurrentdict),
-		"currentfile":      builtin(bCurrentfile),
-		"cvi":              builtin(bCvi),
-		"cvr":              builtin(bCvr),
-		"cvx":              builtin(bCvx),
-		"def":              builtin(bDef),
-		"definefont":       builtin(bDefinefont),
-		"defineresource":   builtin(bDefineresource),
-		"dict":             builtin(bDict),
-		"div":              builtin(bDiv),
-		"dup":              builtin(bDup),
-		"exec":             builtin(bExec),
-		"eexec":            builtin(eexec),
-		"end":              builtin(bEnd),
-		"eq":               builtin(bEq),
+		"[":                &builtin{bListStart},
+		"]":                &builtin{bListEnd},
+		"<<":               &builtin{bDictStart},
+		">>":               &builtin{bDictEnd},
+		"abs":              &builtin{bAbs},
+		"add":              &builtin{bAdd},
+		"and":              &builtin{bAnd},
+		"atan":             &builtin{bAtan},
+		"array":            &builtin{bArray},
+		"begin":            &builtin{bBegin},
+		"bind":             &builtin{bBind},
+		"bitshift":         &builtin{bBitshift},
+		"ceiling":          &builtin{bCeiling},
+		"cleartomark":      &builtin{bCleartomark},
+		"closefile":        &builtin{bClosefile},
+		"cos":              &builtin{bCos},
+		"copy":             &builtin{bCopy},
+		"count":            &builtin{bCount},
+		"currentdict":      &builtin{bCurrentdict},
+		"currentfile":      &builtin{bCurrentfile},
+		"cvi":              &builtin{bCvi},
+		"cvr":              &builtin{bCvr},
+		"cvx":              &builtin{bCvx},
+		"def":              &builtin{bDef},
+		"definefont":       &builtin{bDefinefont},
+		"defineresource":   &builtin{bDefineresource},
+		"dict":             &builtin{bDict},
+		"div":              &builtin{bDiv},
+		"dup":              &builtin{bDup},
+		"exec":             &builtin{bExec},
+		"eexec":            &builtin{eexec},
+		"end":              &builtin{bEnd},
+		"eq":               &builtin{bEq},
 		"errordict":        errorDict,
-		"exch":             builtin(bExch),
-		"executeonly":      builtin(bExecuteonly),
-		"exp":              builtin(bExp),
-		"exit":             builtin(bExit),
+		"exch":             &builtin{bExch},
+		"executeonly":      &builtin{bExecuteonly},
+		"exp":              &builtin{bExp},
+		"exit":             &builtin{bExit},
 		"false":            Boolean(false),
-		"findfont":         builtin(bFindfont),
-		"findresource":     builtin(bFindresource),
-		"floor":            builtin(bFloor),
+		"findfont":         &builtin{bFindfont},
+		"findresource":     &builtin{bFindresource},
+		"floor":            &builtin{bFloor},
 		"FontDirectory":    FontDirectory,
-		"for":              builtin(bFor),
-		"forall":           builtin(bForall),
-		"ge":               builtin(bGe),
-		"get":              builtin(bGet),
-		"getinterval":      builtin(bGetinterval),
-		"gt":               builtin(bGt),
-		"idiv":             builtin(bIdiv),
-		"if":               builtin(bIf),
-		"ifelse":           builtin(bIfelse),
-		"index":            builtin(bIndex),
-		"internaldict":     builtin(bInternaldict),
-		"known":            builtin(bKnown),
-		"le":               builtin(bLe),
-		"length":           builtin(bLength),
-		"ln":               builtin(bLn),
-		"load":             builtin(bLoad),
-		"log":              builtin(bLog),
-		"loop":             builtin(bLoop),
-		"lt":               builtin(bLt),
-		"mark":             builtin(bMark),
-		"matrix":           builtin(bMatrix),
-		"maxlength":        builtin(bMaxlength),
-		"mod":              builtin(bMod),
-		"mul":              builtin(bMul),
-		"neg":              builtin(bNeg),
-		"ne":               builtin(bNe),
-		"noaccess":         builtin(bNoaccess),
-		"not":              builtin(bNot),
-		"or":               builtin(bOr),
-		"pop":              builtin(bPop),
-		"put":              builtin(bPut),
-		"putinterval":      builtin(bPutinterval),
-		"readonly":         builtin(bReadonly),
-		"readstring":       builtin(bReadstring),
-		"repeat":           builtin(bRepeat),
-		"roll":             builtin(bRoll),
-		"round":            builtin(bRound),
-		"sin":              builtin(bSin),
-		"sqrt":             builtin(bSqrt),
+		"for":              &builtin{bFor},
+		"forall":           &builtin{bForall},
+		"ge":               &builtin{bGe},
+		"get":              &builtin{bGet},
+		"getinterval":      &builtin{bGetinterval},
+		"gt":               &builtin{bGt},
+		"idiv":             &builtin{bIdiv},
+		"if":               &builtin{bIf},
+		"ifelse":           &builtin{bIfelse},
+		"index":            &builtin{bIndex},
+		"internaldict":     &builtin{bInternaldict},
+		"known":            &builtin{bKnown},
+		"le":               &builtin{bLe},
+		"length":           &builtin{bLength},
+		"ln":               &builtin{bLn},
+		"load":             &builtin{bLoad},
+		"log":              &builtin{bLog},
+		"loop":             &builtin{bLoop},
+		"lt":               &builtin{bLt},
+		"mark":             &builtin{bMark},
+		"matrix":           &builtin{bMatrix},
+		"maxlength":        &builtin{bMaxlength},
+		"mod":              &builtin{bMod},
+		"mul":              &builtin{bMul},
+		"neg":              &builtin{bNeg},
+		"ne":               &builtin{bNe},
+		"noaccess":         &builtin{bNoaccess},
+		"not":              &builtin{bNot},
+		"or":               &builtin{bOr},
+		"pop":              &builtin{bPop},
+		"put":              &builtin{bPut},
+		"putinterval":      &builtin{bPutinterval},
+		"readonly":         &builtin{bReadonly},
+		"readstring":       &builtin{bReadstring},
+		"repeat":           &builtin{bRepeat},
+		"roll":             &builtin{bRoll},
+		"round":            &builtin{bRound},
+		"sin":              &builtin{bSin},
+		"sqrt":             &builtin{bSqrt},
 		"StandardEncoding": standardEncoding,
-		"stop":             builtin(bStop),
-		"string":           builtin(bString),
-		"sub":              builtin(bSub),
+		"stop":             &builtin{bStop},
+		"string":           &builtin{bString},
+		"sub":              &builtin{bSub},
 		"true":             Boolean(true),
-		"truncate":         builtin(bTruncate),
-		"type":             builtin(bType),
+		"truncate":         &builtin{bTruncate},
+		"type":             &builtin{bType},
 		"userdict":         userDict,
-		"where":            builtin(bWhere),
-		"xor":              builtin(bXor),
+		"where":            &builtin{bWhere},
+		"xor":              &builtin{bXor},
 	}
 	systemDict["systemdict"] = systemDict
 
@@ -438,21 +439,16 @@ func bCurrentfile(intp *Interpreter) error {
 }
 
 func bCvx(intp *Interpreter) error {
-	// nearly not implemented
 	if len(intp.Stack) < 1 {
 		return intp.e(eStackunderflow, "cvx: not enough arguments")
 	}
-	obj := intp.Stack[len(intp.Stack)-1]
-	if a, ok := obj.(Array); ok {
-		if err := intp.chargeWork(len(a)); err != nil {
-			return err
-		}
-		if err := intp.charge(len(a) * objectSize); err != nil {
-			return err
-		}
-		b := make(Procedure, len(a))
-		copy(b, a)
-		intp.Stack[len(intp.Stack)-1] = b
+	// strings stay literal
+	switch o := intp.Stack[len(intp.Stack)-1].(type) {
+	case Array:
+		// the procedure shares the value of the array
+		intp.Stack[len(intp.Stack)-1] = Procedure(o)
+	case Name:
+		intp.Stack[len(intp.Stack)-1] = Operator(o)
 	}
 	return nil
 }
@@ -563,8 +559,8 @@ func bExec(intp *Interpreter) error {
 	intp.Stack = intp.Stack[:len(intp.Stack)-1]
 
 	switch obj := obj.(type) {
-	case builtin:
-		return obj(intp)
+	case *builtin:
+		return obj.fn(intp)
 	case Procedure:
 		return intp.executeOne(obj, true)
 	default:
@@ -586,17 +582,10 @@ func bEq(intp *Interpreter) error {
 	}
 	a := intp.Stack[len(intp.Stack)-2]
 	b := intp.Stack[len(intp.Stack)-1]
-	intp.Stack = intp.Stack[:len(intp.Stack)-2]
-
 	if err := intp.chargeWork(operandWork(a) + operandWork(b)); err != nil {
 		return err
 	}
-	isEqual, err := equal(a, b)
-	if err != nil {
-		return err
-	}
-
-	intp.Stack = append(intp.Stack, Boolean(isEqual))
+	intp.Stack = append(intp.Stack[:len(intp.Stack)-2], Boolean(equal(a, b)))
 	return nil
 }
 
@@ -1048,17 +1037,10 @@ func bNe(intp *Interpreter) error {
 	}
 	a := intp.Stack[len(intp.Stack)-2]
 	b := intp.Stack[len(intp.Stack)-1]
-	intp.Stack = intp.Stack[:len(intp.Stack)-2]
-
 	if err := intp.chargeWork(operandWork(a) + operandWork(b)); err != nil {
 		return err
 	}
-	isEqual, err := equal(a, b)
-	if err != nil {
-		return err
-	}
-
-	intp.Stack = append(intp.Stack, Boolean(!isEqual))
+	intp.Stack = append(intp.Stack[:len(intp.Stack)-2], Boolean(!equal(a, b)))
 	return nil
 }
 
@@ -1394,7 +1376,7 @@ func bType(intp *Interpreter) error {
 	case Name, Operator:
 		tp = "nametype"
 	// tp = "nulltype"
-	case builtin:
+	case *builtin:
 		tp = "operatortype"
 	// tp = "packedarraytype" (LanguageLevel 2)
 	case Real:
@@ -1437,40 +1419,177 @@ func operandWork(o Object) int {
 		return len(o)
 	case Name:
 		return len(o)
+	case Operator:
+		return len(o)
 	}
 	return 0
 }
 
-func equal(a, b Object) (bool, error) {
-	_, aIsDict := a.(Dict)
-	_, bIsDict := b.(Dict)
-	if aIsDict && bIsDict {
-		return isSameDict(a.(Dict), b.(Dict)), nil
-	}
-
-	normalize := func(obj Object) (Object, error) {
-		switch obj := obj.(type) {
-		case Real:
-			return float64(obj), nil
-		case Integer:
-			return float64(obj), nil
+// equal reports whether a and b are equal in the sense of the eq operator.
+// Numbers compare by mathematical value, and strings and names by their
+// characters.  Arrays, dictionaries and operators are equal only if they are
+// the same object.  The literal/executable attribute is ignored.
+func equal(a, b Object) bool {
+	switch a := a.(type) {
+	case Integer, Real:
+		c, ok := compareNumbers(a, b)
+		return ok && c == 0
+	case String:
+		switch b := b.(type) {
 		case String:
-			return string(obj), nil
-		case Name:
-			return string(obj), nil
+			return bytes.Equal(a, b)
 		default:
-			return nil, &postScriptError{eTypecheck, fmt.Sprintf("equality not implemented for %T", obj)}
+			t, ok := nameText(b)
+			return ok && string(a) == t
+		}
+	case Name, Operator:
+		s, _ := nameText(a)
+		switch b := b.(type) {
+		case String:
+			return string(b) == s
+		default:
+			t, ok := nameText(b)
+			return ok && s == t
+		}
+	case Boolean:
+		b, ok := b.(Boolean)
+		return ok && a == b
+	case mark:
+		_, ok := b.(mark)
+		return ok
+	case Dict:
+		b, ok := b.(Dict)
+		return ok && sameDict(a, b)
+	case Array:
+		return sameArray(a, b)
+	case Procedure:
+		return sameArray(a, b)
+	case *builtin:
+		b, ok := b.(*builtin)
+		return ok && a == b
+	case nil:
+		return b == nil
+	}
+	return false
+}
+
+// nameText returns the characters of a literal or executable name.
+func nameText(o Object) (string, bool) {
+	switch o := o.(type) {
+	case Name:
+		return string(o), true
+	case Operator:
+		return string(o), true
+	}
+	return "", false
+}
+
+// sameDict reports whether a and b are the same dictionary.
+func sameDict(a, b Dict) bool {
+	return reflect.ValueOf(a).UnsafePointer() == reflect.ValueOf(b).UnsafePointer()
+}
+
+// sameArray reports whether a and b are arrays or procedures which share the
+// same value, i.e. the same elements of the same storage.  Empty arrays have
+// no storage to share, and all compare equal.
+func sameArray(a, b Object) bool {
+	x, ok := arrayElems(a)
+	if !ok {
+		return false
+	}
+	y, ok := arrayElems(b)
+	if !ok || len(x) != len(y) {
+		return false
+	}
+	return len(x) == 0 || &x[0] == &y[0]
+}
+
+// arrayElems returns the elements of an array or procedure.
+func arrayElems(o Object) ([]Object, bool) {
+	switch o := o.(type) {
+	case Array:
+		return o, true
+	case Procedure:
+		return o, true
+	}
+	return nil, false
+}
+
+// compareNumbers compares a and b by their mathematical values and returns
+// -1, 0 or +1.  The result ok is false if a or b is not a number, or is NaN.
+func compareNumbers(a, b Object) (c int, ok bool) {
+	switch a := a.(type) {
+	case Integer:
+		switch b := b.(type) {
+		case Integer:
+			return cmp.Compare(a, b), true
+		case Real:
+			if math.IsNaN(float64(b)) {
+				return 0, false
+			}
+			return compareIntReal(int64(a), float64(b)), true
+		}
+	case Real:
+		if math.IsNaN(float64(a)) {
+			return 0, false
+		}
+		switch b := b.(type) {
+		case Integer:
+			return -compareIntReal(int64(b), float64(a)), true
+		case Real:
+			if math.IsNaN(float64(b)) {
+				return 0, false
+			}
+			return cmp.Compare(a, b), true
 		}
 	}
-	a, err := normalize(a)
-	if err != nil {
-		return false, err
+	return 0, false
+}
+
+// compareIntReal compares the integer i to the real number r, which must not
+// be NaN.  Converting i to float64 could round, so the comparison is done on
+// the integer part of r first.
+func compareIntReal(i int64, r float64) int {
+	switch {
+	case r >= 0x1p63:
+		return -1
+	case r < -0x1p63:
+		return 1
 	}
-	b, err = normalize(b)
-	if err != nil {
-		return false, err
+	t := math.Trunc(r)
+	if c := cmp.Compare(i, int64(t)); c != 0 {
+		return c
 	}
-	return a == b, nil
+	return cmp.Compare(t, r)
+}
+
+// compare implements the relational operators ge, gt, le and lt, which
+// apply to two numbers or two strings.  The function test receives the
+// result of comparing the first operand to the second: -1, 0 or +1.
+func (intp *Interpreter) compare(op string, test func(int) bool) error {
+	if len(intp.Stack) < 2 {
+		return intp.e(eStackunderflow, "%s: not enough arguments", op)
+	}
+	a := intp.Stack[len(intp.Stack)-2]
+	b := intp.Stack[len(intp.Stack)-1]
+
+	var result bool
+	s1, ok1 := a.(String)
+	s2, ok2 := b.(String)
+	switch {
+	case isNumber(a) && isNumber(b):
+		c, ok := compareNumbers(a, b)
+		result = ok && test(c)
+	case ok1 && ok2:
+		if err := intp.chargeWork(len(s1) + len(s2)); err != nil {
+			return err
+		}
+		result = test(bytes.Compare(s1, s2))
+	default:
+		return intp.e(eTypecheck, "%s: invalid argument types", op)
+	}
+	intp.Stack = append(intp.Stack[:len(intp.Stack)-2], Boolean(result))
+	return nil
 }
 
 // bindProc implements bind for root and the procedures nested in it.  A
@@ -1509,7 +1628,7 @@ func (intp *Interpreter) bindProc(root Procedure) error {
 				if err != nil {
 					continue
 				}
-				if _, ok := val.(builtin); ok {
+				if _, ok := val.(*builtin); ok {
 					proc[i] = val
 				}
 			case Procedure:
@@ -1518,24 +1637,6 @@ func (intp *Interpreter) bindProc(root Procedure) error {
 		}
 	}
 	return nil
-}
-
-// don't look!
-func isSameDict(a, b Dict) bool {
-	if len(a) != len(b) {
-		return false
-	}
-
-	testKey := Name(rand.Text())
-
-	if _, inB := b[testKey]; inB {
-		return false
-	}
-
-	a[testKey] = true
-	_, isSame := b[testKey]
-	delete(a, testKey)
-	return isSame
 }
 
 // atan: num den atan angle
@@ -1869,70 +1970,12 @@ func bFloor(intp *Interpreter) error {
 
 // ge: num1 num2 ge bool OR string1 string2 ge bool
 func bGe(intp *Interpreter) error {
-	if len(intp.Stack) < 2 {
-		return intp.e(eStackunderflow, "ge: not enough arguments")
-	}
-
-	obj1 := intp.Stack[len(intp.Stack)-2]
-	obj2 := intp.Stack[len(intp.Stack)-1]
-	intp.Stack = intp.Stack[:len(intp.Stack)-2]
-
-	// Handle number comparison
-	if isNumber(obj1) && isNumber(obj2) {
-		val1 := numberToFloat(obj1)
-		val2 := numberToFloat(obj2)
-		intp.Stack = append(intp.Stack, Boolean(val1 >= val2))
-		return nil
-	}
-
-	// Handle string comparison
-	if str1, ok1 := obj1.(String); ok1 {
-		if str2, ok2 := obj2.(String); ok2 {
-			// Lexical comparison
-			if err := intp.chargeWork(len(str1) + len(str2)); err != nil {
-				return err
-			}
-			result := string(str1) >= string(str2)
-			intp.Stack = append(intp.Stack, Boolean(result))
-			return nil
-		}
-	}
-
-	return intp.e(eTypecheck, "ge: invalid argument types")
+	return intp.compare("ge", func(c int) bool { return c >= 0 })
 }
 
 // gt: num1 num2 gt bool OR string1 string2 gt bool
 func bGt(intp *Interpreter) error {
-	if len(intp.Stack) < 2 {
-		return intp.e(eStackunderflow, "gt: not enough arguments")
-	}
-
-	obj1 := intp.Stack[len(intp.Stack)-2]
-	obj2 := intp.Stack[len(intp.Stack)-1]
-	intp.Stack = intp.Stack[:len(intp.Stack)-2]
-
-	// Handle number comparison
-	if isNumber(obj1) && isNumber(obj2) {
-		val1 := numberToFloat(obj1)
-		val2 := numberToFloat(obj2)
-		intp.Stack = append(intp.Stack, Boolean(val1 > val2))
-		return nil
-	}
-
-	// Handle string comparison
-	if str1, ok1 := obj1.(String); ok1 {
-		if str2, ok2 := obj2.(String); ok2 {
-			// Lexical comparison
-			if err := intp.chargeWork(len(str1) + len(str2)); err != nil {
-				return err
-			}
-			result := string(str1) > string(str2)
-			intp.Stack = append(intp.Stack, Boolean(result))
-			return nil
-		}
-	}
-
-	return intp.e(eTypecheck, "gt: invalid argument types")
+	return intp.compare("gt", func(c int) bool { return c > 0 })
 }
 
 // idiv: int1 int2 idiv quotient
@@ -1965,36 +2008,7 @@ func bIdiv(intp *Interpreter) error {
 
 // le: num1 num2 le bool OR string1 string2 le bool
 func bLe(intp *Interpreter) error {
-	if len(intp.Stack) < 2 {
-		return intp.e(eStackunderflow, "le: not enough arguments")
-	}
-
-	obj1 := intp.Stack[len(intp.Stack)-2]
-	obj2 := intp.Stack[len(intp.Stack)-1]
-	intp.Stack = intp.Stack[:len(intp.Stack)-2]
-
-	// Handle number comparison
-	if isNumber(obj1) && isNumber(obj2) {
-		val1 := numberToFloat(obj1)
-		val2 := numberToFloat(obj2)
-		intp.Stack = append(intp.Stack, Boolean(val1 <= val2))
-		return nil
-	}
-
-	// Handle string comparison
-	if str1, ok1 := obj1.(String); ok1 {
-		if str2, ok2 := obj2.(String); ok2 {
-			// Lexical comparison
-			if err := intp.chargeWork(len(str1) + len(str2)); err != nil {
-				return err
-			}
-			result := string(str1) <= string(str2)
-			intp.Stack = append(intp.Stack, Boolean(result))
-			return nil
-		}
-	}
-
-	return intp.e(eTypecheck, "le: invalid argument types")
+	return intp.compare("le", func(c int) bool { return c <= 0 })
 }
 
 // ln: num ln real
@@ -2055,36 +2069,7 @@ func bLog(intp *Interpreter) error {
 
 // lt: num1 num2 lt bool OR string1 string2 lt bool
 func bLt(intp *Interpreter) error {
-	if len(intp.Stack) < 2 {
-		return intp.e(eStackunderflow, "lt: not enough arguments")
-	}
-
-	obj1 := intp.Stack[len(intp.Stack)-2]
-	obj2 := intp.Stack[len(intp.Stack)-1]
-	intp.Stack = intp.Stack[:len(intp.Stack)-2]
-
-	// Handle number comparison
-	if isNumber(obj1) && isNumber(obj2) {
-		val1 := numberToFloat(obj1)
-		val2 := numberToFloat(obj2)
-		intp.Stack = append(intp.Stack, Boolean(val1 < val2))
-		return nil
-	}
-
-	// Handle string comparison
-	if str1, ok1 := obj1.(String); ok1 {
-		if str2, ok2 := obj2.(String); ok2 {
-			// Lexical comparison
-			if err := intp.chargeWork(len(str1) + len(str2)); err != nil {
-				return err
-			}
-			result := string(str1) < string(str2)
-			intp.Stack = append(intp.Stack, Boolean(result))
-			return nil
-		}
-	}
-
-	return intp.e(eTypecheck, "lt: invalid argument types")
+	return intp.compare("lt", func(c int) bool { return c < 0 })
 }
 
 // mod: int1 int2 mod remainder
@@ -2278,17 +2263,6 @@ func isNumber(obj Object) bool {
 	_, isInt := obj.(Integer)
 	_, isReal := obj.(Real)
 	return isInt || isReal
-}
-
-func numberToFloat(obj Object) float64 {
-	switch n := obj.(type) {
-	case Integer:
-		return float64(n)
-	case Real:
-		return float64(n)
-	default:
-		return 0 // Should not happen if isNumber was checked first
-	}
 }
 
 var errExit = errors.New("exit")
