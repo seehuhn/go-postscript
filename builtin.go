@@ -98,6 +98,7 @@ func makeSystemDict() Dict {
 		"ne":               &builtin{bNe},
 		"noaccess":         &builtin{bNoaccess},
 		"not":              &builtin{bNot},
+		"null":             nil,
 		"or":               &builtin{bOr},
 		"pop":              &builtin{bPop},
 		"put":              &builtin{bPut},
@@ -346,11 +347,13 @@ func bClosefile(intp *Interpreter) error {
 	if len(intp.Stack) < 1 {
 		return intp.e(eStackunderflow, "closefile: not enough arguments")
 	}
-	if x := intp.Stack[len(intp.Stack)-1]; x != nil {
-		return intp.e(eTypecheck, "closefile: needs a file, not %T", x)
+	f, ok := intp.Stack[len(intp.Stack)-1].(*file)
+	if !ok {
+		return intp.e(eTypecheck, "closefile: needs a file")
 	}
 	intp.Stack = intp.Stack[:len(intp.Stack)-1]
-	return io.EOF
+	f.closed = true
+	return nil
 }
 
 func bCopy(intp *Interpreter) error {
@@ -434,7 +437,7 @@ func bCurrentdict(intp *Interpreter) error {
 }
 
 func bCurrentfile(intp *Interpreter) error {
-	intp.Stack = append(intp.Stack, nil)
+	intp.Stack = append(intp.Stack, intp.files[len(intp.files)-1])
 	return nil
 }
 
@@ -1205,20 +1208,22 @@ func bReadstring(intp *Interpreter) error {
 	if len(intp.Stack) < 2 {
 		return intp.e(eStackunderflow, "readstring: not enough arguments")
 	}
+	f, ok := intp.Stack[len(intp.Stack)-2].(*file)
+	if !ok {
+		return intp.e(eTypecheck, "readstring: needs a file")
+	}
 	buf, ok := intp.Stack[len(intp.Stack)-1].(String)
 	if !ok {
 		return intp.e(eTypecheck, "readstring: invalid argument")
+	}
+	if len(buf) == 0 {
+		return intp.e(eRangecheck, "readstring: empty string")
 	}
 	if err := intp.chargeWork(len(buf)); err != nil {
 		return err
 	}
 	intp.Stack = intp.Stack[:len(intp.Stack)-2]
-	s := intp.scanners[len(intp.scanners)-1]
-	_, err := s.ReadByte()
-	if err != nil && err != io.EOF {
-		return err
-	}
-	n, err := s.Read(buf)
+	n, err := f.Read(buf)
 	if err != nil && err != io.EOF {
 		return err
 	}
@@ -1244,7 +1249,7 @@ func bRepeat(intp *Interpreter) error {
 	intp.Stack = intp.Stack[:len(intp.Stack)-2]
 	for range count {
 		err := intp.executeOne(proc, true)
-		if err == errStop {
+		if err == errExit {
 			break
 		} else if err != nil {
 			return err
@@ -1359,7 +1364,7 @@ func bType(intp *Interpreter) error {
 		return intp.e(eStackunderflow, "type: not enough arguments")
 	}
 	obj := intp.Stack[len(intp.Stack)-1]
-	var tp Name
+	var tp Operator
 	switch obj.(type) {
 	case Array, Procedure:
 		tp = "arraytype"
@@ -1367,7 +1372,7 @@ func bType(intp *Interpreter) error {
 		tp = "booleantype"
 	case Dict:
 		tp = "dicttype"
-	case nil: // TODO(voss)
+	case *file:
 		tp = "filetype"
 	// fonttype
 	// gstatetype (LanguageLevel 2)
@@ -1375,7 +1380,8 @@ func bType(intp *Interpreter) error {
 		tp = "integertype"
 	case Name, Operator:
 		tp = "nametype"
-	// tp = "nulltype"
+	case nil:
+		tp = "nulltype"
 	case *builtin:
 		tp = "operatortype"
 	// tp = "packedarraytype" (LanguageLevel 2)
@@ -1389,7 +1395,7 @@ func bType(intp *Interpreter) error {
 	default:
 		return intp.e(eTypecheck, "type: not implemented for %T", obj)
 	}
-	intp.Stack = append(intp.Stack, tp)
+	intp.Stack[len(intp.Stack)-1] = tp
 	return nil
 }
 
@@ -1466,6 +1472,9 @@ func equal(a, b Object) bool {
 		return sameArray(a, b)
 	case *builtin:
 		b, ok := b.(*builtin)
+		return ok && a == b
+	case *file:
+		b, ok := b.(*file)
 		return ok && a == b
 	case nil:
 		return b == nil

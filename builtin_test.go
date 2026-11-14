@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
 func run(s string, stackLen int) (*Interpreter, error) {
@@ -612,7 +613,10 @@ func TestCmdCvx(t *testing.T) {
 }
 
 func TestStackUnderflow(t *testing.T) {
-	for _, code := range []string{"cvx", "1 eq", "1 ne"} {
+	for _, code := range []string{
+		"cvx", "1 eq", "1 ne", "closefile", "eexec", "1 readstring", "type",
+		"{} repeat",
+	} {
 		if _, err := run(code, 0); err == nil {
 			t.Errorf("%s: no error", code)
 		}
@@ -1741,5 +1745,285 @@ func TestArithmeticUndefinedResult(t *testing.T) {
 				t.Fatalf("got %v, want undefinedresult", err)
 			}
 		})
+	}
+}
+
+func TestNull(t *testing.T) {
+	cases := []struct {
+		code string
+		want Object
+	}{
+		{"null", nil},
+		{"/null load", nil},
+		{"null type", Operator("nulltype")},
+		{"systemdict /null known", Boolean(true)},
+		{"null null eq", Boolean(true)},
+		{"null 0 eq", Boolean(false)},
+		{"currentfile null eq", Boolean(false)},
+		{"1 array 0 get null eq", Boolean(true)},
+	}
+	for _, c := range cases {
+		intp, err := run(c.code, 1)
+		if err != nil {
+			t.Errorf("%s: %v", c.code, err)
+			continue
+		}
+		if got := intp.Stack[0]; got != c.want {
+			t.Errorf("%s: got %v, want %v", c.code, got, c.want)
+		}
+	}
+}
+
+func TestCurrentfile(t *testing.T) {
+	intp, err := run("currentfile currentfile eq currentfile type", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := cmp.Diff(intp.Stack, []Object{Boolean(true), Operator("filetype")}); d != "" {
+		t.Error(d)
+	}
+}
+
+func TestClosefile(t *testing.T) {
+	cases := []struct {
+		code string
+		want []Object
+	}{
+		// tokens after closefile are not read
+		{"1 currentfile closefile 2", []Object{Integer(1)}},
+		// the running procedure continues
+		{"{ currentfile closefile 1 } exec 2", []Object{Integer(1)}},
+		// closing twice has no effect
+		{"{ currentfile dup closefile closefile 1 } exec", []Object{Integer(1)}},
+		// a closed file reads as end-of-file
+		{"{ currentfile dup closefile 3 string readstring } exec",
+			[]Object{String{}, Boolean(false)}},
+		{"{ currentfile dup closefile eexec 1 } exec", []Object{Integer(1)}},
+	}
+	for _, c := range cases {
+		intp, err := run(c.code, len(c.want))
+		if err != nil {
+			t.Errorf("%s: %v", c.code, err)
+			continue
+		}
+		if d := cmp.Diff(intp.Stack, c.want); d != "" {
+			t.Errorf("%s: %s", c.code, d)
+		}
+	}
+}
+
+func TestFileClosedAfterExecute(t *testing.T) {
+	intp := NewInterpreter()
+	if err := intp.ExecuteString("/f currentfile def"); err != nil {
+		t.Fatal(err)
+	}
+	if err := intp.ExecuteString("f 3 string readstring"); err != nil {
+		t.Fatal(err)
+	}
+	if d := cmp.Diff(intp.Stack, []Object{String{}, Boolean(false)}); d != "" {
+		t.Error(d)
+	}
+}
+
+func TestFileOperandErrors(t *testing.T) {
+	for _, code := range []string{
+		"null closefile",
+		"null eexec",
+		"null 3 string readstring",
+		"currentfile () readstring",
+	} {
+		if _, err := run(code, 0); err == nil {
+			t.Errorf("%s: no error", code)
+		}
+	}
+}
+
+// eexecEncrypter encrypts data for eexec.  Successive calls to hex continue
+// the same encrypted stream.
+type eexecEncrypter struct {
+	r uint16
+}
+
+// hex encrypts plain and returns the ciphertext in hexadecimal.
+func (e *eexecEncrypter) hex(plain string) string {
+	var out strings.Builder
+	for _, p := range []byte(plain) {
+		c := p ^ byte(e.r>>8)
+		e.r = (uint16(c)+e.r)*eexecC1 + eexecC2
+		fmt.Fprintf(&out, "%02x", c)
+	}
+	return out.String()
+}
+
+// eexecHex encrypts the initialisation vector "abcd", followed by plain, and
+// returns the ciphertext in hexadecimal.
+func eexecHex(plain string) string {
+	e := &eexecEncrypter{r: eexecR}
+	return e.hex("abcd" + plain)
+}
+
+func TestEexecFile(t *testing.T) {
+	inner := "currentfile outer eq currentfile type currentdict systemdict eq " +
+		"currentfile closefile "
+	code := "/outer currentfile def currentfile eexec\n" + eexecHex(inner) +
+		"\ncurrentdict userdict eq"
+	intp, err := run(code, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Object{Boolean(false), Operator("filetype"), Boolean(true), Boolean(true)}
+	if d := cmp.Diff(intp.Stack, want); d != "" {
+		t.Error(d)
+	}
+}
+
+func TestEexecSourceClosed(t *testing.T) {
+	cases := []struct {
+		plain string
+		want  []Object
+	}{
+		// closing the source ends the encrypted section, too
+		{"outer closefile 7 ", []Object{}},
+		// the filter reads as end-of-file once its source is closed
+		{"{ outer closefile currentfile 3 string readstring } exec ",
+			[]Object{String{}, Boolean(false)}},
+	}
+	for _, c := range cases {
+		code := "/outer currentfile def currentfile eexec\n" + eexecHex(c.plain) +
+			"\n8"
+		intp, err := run(code, len(c.want))
+		if err != nil {
+			t.Errorf("%q: %v", c.plain, err)
+			continue
+		}
+		if d := cmp.Diff(intp.Stack, c.want, cmpopts.EquateEmpty()); d != "" {
+			t.Errorf("%q: %s", c.plain, d)
+		}
+	}
+}
+
+func TestEexecReadSource(t *testing.T) {
+	// Reading from the source of an active filter returns the raw bytes,
+	// and decryption continues after them.
+	e := &eexecEncrypter{r: eexecR}
+	code := "/outer currentfile def currentfile eexec\n" +
+		e.hex("abcd outer 3 string readstring ") + "XYZ" +
+		e.hex(" currentfile closefile ") + "\n8"
+	intp, err := run(code, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Object{String("XYZ"), Boolean(true), Integer(8)}
+	if d := cmp.Diff(intp.Stack, want); d != "" {
+		t.Error(d)
+	}
+}
+
+func TestEexecCRLFClose(t *testing.T) {
+	// The look-ahead past "closefile" must not leak into the cleartext.
+	code := "currentfile eexec\n" + eexecHex("currentfile closefile\r") +
+		"\n0000000000000000 8"
+	intp, err := run(code, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := cmp.Diff(intp.Stack, []Object{Integer(0), Integer(8)}); d != "" {
+		t.Error(d)
+	}
+}
+
+func TestReadstringPosition(t *testing.T) {
+	cases := []struct {
+		code string
+		want []Object
+	}{
+		{"{currentfile 2 string readstring pop currentfile 2 string readstring pop} exec abcd",
+			[]Object{String("ab"), String("cd")}},
+		// only the first white-space character ends the token
+		{"currentfile 1 string readstring  5",
+			[]Object{String(" "), Boolean(true), Integer(5)}},
+		{"currentfile 1 string readstring\n\n5",
+			[]Object{String("\n"), Boolean(true), Integer(5)}},
+		// CR LF counts as one character
+		{"currentfile 1 string readstring\r\n5", []Object{String("5"), Boolean(true)}},
+		{"currentfile 1 string readstring\r5", []Object{String("5"), Boolean(true)}},
+		// a delimiter is not consumed
+		{"currentfile 1 string readstring(5",
+			[]Object{String("("), Boolean(true), Integer(5)}},
+		{"/a /readstring load def currentfile 1 string a\n5",
+			[]Object{String("5"), Boolean(true)}},
+		{"currentfile 3 string readstring", []Object{String{}, Boolean(false)}},
+	}
+	for _, c := range cases {
+		intp, err := run(c.code, len(c.want))
+		if err != nil {
+			t.Errorf("%q: %v", c.code, err)
+			continue
+		}
+		if d := cmp.Diff(intp.Stack, c.want); d != "" {
+			t.Errorf("%q: %s", c.code, d)
+		}
+	}
+}
+
+func TestRepeatExitStop(t *testing.T) {
+	// stop ends the program, not just the loop
+	if _, err := run("3 { stop } repeat 1", 0); err != nil {
+		t.Error(err)
+	}
+	intp, err := run("0 3 { 1 add exit } repeat", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if intp.Stack[0] != Integer(1) {
+		t.Errorf("got %v, want 1", intp.Stack[0])
+	}
+}
+
+func TestCmdType(t *testing.T) {
+	cases := []struct {
+		code string
+		want Operator
+	}{
+		{"[] type", "arraytype"},
+		{"{} type", "arraytype"},
+		{"true type", "booleantype"},
+		{"1 dict type", "dicttype"},
+		{"currentfile type", "filetype"},
+		{"1 type", "integertype"},
+		{"/a type", "nametype"},
+		{"/a cvx type", "nametype"},
+		{"null type", "nulltype"},
+		{"/add load type", "operatortype"},
+		{"1.5 type", "realtype"},
+		{"() type", "stringtype"},
+		{"mark type", "marktype"},
+	}
+	for _, c := range cases {
+		intp, err := run(c.code, 1)
+		if err != nil {
+			t.Errorf("%s: %v", c.code, err)
+			continue
+		}
+		if got := intp.Stack[0]; got != c.want {
+			t.Errorf("%s: got %v, want %v", c.code, got, c.want)
+		}
+	}
+}
+
+func TestEexecEmpty(t *testing.T) {
+	intp, err := run("1 currentfile eexec", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(intp.DictStack) != 2 {
+		t.Errorf("dict stack has %d entries, want 2", len(intp.DictStack))
+	}
+}
+
+func TestEexecNested(t *testing.T) {
+	code := "currentfile eexec\n" + eexecHex("currentfile eexec\n")
+	if _, err := run(code, 0); err == nil {
+		t.Error("nested eexec: no error")
 	}
 }

@@ -149,6 +149,7 @@ func (s *scanner) ScanToken() (Object, error) {
 			name = append(name, b)
 		}
 		s.tokenBuf = name
+		s.skipTokenTerminator()
 		return Name(name), nil
 	default:
 		s.SkipByte()
@@ -170,6 +171,7 @@ func (s *scanner) ScanToken() (Object, error) {
 				s.SkipByte()
 				opBytes = append(opBytes, b)
 			}
+			s.skipTokenTerminator()
 		}
 		s.tokenBuf = opBytes
 
@@ -183,6 +185,34 @@ func (s *scanner) ScanToken() (Object, error) {
 
 		return Operator(opBytes), nil
 	}
+}
+
+// skipTokenTerminator consumes the white-space character, if any, which
+// ends a name or number token.  This leaves the input positioned where
+// operators reading from the current file expect the data to start.  An
+// end-of-line sequence CR LF counts as a single white-space character.
+func (s *scanner) skipTokenTerminator() {
+	b, err := s.Peek()
+	if err != nil || class[b] != space {
+		return
+	}
+	s.SkipByte()
+	if b == '\r' {
+		s.SkipOptionalByte('\n')
+	}
+}
+
+// readRaw reads bytes from the underlying input, bypassing eexec
+// decryption and the look-ahead buffer.
+func (s *scanner) readRaw(p []byte) (int, error) {
+	for n := range p {
+		b, err := s.readByteRaw()
+		if err != nil {
+			return n, err
+		}
+		p[n] = b
+	}
+	return len(p), nil
 }
 
 func (s *scanner) ReadString() (String, error) {

@@ -9,34 +9,39 @@ func eexec(intp *Interpreter) error {
 	if len(intp.Stack) < 1 {
 		return &postScriptError{eStackunderflow, "eexec"}
 	}
-	if intp.Stack[len(intp.Stack)-1] != nil {
+	f, ok := intp.Stack[len(intp.Stack)-1].(*file)
+	if !ok {
 		return &postScriptError{eTypecheck, "eexec"}
 	}
 	intp.Stack = intp.Stack[:len(intp.Stack)-1]
-
-	k := len(intp.DictStack)
-	intp.DictStack = append(intp.DictStack, intp.SystemDict)
-
-	s := intp.scanners[len(intp.scanners)-1]
-	err := s.BeginEexec(eexecN)
-	if err != nil {
-		return err
+	if f.isClosed() {
+		// a closed file reads as end-of-file
+		return nil
 	}
-	err = intp.executeScanner(s)
-	if err != nil && err != io.EOF {
-		return err
-	}
-	s.EndEexec()
 
-	intp.DictStack = intp.DictStack[:k]
-	return nil
-}
-
-func (s *scanner) BeginEexec(ivLen int) error {
+	s := f.s
 	if s.eexecMode != 0 {
 		return &postScriptError{eInvalidaccess, "nested eexec not supported"}
 	}
 
+	k := len(intp.DictStack)
+	intp.DictStack = append(intp.DictStack, intp.SystemDict)
+	defer func() {
+		s.EndEexec()
+		intp.DictStack = intp.DictStack[:k]
+	}()
+
+	err := s.BeginEexec(eexecN)
+	if err == io.EOF {
+		// the encrypted section is empty
+		return nil
+	} else if err != nil {
+		return err
+	}
+	return intp.executeFile(&file{s: s, src: f})
+}
+
+func (s *scanner) BeginEexec(ivLen int) error {
 	for {
 		b, err := s.Peek()
 		if err != nil {
@@ -79,8 +84,11 @@ func (s *scanner) BeginEexec(ivLen int) error {
 	return nil
 }
 
+// EndEexec switches the scanner back to reading the input directly.
+// Look-ahead bytes belong to the decryption filter, so they are discarded.
 func (s *scanner) EndEexec() {
 	s.eexecMode = 0
+	s.peek = s.peek[:0]
 }
 
 func (s *scanner) eexecDecode(b byte) byte {

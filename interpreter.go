@@ -83,7 +83,7 @@ type Interpreter struct {
 	DSC []Comment
 
 	errors    []*postScriptError
-	scanners  []*scanner
+	files     []*file // the files being executed, innermost last
 	procStart []int
 
 	execStackDepth int
@@ -149,7 +149,7 @@ func (intp *Interpreter) Execute(r io.Reader) error {
 	}
 
 	s := newScanner(r)
-	err := intp.executeScanner(s)
+	err := intp.executeFile(&file{s: s})
 	switch err {
 	case errExit:
 		err = intp.e(eInvalidexit, "exit outside loop")
@@ -165,7 +165,8 @@ func (intp *Interpreter) Execute(r io.Reader) error {
 	return nil
 }
 
-func (intp *Interpreter) executeScanner(s *scanner) error {
+func (intp *Interpreter) executeFile(f *file) error {
+	s := f.s
 	if intp.CheckStart {
 		head := s.PeekN(2)
 		if string(head) != "%!" {
@@ -178,12 +179,13 @@ func (intp *Interpreter) executeScanner(s *scanner) error {
 		intp.CheckStart = false
 	}
 
-	intp.scanners = append(intp.scanners, s)
+	intp.files = append(intp.files, f)
 	defer func() {
-		intp.scanners = intp.scanners[:len(intp.scanners)-1]
+		intp.files = intp.files[:len(intp.files)-1]
+		f.closed = true
 	}()
 
-	for {
+	for !f.isClosed() {
 		o, err := s.ScanToken()
 		if err == io.EOF {
 			break

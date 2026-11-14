@@ -5,9 +5,11 @@ package postscript
 
 import (
 	"fmt"
+	"io"
 	"strings"
 )
 
+// Object is a PostScript object.  The null object is represented by nil.
 type Object any
 
 type Integer int
@@ -117,4 +119,39 @@ var theMark Object = mark{}
 // as *builtin, so that eq can compare them by identity.
 type builtin struct {
 	fn func(*Interpreter) error
+}
+
+// file is a file object for reading program input.  Files are held as *file,
+// so that eq can compare them by identity.  A file is open while the
+// interpreter executes it.
+//
+// An eexec decryption filter shares the scanner of the file it decrypts,
+// which is recorded in src.
+type file struct {
+	s      *scanner
+	src    *file
+	closed bool
+}
+
+// isClosed reports whether f or the file it reads from has been closed.
+// A filter whose source is closed reads as end-of-file.
+func (f *file) isClosed() bool {
+	for ; f != nil; f = f.src {
+		if f.closed {
+			return true
+		}
+	}
+	return false
+}
+
+// Read reads data from the file.  While an eexec filter is active on
+// the scanner, reading from the filter's source bypasses the decryption.
+func (f *file) Read(p []byte) (int, error) {
+	if f.isClosed() {
+		return 0, io.EOF
+	}
+	if f.src == nil && f.s.eexecMode != 0 {
+		return f.s.readRaw(p)
+	}
+	return f.s.Read(p)
 }
