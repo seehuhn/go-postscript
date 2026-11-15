@@ -91,12 +91,16 @@ type Interpreter struct {
 	// Zero means maxOperandStackDepth.
 	maxStack int
 
+	packing bool // the array packing mode, which has no effect
+	global  bool // the VM allocation mode, which has no effect
+
 	// These variables hold temporary data while a CMap is being defined.
-	cmapMappings *CMapInfo  // the CMap being built, or nil
-	cmapDict     Dict       // the dictionary which receives the CMap
-	cmapBlock    *cmapBlock // the open begin…end block, or nil
-	cmapMark     int        // the operand stack height at the start of cmapBlock
-	cmapDefined  []Name     // the CMaps added by defineresource, in order
+	cmapMappings *CMapInfo    // the CMap being built, or nil
+	cmapDict     Dict         // the dictionary which receives the CMap
+	cmapFont     *CMapEntries // the font selected by usefont, nil if invalid
+	cmapBlock    *cmapBlock   // the open begin…end block, or nil
+	cmapMark     int          // the operand stack height at the start of cmapBlock
+	cmapDefined  []Name       // the CMaps added by defineresource, in order
 }
 
 // NewInterpreter creates a new instance of the PostScript interpreter.
@@ -310,14 +314,18 @@ func (intp *Interpreter) appendToken(proc *Procedure, o Object) error {
 // an operator may push past the limit, and the overflow is reported when a
 // later object executes.
 func (intp *Interpreter) checkStack() error {
-	maxStack := intp.maxStack
-	if maxStack == 0 {
-		maxStack = maxOperandStackDepth
-	}
-	if len(intp.Stack) > maxStack {
+	if len(intp.Stack) > intp.stackLimit() {
 		return intp.e(eStackoverflow, "operand stack overflow")
 	}
 	return nil
+}
+
+// stackLimit returns the largest allowed operand stack depth.
+func (intp *Interpreter) stackLimit() int {
+	if intp.maxStack == 0 {
+		return maxOperandStackDepth
+	}
+	return intp.maxStack
 }
 
 // loadName looks up name in the dictionary stack, topmost dictionary first.

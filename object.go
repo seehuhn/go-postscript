@@ -119,6 +119,9 @@ var theMark Object = mark{}
 // as *builtin, so that eq can compare them by identity.
 type builtin struct {
 	fn func(*Interpreter) error
+
+	// name is the key of the operator in systemdict, if any.
+	name string
 }
 
 // file is a file object for reading program input.  Files are held as *file,

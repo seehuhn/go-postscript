@@ -12,6 +12,7 @@ import (
 	"math"
 	"reflect"
 	"slices"
+	"strconv"
 
 	"seehuhn.de/go/postscript/psenc"
 )
@@ -25,101 +26,139 @@ func makeSystemDict() Dict {
 	for i, name := range psenc.StandardEncoding {
 		standardEncoding[i] = Name(name)
 	}
+	isoLatin1Encoding := make(Array, 256)
+	for i, name := range psenc.ISOLatin1Encoding {
+		isoLatin1Encoding[i] = Name(name)
+	}
 
 	systemDict := Dict{
-		"[":                &builtin{bListStart},
-		"]":                &builtin{bListEnd},
-		"<<":               &builtin{bDictStart},
-		">>":               &builtin{bDictEnd},
-		"abs":              &builtin{bAbs},
-		"add":              &builtin{bAdd},
-		"and":              &builtin{bAnd},
-		"atan":             &builtin{bAtan},
-		"array":            &builtin{bArray},
-		"begin":            &builtin{bBegin},
-		"bind":             &builtin{bBind},
-		"bitshift":         &builtin{bBitshift},
-		"ceiling":          &builtin{bCeiling},
-		"cleartomark":      &builtin{bCleartomark},
-		"closefile":        &builtin{bClosefile},
-		"cos":              &builtin{bCos},
-		"copy":             &builtin{bCopy},
-		"count":            &builtin{bCount},
-		"currentdict":      &builtin{bCurrentdict},
-		"currentfile":      &builtin{bCurrentfile},
-		"cvi":              &builtin{bCvi},
-		"cvr":              &builtin{bCvr},
-		"cvx":              &builtin{bCvx},
-		"def":              &builtin{bDef},
-		"definefont":       &builtin{bDefinefont},
-		"defineresource":   &builtin{bDefineresource},
-		"dict":             &builtin{bDict},
-		"div":              &builtin{bDiv},
-		"dup":              &builtin{bDup},
-		"exec":             &builtin{bExec},
-		"eexec":            &builtin{eexec},
-		"end":              &builtin{bEnd},
-		"eq":               &builtin{bEq},
-		"errordict":        errorDict,
-		"exch":             &builtin{bExch},
-		"executeonly":      &builtin{bExecuteonly},
-		"exp":              &builtin{bExp},
-		"exit":             &builtin{bExit},
-		"false":            Boolean(false),
-		"findfont":         &builtin{bFindfont},
-		"findresource":     &builtin{bFindresource},
-		"floor":            &builtin{bFloor},
-		"FontDirectory":    FontDirectory,
-		"for":              &builtin{bFor},
-		"forall":           &builtin{bForall},
-		"ge":               &builtin{bGe},
-		"get":              &builtin{bGet},
-		"getinterval":      &builtin{bGetinterval},
-		"gt":               &builtin{bGt},
-		"idiv":             &builtin{bIdiv},
-		"if":               &builtin{bIf},
-		"ifelse":           &builtin{bIfelse},
-		"index":            &builtin{bIndex},
-		"internaldict":     &builtin{bInternaldict},
-		"known":            &builtin{bKnown},
-		"le":               &builtin{bLe},
-		"length":           &builtin{bLength},
-		"ln":               &builtin{bLn},
-		"load":             &builtin{bLoad},
-		"log":              &builtin{bLog},
-		"loop":             &builtin{bLoop},
-		"lt":               &builtin{bLt},
-		"mark":             &builtin{bMark},
-		"matrix":           &builtin{bMatrix},
-		"maxlength":        &builtin{bMaxlength},
-		"mod":              &builtin{bMod},
-		"mul":              &builtin{bMul},
-		"neg":              &builtin{bNeg},
-		"ne":               &builtin{bNe},
-		"noaccess":         &builtin{bNoaccess},
-		"not":              &builtin{bNot},
-		"null":             nil,
-		"or":               &builtin{bOr},
-		"pop":              &builtin{bPop},
-		"put":              &builtin{bPut},
-		"putinterval":      &builtin{bPutinterval},
-		"readonly":         &builtin{bReadonly},
-		"readstring":       &builtin{bReadstring},
-		"repeat":           &builtin{bRepeat},
-		"roll":             &builtin{bRoll},
-		"round":            &builtin{bRound},
-		"sin":              &builtin{bSin},
-		"sqrt":             &builtin{bSqrt},
-		"StandardEncoding": standardEncoding,
-		"stop":             &builtin{bStop},
-		"string":           &builtin{bString},
-		"sub":              &builtin{bSub},
-		"true":             Boolean(true),
-		"truncate":         &builtin{bTruncate},
-		"type":             &builtin{bType},
-		"userdict":         userDict,
-		"where":            &builtin{bWhere},
-		"xor":              &builtin{bXor},
+		"<<":                &builtin{fn: bDictStart},
+		"=":                 &builtin{fn: bPrintObject},
+		"==":                &builtin{fn: bPrintObject},
+		">>":                &builtin{fn: bDictEnd},
+		"[":                 &builtin{fn: bListStart},
+		"]":                 &builtin{fn: bListEnd},
+		"abs":               &builtin{fn: bAbs},
+		"add":               &builtin{fn: bAdd},
+		"aload":             &builtin{fn: bAload},
+		"anchorsearch":      &builtin{fn: bAnchorsearch},
+		"and":               &builtin{fn: bAnd},
+		"array":             &builtin{fn: bArray},
+		"astore":            &builtin{fn: bAstore},
+		"atan":              &builtin{fn: bAtan},
+		"begin":             &builtin{fn: bBegin},
+		"bind":              &builtin{fn: bBind},
+		"bitshift":          &builtin{fn: bBitshift},
+		"ceiling":           &builtin{fn: bCeiling},
+		"clear":             &builtin{fn: bClear},
+		"cleartomark":       &builtin{fn: bCleartomark},
+		"closefile":         &builtin{fn: bClosefile},
+		"concatmatrix":      &builtin{fn: bConcatmatrix},
+		"copy":              &builtin{fn: bCopy},
+		"cos":               &builtin{fn: bCos},
+		"count":             &builtin{fn: bCount},
+		"countdictstack":    &builtin{fn: bCountdictstack},
+		"counttomark":       &builtin{fn: bCounttomark},
+		"currentdict":       &builtin{fn: bCurrentdict},
+		"currentfile":       &builtin{fn: bCurrentfile},
+		"currentglobal":     &builtin{fn: bCurrentglobal},
+		"currentpacking":    &builtin{fn: bCurrentpacking},
+		"cvi":               &builtin{fn: bCvi},
+		"cvlit":             &builtin{fn: bCvlit},
+		"cvn":               &builtin{fn: bCvn},
+		"cvr":               &builtin{fn: bCvr},
+		"cvrs":              &builtin{fn: bCvrs},
+		"cvs":               &builtin{fn: bCvs},
+		"cvx":               &builtin{fn: bCvx},
+		"def":               &builtin{fn: bDef},
+		"definefont":        &builtin{fn: bDefinefont},
+		"defineresource":    &builtin{fn: bDefineresource},
+		"dict":              &builtin{fn: bDict},
+		"div":               &builtin{fn: bDiv},
+		"dup":               &builtin{fn: bDup},
+		"eexec":             &builtin{fn: eexec},
+		"end":               &builtin{fn: bEnd},
+		"eq":                &builtin{fn: bEq},
+		"errordict":         errorDict,
+		"exch":              &builtin{fn: bExch},
+		"exec":              &builtin{fn: bExec},
+		"executeonly":       &builtin{fn: bExecuteonly},
+		"exit":              &builtin{fn: bExit},
+		"exp":               &builtin{fn: bExp},
+		"false":             Boolean(false),
+		"findfont":          &builtin{fn: bFindfont},
+		"findresource":      &builtin{fn: bFindresource},
+		"floor":             &builtin{fn: bFloor},
+		"flush":             &builtin{fn: bFlush},
+		"FontDirectory":     FontDirectory,
+		"for":               &builtin{fn: bFor},
+		"forall":            &builtin{fn: bForall},
+		"ge":                &builtin{fn: bGe},
+		"get":               &builtin{fn: bGet},
+		"getinterval":       &builtin{fn: bGetinterval},
+		"gt":                &builtin{fn: bGt},
+		"identmatrix":       &builtin{fn: bIdentmatrix},
+		"idiv":              &builtin{fn: bIdiv},
+		"if":                &builtin{fn: bIf},
+		"ifelse":            &builtin{fn: bIfelse},
+		"index":             &builtin{fn: bIndex},
+		"internaldict":      &builtin{fn: bInternaldict},
+		"ISOLatin1Encoding": isoLatin1Encoding,
+		"known":             &builtin{fn: bKnown},
+		"languagelevel":     Integer(3),
+		"le":                &builtin{fn: bLe},
+		"length":            &builtin{fn: bLength},
+		"ln":                &builtin{fn: bLn},
+		"load":              &builtin{fn: bLoad},
+		"log":               &builtin{fn: bLog},
+		"loop":              &builtin{fn: bLoop},
+		"lt":                &builtin{fn: bLt},
+		"mark":              &builtin{fn: bMark},
+		"matrix":            &builtin{fn: bMatrix},
+		"maxlength":         &builtin{fn: bMaxlength},
+		"mod":               &builtin{fn: bMod},
+		"mul":               &builtin{fn: bMul},
+		"ne":                &builtin{fn: bNe},
+		"neg":               &builtin{fn: bNeg},
+		"noaccess":          &builtin{fn: bNoaccess},
+		"not":               &builtin{fn: bNot},
+		"null":              nil,
+		"or":                &builtin{fn: bOr},
+		"pop":               &builtin{fn: bPop},
+		"print":             &builtin{fn: bPrint},
+		"put":               &builtin{fn: bPut},
+		"putinterval":       &builtin{fn: bPutinterval},
+		"rcheck":            &builtin{fn: bRcheck},
+		"readonly":          &builtin{fn: bReadonly},
+		"readstring":        &builtin{fn: bReadstring},
+		"repeat":            &builtin{fn: bRepeat},
+		"roll":              &builtin{fn: bRoll},
+		"round":             &builtin{fn: bRound},
+		"search":            &builtin{fn: bSearch},
+		"setglobal":         &builtin{fn: bSetglobal},
+		"setpacking":        &builtin{fn: bSetpacking},
+		"sin":               &builtin{fn: bSin},
+		"sqrt":              &builtin{fn: bSqrt},
+		"StandardEncoding":  standardEncoding,
+		"stop":              &builtin{fn: bStop},
+		"store":             &builtin{fn: bStore},
+		"string":            &builtin{fn: bString},
+		"sub":               &builtin{fn: bSub},
+		"true":              Boolean(true),
+		"truncate":          &builtin{fn: bTruncate},
+		"type":              &builtin{fn: bType},
+		"undef":             &builtin{fn: bUndef},
+		"userdict":          userDict,
+		"version":           String("3010"),
+		"wcheck":            &builtin{fn: bWcheck},
+		"where":             &builtin{fn: bWhere},
+		"xcheck":            &builtin{fn: bXcheck},
+		"xor":               &builtin{fn: bXor},
+	}
+	for name, val := range systemDict {
+		if b, ok := val.(*builtin); ok {
+			b.name = string(name)
+		}
 	}
 	systemDict["systemdict"] = systemDict
 
@@ -182,9 +221,9 @@ func bDictEnd(intp *Interpreter) error {
 	}
 	d := make(Dict, size)
 	for i := markPos + 1; i < n; i += 2 {
-		name, ok := intp.Stack[i].(Name)
-		if !ok {
-			return intp.e(eTypecheck, "dict literal: keys must be Name, not %T", intp.Stack[i])
+		name, err := intp.dictKey(intp.Stack[i], ">>")
+		if err != nil {
+			return err
 		}
 		d[name] = intp.Stack[i+1]
 	}
@@ -251,6 +290,40 @@ func bAdd(intp *Interpreter) error {
 	return nil
 }
 
+// aload: array aload any0 … anyn-1 array
+func bAload(intp *Interpreter) error {
+	n := len(intp.Stack)
+	if n < 1 {
+		return intp.e(eStackunderflow, "aload: not enough arguments")
+	}
+	arr := intp.Stack[n-1]
+	elems, ok := arrayElems(arr)
+	if !ok {
+		return intp.e(eTypecheck, "aload: needs an array")
+	}
+	if n+len(elems) > intp.stackLimit() {
+		return intp.e(eStackoverflow, "aload: operand stack overflow")
+	}
+	if err := intp.chargeWork(len(elems)); err != nil {
+		return err
+	}
+	intp.Stack = append(intp.Stack[:n-1], elems...)
+	intp.Stack = append(intp.Stack, arr)
+	return nil
+}
+
+// anchorsearch: string seek anchorsearch post match true
+//
+//	string seek anchorsearch string false
+func bAnchorsearch(intp *Interpreter) error {
+	return intp.search("anchorsearch", func(s, seek []byte) int {
+		if bytes.HasPrefix(s, seek) {
+			return 0
+		}
+		return -1
+	})
+}
+
 func bAnd(intp *Interpreter) error {
 	if len(intp.Stack) < 2 {
 		return intp.e(eStackunderflow, "and: not enough arguments")
@@ -300,6 +373,30 @@ func bArray(intp *Interpreter) error {
 	return nil
 }
 
+// astore: any0 … anyn-1 array astore array
+func bAstore(intp *Interpreter) error {
+	n := len(intp.Stack)
+	if n < 1 {
+		return intp.e(eStackunderflow, "astore: not enough arguments")
+	}
+	arr := intp.Stack[n-1]
+	elems, ok := arrayElems(arr)
+	if !ok {
+		return intp.e(eTypecheck, "astore: needs an array")
+	}
+	if n-1 < len(elems) {
+		return intp.e(eStackunderflow, "astore: not enough arguments")
+	}
+	if err := intp.chargeWork(len(elems)); err != nil {
+		return err
+	}
+	base := n - 1 - len(elems)
+	copy(elems, intp.Stack[base:n-1])
+	clear(intp.Stack[base:])
+	intp.Stack = append(intp.Stack[:base], arr)
+	return nil
+}
+
 func bBegin(intp *Interpreter) error {
 	if len(intp.Stack) < 1 {
 		return intp.e(eStackunderflow, "begin: not enough arguments")
@@ -325,6 +422,16 @@ func bBind(intp *Interpreter) error {
 		return intp.e(eTypecheck, "bind: needs a procedure, not %T", obj)
 	}
 	return intp.bindProc(obj)
+}
+
+// clear: ⊢ any1 … anyn clear ⊢
+func bClear(intp *Interpreter) error {
+	if err := intp.chargeWork(len(intp.Stack)); err != nil {
+		return err
+	}
+	clear(intp.Stack)
+	intp.Stack = intp.Stack[:0]
+	return nil
 }
 
 func bCleartomark(intp *Interpreter) error {
@@ -353,6 +460,46 @@ func bClosefile(intp *Interpreter) error {
 	}
 	intp.Stack = intp.Stack[:len(intp.Stack)-1]
 	f.closed = true
+	return nil
+}
+
+// concatmatrix: matrix1 matrix2 matrix3 concatmatrix matrix3
+func bConcatmatrix(intp *Interpreter) error {
+	n := len(intp.Stack)
+	if n < 3 {
+		return intp.e(eStackunderflow, "concatmatrix: not enough arguments")
+	}
+	a, err := intp.matrixOperand("concatmatrix", intp.Stack[n-3])
+	if err != nil {
+		return err
+	}
+	b, err := intp.matrixOperand("concatmatrix", intp.Stack[n-2])
+	if err != nil {
+		return err
+	}
+	m, ok := intp.Stack[n-1].(Array)
+	if !ok {
+		return intp.e(eTypecheck, "concatmatrix: needs an array")
+	} else if len(m) != 6 {
+		return intp.e(eRangecheck, "concatmatrix: needs 6 elements, not %d", len(m))
+	}
+	res := [6]float64{
+		a[0]*b[0] + a[1]*b[2],
+		a[0]*b[1] + a[1]*b[3],
+		a[2]*b[0] + a[3]*b[2],
+		a[2]*b[1] + a[3]*b[3],
+		a[4]*b[0] + a[5]*b[2] + b[4],
+		a[4]*b[1] + a[5]*b[3] + b[5],
+	}
+	for _, x := range res {
+		if math.IsInf(x, 0) || math.IsNaN(x) {
+			return intp.e(eUndefinedresult, "concatmatrix: undefined result")
+		}
+	}
+	for i, x := range res {
+		m[i] = Real(x)
+	}
+	intp.Stack = append(intp.Stack[:n-3], m)
 	return nil
 }
 
@@ -431,6 +578,30 @@ func bCount(intp *Interpreter) error {
 	return nil
 }
 
+// countdictstack: – countdictstack int
+func bCountdictstack(intp *Interpreter) error {
+	intp.Stack = append(intp.Stack, Integer(len(intp.DictStack)))
+	return nil
+}
+
+// counttomark: mark obj1 … objn counttomark mark obj1 … objn n
+func bCounttomark(intp *Interpreter) error {
+	n := len(intp.Stack)
+	for i := n - 1; i >= 0; i-- {
+		if intp.Stack[i] == theMark {
+			if err := intp.chargeWork(n - i); err != nil {
+				return err
+			}
+			intp.Stack = append(intp.Stack, Integer(n-1-i))
+			return nil
+		}
+	}
+	if err := intp.chargeWork(n); err != nil {
+		return err
+	}
+	return intp.e(eUnmatchedmark, "counttomark: no mark")
+}
+
 func bCurrentdict(intp *Interpreter) error {
 	intp.Stack = append(intp.Stack, intp.DictStack[len(intp.DictStack)-1])
 	return nil
@@ -439,6 +610,123 @@ func bCurrentdict(intp *Interpreter) error {
 func bCurrentfile(intp *Interpreter) error {
 	intp.Stack = append(intp.Stack, intp.files[len(intp.files)-1])
 	return nil
+}
+
+// currentglobal: – currentglobal bool
+func bCurrentglobal(intp *Interpreter) error {
+	intp.Stack = append(intp.Stack, Boolean(intp.global))
+	return nil
+}
+
+// currentpacking: – currentpacking bool
+func bCurrentpacking(intp *Interpreter) error {
+	intp.Stack = append(intp.Stack, Boolean(intp.packing))
+	return nil
+}
+
+// cvlit: any cvlit any
+func bCvlit(intp *Interpreter) error {
+	n := len(intp.Stack)
+	if n < 1 {
+		return intp.e(eStackunderflow, "cvlit: not enough arguments")
+	}
+	switch o := intp.Stack[n-1].(type) {
+	case Procedure:
+		// the array shares the value of the procedure
+		intp.Stack[n-1] = Array(o)
+	case Operator:
+		intp.Stack[n-1] = Name(o)
+	}
+	return nil
+}
+
+// cvn: string cvn name
+func bCvn(intp *Interpreter) error {
+	n := len(intp.Stack)
+	if n < 1 {
+		return intp.e(eStackunderflow, "cvn: not enough arguments")
+	}
+	s, ok := intp.Stack[n-1].(String)
+	if !ok {
+		return intp.e(eTypecheck, "cvn: needs a string")
+	}
+	if err := intp.chargeWork(len(s)); err != nil {
+		return err
+	}
+	if err := intp.charge(len(s)); err != nil {
+		return err
+	}
+	intp.Stack[n-1] = Name(s)
+	return nil
+}
+
+// cvrs: num radix string cvrs substring
+func bCvrs(intp *Interpreter) error {
+	n := len(intp.Stack)
+	if n < 3 {
+		return intp.e(eStackunderflow, "cvrs: not enough arguments")
+	}
+	num := intp.Stack[n-3]
+	radix, ok1 := intp.Stack[n-2].(Integer)
+	buf, ok2 := intp.Stack[n-1].(String)
+	if !isNumber(num) || !ok1 || !ok2 {
+		return intp.e(eTypecheck, "cvrs: invalid arguments")
+	}
+	if radix < 2 || radix > 36 {
+		return intp.e(eRangecheck, "cvrs: invalid radix %d", radix)
+	}
+
+	var text []byte
+	switch num := num.(type) {
+	case Integer:
+		if radix == 10 {
+			text = strconv.AppendInt(nil, int64(num), 10)
+		} else {
+			text = formatRadix(num, int(radix))
+		}
+	case Real:
+		if radix == 10 {
+			text = formatReal(num)
+			break
+		}
+		truncated := math.Trunc(float64(num))
+		// The limits are powers of two and so exact as float64 values.
+		if !(truncated >= math.MinInt && truncated < -math.MinInt) {
+			return intp.e(eRangecheck, "cvrs: number too large to convert to integer")
+		}
+		text = formatRadix(Integer(truncated), int(radix))
+	}
+	return intp.storeText("cvrs", 3, text, buf)
+}
+
+// cvs: any string cvs substring
+func bCvs(intp *Interpreter) error {
+	n := len(intp.Stack)
+	if n < 2 {
+		return intp.e(eStackunderflow, "cvs: not enough arguments")
+	}
+	buf, ok := intp.Stack[n-1].(String)
+	if !ok {
+		return intp.e(eTypecheck, "cvs: needs a string")
+	}
+	text := []byte("--nostringval--")
+	switch o := intp.Stack[n-2].(type) {
+	case Integer:
+		text = strconv.AppendInt(nil, int64(o), 10)
+	case Real:
+		text = formatReal(o)
+	case Boolean:
+		text = strconv.AppendBool(nil, bool(o))
+	case String:
+		text = o
+	case Name:
+		text = []byte(o)
+	case Operator:
+		text = []byte(o)
+	case *builtin:
+		text = []byte(o.name)
+	}
+	return intp.storeText("cvs", 2, text, buf)
 }
 
 func bCvx(intp *Interpreter) error {
@@ -460,9 +748,9 @@ func bDef(intp *Interpreter) error {
 	if len(intp.Stack) < 2 {
 		return intp.e(eStackunderflow, "def: not enough arguments")
 	}
-	name, ok := intp.Stack[len(intp.Stack)-2].(Name)
-	if !ok {
-		return intp.e(eTypecheck, "def: needs name, not %T", intp.Stack[len(intp.Stack)-2])
+	name, err := intp.dictKey(intp.Stack[len(intp.Stack)-2], "def")
+	if err != nil {
+		return err
 	}
 	intp.DictStack[len(intp.DictStack)-1][name] = intp.Stack[len(intp.Stack)-1]
 	intp.Stack = intp.Stack[:len(intp.Stack)-2]
@@ -473,9 +761,9 @@ func bDefinefont(intp *Interpreter) error {
 	if len(intp.Stack) < 2 {
 		return intp.e(eStackunderflow, "definefont: not enough arguments")
 	}
-	name, ok := intp.Stack[len(intp.Stack)-2].(Name)
-	if !ok {
-		return intp.e(eTypecheck, "definefont: needs name, not %T", intp.Stack[len(intp.Stack)-2])
+	name, err := intp.dictKey(intp.Stack[len(intp.Stack)-2], "definefont")
+	if err != nil {
+		return err
 	}
 	font, ok := intp.Stack[len(intp.Stack)-1].(Dict)
 	if !ok {
@@ -554,23 +842,6 @@ func bDup(intp *Interpreter) error {
 	return nil
 }
 
-func bExec(intp *Interpreter) error {
-	if len(intp.Stack) < 1 {
-		return intp.e(eStackunderflow, "exec: not enough arguments")
-	}
-	obj := intp.Stack[len(intp.Stack)-1]
-	intp.Stack = intp.Stack[:len(intp.Stack)-1]
-
-	switch obj := obj.(type) {
-	case *builtin:
-		return obj.fn(intp)
-	case Procedure:
-		return intp.executeOne(obj, true)
-	default:
-		return intp.e(eTypecheck, "exec: not implemented for %T", obj)
-	}
-}
-
 func bEnd(intp *Interpreter) error {
 	if len(intp.DictStack) <= 2 {
 		return intp.e(eDictstackunderflow, "end: dictionary stack is empty")
@@ -598,6 +869,17 @@ func bExch(intp *Interpreter) error {
 	}
 	intp.Stack[len(intp.Stack)-1], intp.Stack[len(intp.Stack)-2] = intp.Stack[len(intp.Stack)-2], intp.Stack[len(intp.Stack)-1]
 	return nil
+}
+
+func bExec(intp *Interpreter) error {
+	if len(intp.Stack) < 1 {
+		return intp.e(eStackunderflow, "exec: not enough arguments")
+	}
+	obj := intp.Stack[len(intp.Stack)-1]
+	intp.Stack = intp.Stack[:len(intp.Stack)-1]
+
+	// a literal object is pushed back
+	return intp.executeOne(obj, true)
 }
 
 func bExecuteonly(intp *Interpreter) error {
@@ -662,28 +944,41 @@ func bFindresource(intp *Interpreter) error {
 	return nil
 }
 
+// flush: – flush –
+//
+// There is no standard output, so there is nothing to do.
+func bFlush(intp *Interpreter) error {
+	return nil
+}
+
 func bFor(intp *Interpreter) error {
-	if len(intp.Stack) < 4 {
+	n := len(intp.Stack)
+	if n < 4 {
 		return intp.e(eStackunderflow, "for: not enough arguments")
 	}
-	// TODO(voss): the spec also allows Real values here
-	initial, ok := intp.Stack[len(intp.Stack)-4].(Integer)
-	if !ok {
-		return intp.e(eTypecheck, "for: invalid start")
+	initial, increment, limit := intp.Stack[n-4], intp.Stack[n-3], intp.Stack[n-2]
+	if !isNumber(initial) || !isNumber(increment) || !isNumber(limit) {
+		return intp.e(eTypecheck, "for: needs numbers")
 	}
-	increment, ok := intp.Stack[len(intp.Stack)-3].(Integer)
+	proc, ok := intp.Stack[n-1].(Procedure)
 	if !ok {
-		return intp.e(eTypecheck, "for: invalid increment")
+		return intp.e(eTypecheck, "for: needs a procedure")
 	}
-	limit, ok := intp.Stack[len(intp.Stack)-2].(Integer)
-	if !ok {
-		return intp.e(eTypecheck, "for: invalid limit")
-	}
-	proc := intp.Stack[len(intp.Stack)-1]
-	intp.Stack = intp.Stack[:len(intp.Stack)-4]
+	intp.Stack = intp.Stack[:n-4]
+
+	// The control variable is an integer if initial and increment both
+	// are, and a real otherwise.
+	_, initialIsInt := initial.(Integer)
+	inc, isInt := increment.(Integer)
+	isInt = isInt && initialIsInt
 	val := initial
+	if !isInt {
+		val = toReal(initial)
+	}
+
+	direction, _ := compareNumbers(increment, Integer(0))
 	for {
-		if increment > 0 && val > limit || increment < 0 && val < limit {
+		if c, _ := compareNumbers(val, limit); c != 0 && c == direction {
 			break
 		}
 		intp.Stack = append(intp.Stack, val)
@@ -693,7 +988,18 @@ func bFor(intp *Interpreter) error {
 		} else if err != nil {
 			return err
 		}
-		val += increment
+
+		if isInt {
+			v := val.(Integer)
+			next := v + inc
+			if (inc > 0) != (next > v) && inc != 0 {
+				// the next value is beyond every integer limit
+				break
+			}
+			val = next
+		} else {
+			val = val.(Real) + toReal(increment)
+		}
 	}
 	return nil
 }
@@ -774,9 +1080,9 @@ func bGet(intp *Interpreter) error {
 		}
 		intp.Stack = append(intp.Stack, obj[index])
 	case Dict:
-		name, ok := sel.(Name)
-		if !ok {
-			return intp.e(eTypecheck, "get: invalid dict key")
+		name, err := intp.dictKey(sel, "get")
+		if err != nil {
+			return err
 		}
 		val, ok := obj[name]
 		if !ok {
@@ -836,6 +1142,24 @@ func bGetinterval(intp *Interpreter) error {
 	return nil
 }
 
+// identmatrix: matrix identmatrix matrix
+func bIdentmatrix(intp *Interpreter) error {
+	n := len(intp.Stack)
+	if n < 1 {
+		return intp.e(eStackunderflow, "identmatrix: not enough arguments")
+	}
+	m, ok := intp.Stack[n-1].(Array)
+	if !ok {
+		return intp.e(eTypecheck, "identmatrix: needs an array")
+	} else if len(m) != 6 {
+		return intp.e(eRangecheck, "identmatrix: needs 6 elements, not %d", len(m))
+	}
+	for i, x := range [6]Real{1, 0, 0, 1, 0, 0} {
+		m[i] = x
+	}
+	return nil
+}
+
 func bIf(intp *Interpreter) error {
 	if len(intp.Stack) < 2 {
 		return intp.e(eStackunderflow, "if: not enough arguments")
@@ -844,7 +1168,10 @@ func bIf(intp *Interpreter) error {
 	if !ok {
 		return intp.e(eTypecheck, "if: invalid condition")
 	}
-	proc := intp.Stack[len(intp.Stack)-1]
+	proc, ok := intp.Stack[len(intp.Stack)-1].(Procedure)
+	if !ok {
+		return intp.e(eTypecheck, "if: needs a procedure")
+	}
 	intp.Stack = intp.Stack[:len(intp.Stack)-2]
 	if cond {
 		return intp.executeOne(proc, true)
@@ -860,8 +1187,11 @@ func bIfelse(intp *Interpreter) error {
 	if !ok {
 		return intp.e(eTypecheck, "ifelse: invalid condition")
 	}
-	proc1 := intp.Stack[len(intp.Stack)-2]
-	proc2 := intp.Stack[len(intp.Stack)-1]
+	proc1, ok1 := intp.Stack[len(intp.Stack)-2].(Procedure)
+	proc2, ok2 := intp.Stack[len(intp.Stack)-1].(Procedure)
+	if !ok1 || !ok2 {
+		return intp.e(eTypecheck, "ifelse: needs procedures")
+	}
 	intp.Stack = intp.Stack[:len(intp.Stack)-3]
 	if cond {
 		return intp.executeOne(proc1, true)
@@ -909,9 +1239,9 @@ func bKnown(intp *Interpreter) error {
 	if !ok {
 		return intp.e(eTypecheck, "known: invalid argument")
 	}
-	name, ok := intp.Stack[len(intp.Stack)-1].(Name)
-	if !ok {
-		return intp.e(eTypecheck, "known: invalid argument")
+	name, err := intp.dictKey(intp.Stack[len(intp.Stack)-1], "known")
+	if err != nil {
+		return err
 	}
 	intp.Stack = intp.Stack[:len(intp.Stack)-2]
 	_, ok = d[name]
@@ -950,9 +1280,9 @@ func bLoad(intp *Interpreter) error {
 	if len(intp.Stack) < 1 {
 		return intp.e(eStackunderflow, "load: not enough arguments")
 	}
-	name, ok := intp.Stack[len(intp.Stack)-1].(Name)
-	if !ok {
-		return intp.e(eTypecheck, "load: invalid argument")
+	name, err := intp.dictKey(intp.Stack[len(intp.Stack)-1], "load")
+	if err != nil {
+		return err
 	}
 	intp.Stack = intp.Stack[:len(intp.Stack)-1]
 	val, err := intp.loadName(name)
@@ -967,7 +1297,10 @@ func bLoop(intp *Interpreter) error {
 	if len(intp.Stack) < 1 {
 		return intp.e(eStackunderflow, "loop: not enough arguments")
 	}
-	proc := intp.Stack[len(intp.Stack)-1]
+	proc, ok := intp.Stack[len(intp.Stack)-1].(Procedure)
+	if !ok {
+		return intp.e(eTypecheck, "loop: needs a procedure")
+	}
 	intp.Stack = intp.Stack[:len(intp.Stack)-1]
 	for {
 		err := intp.executeOne(proc, true)
@@ -985,8 +1318,10 @@ func bMark(intp *Interpreter) error {
 }
 
 func bMatrix(intp *Interpreter) error {
-	m := Array{Integer(1), Integer(0), Integer(0), Integer(1), Integer(0), Integer(0)}
-	intp.Stack = append(intp.Stack, m)
+	if err := intp.charge(6 * objectSize); err != nil {
+		return err
+	}
+	intp.Stack = append(intp.Stack, Array{Real(1), Real(0), Real(0), Real(1), Real(0), Real(0)})
 	return nil
 }
 
@@ -1102,6 +1437,34 @@ func bPop(intp *Interpreter) error {
 	return nil
 }
 
+// print: string print –
+//
+// There is no standard output, so the string is discarded.
+func bPrint(intp *Interpreter) error {
+	n := len(intp.Stack)
+	if n < 1 {
+		return intp.e(eStackunderflow, "print: not enough arguments")
+	}
+	if _, ok := intp.Stack[n-1].(String); !ok {
+		return intp.e(eTypecheck, "print: needs a string")
+	}
+	intp.Stack = intp.Stack[:n-1]
+	return nil
+}
+
+// bPrintObject implements the operators = and ==: any = –
+//
+// There is no standard output, so the object is discarded.
+func bPrintObject(intp *Interpreter) error {
+	n := len(intp.Stack)
+	if n < 1 {
+		return intp.e(eStackunderflow, "=: not enough arguments")
+	}
+	intp.Stack[n-1] = nil
+	intp.Stack = intp.Stack[:n-1]
+	return nil
+}
+
 func bPut(intp *Interpreter) error {
 	if len(intp.Stack) < 3 {
 		return intp.e(eStackunderflow, "put: not enough arguments")
@@ -1130,9 +1493,9 @@ func bPut(intp *Interpreter) error {
 		}
 		obj[index] = value
 	case Dict:
-		key, ok := sel.(Name)
-		if !ok {
-			return intp.e(eTypecheck, "put: invalid dict key")
+		key, err := intp.dictKey(sel, "put")
+		if err != nil {
+			return err
 		}
 		obj[key] = value
 	case String:
@@ -1197,6 +1560,11 @@ func bPutinterval(intp *Interpreter) error {
 	}
 	intp.Stack = intp.Stack[:len(intp.Stack)-3]
 	return nil
+}
+
+// rcheck: array|dict|file|string rcheck bool
+func bRcheck(intp *Interpreter) error {
+	return intp.accessCheck("rcheck", true)
 }
 
 func bReadonly(intp *Interpreter) error {
@@ -1300,8 +1668,47 @@ func bRoll(intp *Interpreter) error {
 	return nil
 }
 
+// search: string seek search post match pre true
+//
+//	string seek search string false
+func bSearch(intp *Interpreter) error {
+	return intp.search("search", bytes.Index)
+}
+
+// setglobal: bool setglobal –
+func bSetglobal(intp *Interpreter) error {
+	return intp.popBoolean("setglobal", &intp.global)
+}
+
+// setpacking: bool setpacking –
+func bSetpacking(intp *Interpreter) error {
+	return intp.popBoolean("setpacking", &intp.packing)
+}
+
 func bStop(intp *Interpreter) error {
 	return errStop
+}
+
+// store: key value store –
+func bStore(intp *Interpreter) error {
+	n := len(intp.Stack)
+	if n < 2 {
+		return intp.e(eStackunderflow, "store: not enough arguments")
+	}
+	key, err := intp.dictKey(intp.Stack[n-2], "store")
+	if err != nil {
+		return err
+	}
+	target := intp.DictStack[len(intp.DictStack)-1]
+	for _, d := range slices.Backward(intp.DictStack) {
+		if _, ok := d[key]; ok {
+			target = d
+			break
+		}
+	}
+	target[key] = intp.Stack[n-1]
+	intp.Stack = intp.Stack[:n-2]
+	return nil
 }
 
 func bString(intp *Interpreter) error {
@@ -1399,13 +1806,38 @@ func bType(intp *Interpreter) error {
 	return nil
 }
 
+// undef: dict key undef –
+func bUndef(intp *Interpreter) error {
+	n := len(intp.Stack)
+	if n < 2 {
+		return intp.e(eStackunderflow, "undef: not enough arguments")
+	}
+	d, ok := intp.Stack[n-2].(Dict)
+	if !ok {
+		return intp.e(eTypecheck, "undef: needs a dictionary")
+	}
+	key, err := intp.dictKey(intp.Stack[n-1], "undef")
+	if err != nil {
+		return err
+	}
+	delete(d, key)
+	intp.Stack = intp.Stack[:n-2]
+	return nil
+}
+
+// wcheck: array|dict|file|string wcheck bool
+func bWcheck(intp *Interpreter) error {
+	// all files are input files
+	return intp.accessCheck("wcheck", false)
+}
+
 func bWhere(intp *Interpreter) error {
 	if len(intp.Stack) < 1 {
 		return intp.e(eStackunderflow, "where: not enough arguments")
 	}
-	key, ok := intp.Stack[len(intp.Stack)-1].(Name)
-	if !ok {
-		return intp.e(eTypecheck, "where: invalid argument")
+	key, err := intp.dictKey(intp.Stack[len(intp.Stack)-1], "where")
+	if err != nil {
+		return err
 	}
 	intp.Stack = intp.Stack[:len(intp.Stack)-1]
 	for _, d := range slices.Backward(intp.DictStack) {
@@ -1415,6 +1847,21 @@ func bWhere(intp *Interpreter) error {
 		}
 	}
 	intp.Stack = append(intp.Stack, Boolean(false))
+	return nil
+}
+
+// xcheck: any xcheck bool
+func bXcheck(intp *Interpreter) error {
+	n := len(intp.Stack)
+	if n < 1 {
+		return intp.e(eStackunderflow, "xcheck: not enough arguments")
+	}
+	var res bool
+	switch intp.Stack[n-1].(type) {
+	case Procedure, Operator, *builtin:
+		res = true
+	}
+	intp.Stack[n-1] = Boolean(res)
 	return nil
 }
 
@@ -2268,10 +2715,160 @@ func bXor(intp *Interpreter) error {
 }
 
 // Helper functions
+
+// toReal returns the value of a number as a real.
+func toReal(obj Object) Real {
+	if i, ok := obj.(Integer); ok {
+		return Real(i)
+	}
+	r, _ := obj.(Real)
+	return r
+}
+
+// dictKey returns the dictionary key which o stands for, for the operator
+// op.  A string is converted to a name, and the literal/executable attribute
+// of a name is ignored.
+func (intp *Interpreter) dictKey(o Object, op string) (Name, error) {
+	switch o := o.(type) {
+	case Name:
+		return o, nil
+	case Operator:
+		return Name(o), nil
+	case String:
+		if err := intp.chargeWork(len(o)); err != nil {
+			return "", err
+		}
+		return Name(o), nil
+	}
+	return "", intp.e(eTypecheck, "%s: invalid dictionary key %T", op, o)
+}
+
 func isNumber(obj Object) bool {
 	_, isInt := obj.(Integer)
 	_, isReal := obj.(Real)
 	return isInt || isReal
+}
+
+// accessCheck implements rcheck and wcheck.  Access attributes are not
+// enforced, so every composite object can be read and written.
+func (intp *Interpreter) accessCheck(op string, fileAccess bool) error {
+	n := len(intp.Stack)
+	if n < 1 {
+		return intp.e(eStackunderflow, "%s: not enough arguments", op)
+	}
+	res := true
+	switch intp.Stack[n-1].(type) {
+	case Array, Procedure, Dict, String:
+		// pass
+	case *file:
+		res = fileAccess
+	default:
+		return intp.e(eTypecheck, "%s: invalid argument type %T", op, intp.Stack[n-1])
+	}
+	intp.Stack[n-1] = Boolean(res)
+	return nil
+}
+
+// storeText implements the common tail of cvs and cvrs: the nargs topmost
+// operands are replaced by the initial part of buf, overwritten with text.
+func (intp *Interpreter) storeText(op string, nargs int, text []byte, buf String) error {
+	if len(text) > len(buf) {
+		return intp.e(eRangecheck, "%s: string too short", op)
+	}
+	if err := intp.chargeWork(len(text)); err != nil {
+		return err
+	}
+	// a string may be converted into itself
+	copy(buf, text)
+	base := len(intp.Stack) - nargs
+	clear(intp.Stack[base:])
+	intp.Stack = append(intp.Stack[:base], buf[:len(text)])
+	return nil
+}
+
+// formatReal returns the text of a real number.  The text always has
+// a decimal point or an exponent, so that it reads back as a real.
+func formatReal(r Real) []byte {
+	text := strconv.AppendFloat(nil, float64(r), 'g', -1, 64)
+	if !bytes.ContainsAny(text, ".e") {
+		text = append(text, '.', '0')
+	}
+	return text
+}
+
+// formatRadix returns the digits of an integer for a radix other than 10.
+// A negative number is shown as its two's complement, in 32 bits where the
+// number fits.
+func formatRadix(i Integer, radix int) []byte {
+	u := uint64(i)
+	if i < 0 && i >= math.MinInt32 {
+		u = uint64(uint32(i))
+	}
+	return bytes.ToUpper(strconv.AppendUint(nil, u, radix))
+}
+
+// search implements search and anchorsearch.  The function find returns the
+// position of the match, or -1.  The results share the value of the string
+// searched.
+func (intp *Interpreter) search(op string, find func(s, seek []byte) int) error {
+	n := len(intp.Stack)
+	if n < 2 {
+		return intp.e(eStackunderflow, "%s: not enough arguments", op)
+	}
+	s, ok1 := intp.Stack[n-2].(String)
+	seek, ok2 := intp.Stack[n-1].(String)
+	if !ok1 || !ok2 {
+		return intp.e(eTypecheck, "%s: needs strings", op)
+	}
+	if err := intp.chargeWork(len(s) + len(seek)); err != nil {
+		return err
+	}
+	pos := find(s, seek)
+	if pos < 0 {
+		intp.Stack[n-1] = Boolean(false)
+		return nil
+	}
+	end := pos + len(seek)
+	post, match, pre := s[end:], s[pos:end], s[:pos]
+	intp.Stack = intp.Stack[:n-2]
+	intp.Stack = append(intp.Stack, post, match)
+	if op == "search" {
+		intp.Stack = append(intp.Stack, pre)
+	}
+	intp.Stack = append(intp.Stack, Boolean(true))
+	return nil
+}
+
+// popBoolean removes a boolean operand and stores it in dst.
+func (intp *Interpreter) popBoolean(op string, dst *bool) error {
+	n := len(intp.Stack)
+	if n < 1 {
+		return intp.e(eStackunderflow, "%s: not enough arguments", op)
+	}
+	b, ok := intp.Stack[n-1].(Boolean)
+	if !ok {
+		return intp.e(eTypecheck, "%s: needs a boolean", op)
+	}
+	*dst = bool(b)
+	intp.Stack = intp.Stack[:n-1]
+	return nil
+}
+
+// matrixOperand returns the six numbers of a matrix operand.
+func (intp *Interpreter) matrixOperand(op string, o Object) (m [6]float64, err error) {
+	elems, ok := arrayElems(o)
+	if !ok {
+		return m, intp.e(eTypecheck, "%s: needs an array", op)
+	} else if len(elems) != 6 {
+		return m, intp.e(eRangecheck, "%s: needs 6 elements, not %d", op, len(elems))
+	}
+	for i, x := range elems {
+		if !isNumber(x) {
+			return m, intp.e(eTypecheck, "%s: needs numbers", op)
+		}
+		m[i] = float64(toReal(x))
+	}
+	return m, nil
 }
 
 var errExit = errors.New("exit")

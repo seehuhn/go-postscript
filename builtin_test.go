@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"testing"
 
@@ -2025,5 +2026,407 @@ func TestEexecNested(t *testing.T) {
 	code := "currentfile eexec\n" + eexecHex("currentfile eexec\n")
 	if _, err := run(code, 0); err == nil {
 		t.Error("nested eexec: no error")
+	}
+}
+
+// errType returns the PostScript error name of err, or "" if err is not
+// a PostScript error.
+func errType(err error) Name {
+	if e, ok := errors.AsType[*postScriptError](err); ok {
+		return e.tp
+	}
+	return ""
+}
+
+// stackTest runs code and checks the resulting operand stack, or the type
+// of the resulting error.
+type stackTest struct {
+	code string
+	want []Object
+	err  Name
+}
+
+func runStackTests(t *testing.T, tests []stackTest) {
+	t.Helper()
+	for _, tc := range tests {
+		intp := NewInterpreter()
+		err := intp.ExecuteString(tc.code)
+		if tc.err != "" {
+			if got := errType(err); got != tc.err {
+				t.Errorf("%q: got error %v, want %s", tc.code, err, tc.err)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("%q: %v", tc.code, err)
+			continue
+		}
+		if d := cmp.Diff(tc.want, intp.Stack, cmpopts.EquateEmpty()); d != "" {
+			t.Errorf("%q: wrong stack (-want +got):\n%s", tc.code, d)
+		}
+	}
+}
+
+func TestStringDictKeys(t *testing.T) {
+	runStackTests(t, []stackTest{
+		{code: "(a) 1 def a", want: []Object{Integer(1)}},
+		{code: "/a cvx 1 def a", want: []Object{Integer(1)}},
+		{code: "1 dict dup (k) 5 put /k get", want: []Object{Integer(5)}},
+		{code: "<< /a 1 >> (a) get", want: []Object{Integer(1)}},
+		{code: "<< (a) 1 >> /a get", want: []Object{Integer(1)}},
+		{code: "<< /a 1 >> (a) known", want: []Object{Boolean(true)}},
+		{code: "<< /a 1 >> (b) known", want: []Object{Boolean(false)}},
+		{code: "/a 7 def (a) load", want: []Object{Integer(7)}},
+		{code: "/a 7 def (a) where exch pop", want: []Object{Boolean(true)}},
+		{code: "(zz) where", want: []Object{Boolean(false)}},
+		{code: "(F) 1 dict definefont pop FontDirectory /F known", want: []Object{Boolean(true)}},
+		{code: "1 2 def", err: eTypecheck},
+		{code: "1 dict 1 2 put", err: eTypecheck},
+		{code: "<< 1 2 >>", err: eTypecheck},
+		{code: "1 dict [] known", err: eTypecheck},
+	})
+}
+
+func TestCmdExec(t *testing.T) {
+	runStackTests(t, []stackTest{
+		{code: "1 exec", want: []Object{Integer(1)}},
+		{code: "(abc) exec", want: []Object{String("abc")}},
+		{code: "/a exec", want: []Object{Name("a")}},
+		{code: "[1 2] exec", want: []Object{Array{Integer(1), Integer(2)}}},
+		{code: "1 2 /add cvx exec", want: []Object{Integer(3)}},
+		{code: "1 2 /add load exec", want: []Object{Integer(3)}},
+		{code: "/p {7} def /p cvx exec", want: []Object{Integer(7)}},
+		{code: "{1 2 add} exec", want: []Object{Integer(3)}},
+		{code: "/zz cvx exec", err: eUndefined},
+		{code: "1 0 /div load exec", err: eUndefinedresult},
+		{code: "exec", err: eStackunderflow},
+	})
+}
+
+func TestProcedureOperands(t *testing.T) {
+	runStackTests(t, []stackTest{
+		{code: "true 5 if", err: eTypecheck},
+		{code: "false 5 if", err: eTypecheck},
+		{code: "true /add if", err: eTypecheck},
+		{code: "true {1} 2 ifelse", err: eTypecheck},
+		{code: "true 1 {2} ifelse", err: eTypecheck},
+		{code: "5 loop", err: eTypecheck},
+		{code: "0 1 2 5 for", err: eTypecheck},
+		{code: "true {1} if", want: []Object{Integer(1)}},
+		{code: "{exit} loop", want: nil},
+	})
+}
+
+func TestCmdForReal(t *testing.T) {
+	runStackTests(t, []stackTest{
+		{code: "0 0.5 1 {} for", want: []Object{Real(0), Real(0.5), Real(1)}},
+		{code: "0.0 1 2 {} for", want: []Object{Real(0), Real(1), Real(2)}},
+		{code: "1 1 2.5 {} for", want: []Object{Integer(1), Integer(2)}},
+		{code: "3 -1 1.5 {} for", want: []Object{Integer(3), Integer(2)}},
+		{code: "1 -0.5 0 {} for", want: []Object{Real(1), Real(0.5), Real(0)}},
+		{code: "3 1 1 {} for", want: nil},
+		{code: "1 -1 3 {} for", want: nil},
+		{code: "0 1 3 {dup 1 eq {exit} if} for", want: []Object{Integer(0), Integer(1)}},
+		{code: "(a) 1 2 {} for", err: eTypecheck},
+		{code: "0 (a) 2 {} for", err: eTypecheck},
+		{code: "0 1 (a) {} for", err: eTypecheck},
+	})
+}
+
+// TestCmdForOverflow checks that the loop ends when the control variable
+// leaves the range of integers.
+func TestCmdForOverflow(t *testing.T) {
+	for _, tc := range []struct {
+		initial, increment, limit Integer
+		want                      int
+	}{
+		{math.MaxInt - 2, 2, math.MaxInt, 2},
+		{math.MinInt + 2, -2, math.MinInt, 2},
+	} {
+		intp := NewInterpreter()
+		intp.MaxOps = 1000
+		intp.Stack = []Object{tc.initial, tc.increment, tc.limit}
+		err := intp.ExecuteString("{} for")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(intp.Stack) != tc.want {
+			t.Errorf("got %d values, want %d", len(intp.Stack), tc.want)
+		}
+	}
+}
+
+func TestStackOperators(t *testing.T) {
+	arr := Array{Integer(1), Integer(2), Integer(3)}
+	runStackTests(t, []stackTest{
+		{code: "1 2 3 clear", want: nil},
+		{code: "clear", want: nil},
+		{code: "mark 1 2 counttomark", want: []Object{theMark, Integer(1), Integer(2), Integer(2)}},
+		{code: "mark counttomark", want: []Object{theMark, Integer(0)}},
+		{code: "1 2 counttomark", err: eUnmatchedmark},
+		{code: "[1 2 3] aload", want: []Object{Integer(1), Integer(2), Integer(3), arr}},
+		{code: "{1 2 3} aload pop", want: []Object{Integer(1), Integer(2), Integer(3)}},
+		{code: "[] aload", want: []Object{Array{}}},
+		{code: "1 aload", err: eTypecheck},
+		{code: "aload", err: eStackunderflow},
+		{code: "600 array aload", err: eStackoverflow},
+		{code: "0 1 2 3 3 array astore", want: []Object{Integer(0), arr}},
+		{code: "0 array astore", want: []Object{Array{}}},
+		{code: "1 2 3 array astore", err: eStackunderflow},
+		{code: "1 2 3 astore", err: eTypecheck},
+		{code: "astore", err: eStackunderflow},
+		{code: "countdictstack", want: []Object{Integer(2)}},
+		{code: "1 dict begin countdictstack end", want: []Object{Integer(3)}},
+	})
+}
+
+// TestCmdAstoreShared checks that astore fills the array it is given.
+func TestCmdAstoreShared(t *testing.T) {
+	runStackTests(t, []stackTest{
+		{code: "/a 2 array def 5 6 a astore pop a 1 get", want: []Object{Integer(6)}},
+	})
+}
+
+func TestCmdStoreUndef(t *testing.T) {
+	runStackTests(t, []stackTest{
+		{code: "/x 1 def /x 2 store x", want: []Object{Integer(2)}},
+		{code: "/x 1 def 1 dict begin /x 2 store end x", want: []Object{Integer(2)}},
+		{code: "1 dict begin /y 2 store currentdict /y known end", want: []Object{Boolean(true)}},
+		{code: "1 dict begin /y 2 store end userdict /y known", want: []Object{Boolean(false)}},
+		{code: "(x) 3 store x", want: []Object{Integer(3)}},
+		{code: "1 2 store", err: eTypecheck},
+		{code: "/x store", err: eStackunderflow},
+		{code: "<< /a 1 >> dup /a undef /a known", want: []Object{Boolean(false)}},
+		{code: "<< /a 1 >> dup (a) undef length", want: []Object{Integer(0)}},
+		{code: "<< /a 1 >> /b undef", want: nil},
+		{code: "1 /a undef", err: eTypecheck},
+		{code: "1 dict 1 undef", err: eTypecheck},
+		{code: "/a undef", err: eStackunderflow},
+	})
+}
+
+func TestConversionOperators(t *testing.T) {
+	runStackTests(t, []stackTest{
+		{code: "(abc) cvn", want: []Object{Name("abc")}},
+		{code: "() cvn", want: []Object{Name("")}},
+		{code: "/a cvn", err: eTypecheck},
+		{code: "cvn", err: eStackunderflow},
+
+		{code: "/abc cvx cvlit", want: []Object{Name("abc")}},
+		{code: "{1 2} cvlit", want: []Object{Array{Integer(1), Integer(2)}}},
+		{code: "5 cvlit", want: []Object{Integer(5)}},
+		{code: "cvlit", err: eStackunderflow},
+
+		{code: "{1} xcheck [1] xcheck", want: []Object{Boolean(true), Boolean(false)}},
+		{code: "/a xcheck /a cvx xcheck", want: []Object{Boolean(false), Boolean(true)}},
+		{code: "/add load xcheck 1 xcheck", want: []Object{Boolean(true), Boolean(false)}},
+		{code: "xcheck", err: eStackunderflow},
+
+		{code: "(a) rcheck [1] rcheck {1} rcheck 1 dict rcheck currentfile rcheck",
+			want: []Object{Boolean(true), Boolean(true), Boolean(true), Boolean(true), Boolean(true)}},
+		{code: "(a) wcheck [1] wcheck 1 dict wcheck currentfile wcheck",
+			want: []Object{Boolean(true), Boolean(true), Boolean(true), Boolean(false)}},
+		{code: "1 rcheck", err: eTypecheck},
+		{code: "/a wcheck", err: eTypecheck},
+		{code: "rcheck", err: eStackunderflow},
+
+		{code: "123 10 string cvs", want: []Object{String("123")}},
+		{code: "-7 10 string cvs", want: []Object{String("-7")}},
+		{code: "1.5 10 string cvs", want: []Object{String("1.5")}},
+		{code: "2.0 10 string cvs", want: []Object{String("2.0")}},
+		{code: "1e20 10 string cvs", want: []Object{String("1e+20")}},
+		{code: "true 10 string cvs", want: []Object{String("true")}},
+		{code: "(ab) 10 string cvs", want: []Object{String("ab")}},
+		{code: "() 10 string cvs", want: []Object{String("")}},
+		{code: "/abc 10 string cvs", want: []Object{String("abc")}},
+		{code: "/abc cvx 10 string cvs", want: []Object{String("abc")}},
+		{code: "/add load 10 string cvs", want: []Object{String("add")}},
+		{code: "[1] 20 string cvs", want: []Object{String("--nostringval--")}},
+		{code: "null 20 string cvs", want: []Object{String("--nostringval--")}},
+		{code: "123 2 string cvs", err: eRangecheck},
+		{code: "123 /a cvs", err: eTypecheck},
+		{code: "10 string cvs", err: eStackunderflow},
+
+		{code: "255 16 10 string cvrs", want: []Object{String("FF")}},
+		{code: "5 2 10 string cvrs", want: []Object{String("101")}},
+		{code: "-1 16 10 string cvrs", want: []Object{String("FFFFFFFF")}},
+		{code: "-12 10 10 string cvrs", want: []Object{String("-12")}},
+		{code: "1.5 10 10 string cvrs", want: []Object{String("1.5")}},
+		{code: "17.9 16 10 string cvrs", want: []Object{String("11")}},
+		{code: "1e30 16 40 string cvrs", err: eRangecheck},
+		{code: "255 16 1 string cvrs", err: eRangecheck},
+		{code: "255 1 10 string cvrs", err: eRangecheck},
+		{code: "255 37 10 string cvrs", err: eRangecheck},
+		{code: "(a) 16 10 string cvrs", err: eTypecheck},
+		{code: "255 16.0 10 string cvrs", err: eTypecheck},
+		{code: "255 16 /a cvrs", err: eTypecheck},
+		{code: "16 10 string cvrs", err: eStackunderflow},
+	})
+}
+
+// TestCmdCvsShared checks that cvs writes into the string it is given.
+func TestCmdCvsShared(t *testing.T) {
+	runStackTests(t, []stackTest{
+		{code: "/s (xxxxx) def 42 s cvs pop s", want: []Object{String("42xxx")}},
+		{code: "/s (xxxxx) def 255 16 s cvrs pop s", want: []Object{String("FFxxx")}},
+		{code: "/s (abc) def s s cvs", want: []Object{String("abc")}},
+	})
+}
+
+func TestCmdSearch(t *testing.T) {
+	runStackTests(t, []stackTest{
+		{code: "(abcdef) (cd) search",
+			want: []Object{String("ef"), String("cd"), String("ab"), Boolean(true)}},
+		{code: "(abc) (a) search",
+			want: []Object{String("bc"), String("a"), String(""), Boolean(true)}},
+		{code: "(abc) (x) search", want: []Object{String("abc"), Boolean(false)}},
+		{code: "(abc) /a search", err: eTypecheck},
+		{code: "1 (a) search", err: eTypecheck},
+		{code: "(a) search", err: eStackunderflow},
+		{code: "(abc) (ab) anchorsearch",
+			want: []Object{String("c"), String("ab"), Boolean(true)}},
+		{code: "(abc) (bc) anchorsearch", want: []Object{String("abc"), Boolean(false)}},
+		{code: "(abc) 1 anchorsearch", err: eTypecheck},
+		{code: "(a) anchorsearch", err: eStackunderflow},
+		// the results are substrings of the string searched
+		{code: "/s (abcdef) def s (cd) search pop pop pop 0 88 put s",
+			want: []Object{String("abcdXf")}},
+	})
+}
+
+func TestModeOperators(t *testing.T) {
+	runStackTests(t, []stackTest{
+		{code: "currentpacking", want: []Object{Boolean(false)}},
+		{code: "true setpacking currentpacking", want: []Object{Boolean(true)}},
+		{code: "currentpacking true setpacking setpacking currentpacking",
+			want: []Object{Boolean(false)}},
+		{code: "1 setpacking", err: eTypecheck},
+		{code: "setpacking", err: eStackunderflow},
+		{code: "currentglobal", want: []Object{Boolean(false)}},
+		{code: "true setglobal currentglobal", want: []Object{Boolean(true)}},
+		{code: "1 setglobal", err: eTypecheck},
+		{code: "setglobal", err: eStackunderflow},
+		{code: "systemdict /currentpacking known", want: []Object{Boolean(true)}},
+	})
+}
+
+func TestOutputOperators(t *testing.T) {
+	runStackTests(t, []stackTest{
+		{code: "1 (x) print flush", want: []Object{Integer(1)}},
+		{code: "1 print", err: eTypecheck},
+		{code: "print", err: eStackunderflow},
+		{code: "1 2 = [3] ==", want: []Object{Integer(1)}},
+		{code: "=", err: eStackunderflow},
+		{code: "==", err: eStackunderflow},
+	})
+}
+
+func TestSystemdictConstants(t *testing.T) {
+	runStackTests(t, []stackTest{
+		{code: "languagelevel", want: []Object{Integer(3)}},
+		{code: "version type", want: []Object{Operator("stringtype")}},
+		{code: "ISOLatin1Encoding length", want: []Object{Integer(256)}},
+		{code: "ISOLatin1Encoding 65 get", want: []Object{Name("A")}},
+		{code: "ISOLatin1Encoding 39 get", want: []Object{Name("quoteright")}},
+		{code: "ISOLatin1Encoding 0 get", want: []Object{Name(".notdef")}},
+	})
+}
+
+func TestMatrixOperators(t *testing.T) {
+	ident := Array{Real(1), Real(0), Real(0), Real(1), Real(0), Real(0)}
+	runStackTests(t, []stackTest{
+		{code: "matrix", want: []Object{ident}},
+		{code: "6 array identmatrix", want: []Object{ident}},
+		{code: "/m 6 array def m identmatrix pop m", want: []Object{ident}},
+		{code: "5 array identmatrix", err: eRangecheck},
+		{code: "1 identmatrix", err: eTypecheck},
+		{code: "identmatrix", err: eStackunderflow},
+		{code: "[2 0 0 2 0 0] [1 0 0 1 5 5] matrix concatmatrix",
+			want: []Object{Array{Real(2), Real(0), Real(0), Real(2), Real(5), Real(5)}}},
+		{code: "[1 0 0 1 5 5] [2 0 0 3 1 1] matrix concatmatrix",
+			want: []Object{Array{Real(2), Real(0), Real(0), Real(3), Real(11), Real(16)}}},
+		{code: "[0 1 -1 0 0 0] [1 2 3 4 5 6] 6 array concatmatrix",
+			want: []Object{Array{Real(3), Real(4), Real(-1), Real(-2), Real(5), Real(6)}}},
+		{code: "/m 6 array def matrix matrix m concatmatrix pop m", want: []Object{ident}},
+		{code: "[1e200 0 0 1 0 0] [1e200 0 0 1 0 0] matrix concatmatrix", err: eUndefinedresult},
+		{code: "[1 0 0 1 0] matrix matrix concatmatrix", err: eRangecheck},
+		{code: "matrix [1 0 0 1 0 0 0] matrix concatmatrix", err: eRangecheck},
+		{code: "matrix matrix 5 array concatmatrix", err: eRangecheck},
+		{code: "[1 0 0 1 0 (a)] matrix matrix concatmatrix", err: eTypecheck},
+		{code: "1 matrix matrix concatmatrix", err: eTypecheck},
+		{code: "matrix matrix 1 concatmatrix", err: eTypecheck},
+		{code: "matrix matrix concatmatrix", err: eStackunderflow},
+	})
+}
+
+// TestBulkOperatorsCharged checks that the new operators which touch many
+// elements count against MaxOps in proportion.
+func TestBulkOperatorsCharged(t *testing.T) {
+	for _, code := range []string{
+		"/a 400 array def {a aload pop clear} loop",
+		"/s 60000 string def {s (x) search pop} loop",
+		"/s 60000 string def {s cvn pop} loop",
+	} {
+		intp := NewInterpreter()
+		intp.MaxOps = 100_000
+		err := intp.ExecuteString(code)
+		if err != ErrExecutionLimitExceeded {
+			t.Errorf("%q: got %v, want execution limit", code, err)
+		}
+		if intp.NumOps > 2*intp.MaxOps {
+			t.Errorf("%q: %d operations counted", code, intp.NumOps)
+		}
+	}
+}
+
+// TestCmdCvnMemory checks that names created by cvn count against MaxMemory.
+func TestCmdCvnMemory(t *testing.T) {
+	intp := NewInterpreter()
+	intp.MaxMemory = 1 << 20
+	err := intp.ExecuteString("/s 60000 string def {s cvn pop} loop")
+	if errType(err) != eLimitcheck {
+		t.Errorf("got %v, want limitcheck", err)
+	}
+}
+
+// TestBulkOperatorLimit checks that a single bulk operator can exhaust
+// MaxOps.
+func TestBulkOperatorLimit(t *testing.T) {
+	big := make([]Object, 400)
+	for i := range big {
+		big[i] = Integer(i)
+	}
+	long := String(strings.Repeat("x", 400))
+	withMark := append([]Object{theMark}, big...)
+
+	for _, tc := range []struct {
+		code  string
+		stack []Object
+	}{
+		{"clear", big},
+		{"counttomark", withMark},
+		{"counttomark", big},
+		{"aload", []Object{Array(big)}},
+		{"astore", append(slices.Clone(big), make(Array, 400))},
+		{"cvs", []Object{long, make(String, 400)}},
+		{"def", []Object{long, Integer(1)}},
+	} {
+		intp := NewInterpreter()
+		intp.MaxOps = 3
+		intp.Stack = slices.Clone(tc.stack)
+		err := intp.ExecuteString(tc.code)
+		if err != ErrExecutionLimitExceeded {
+			t.Errorf("%s: got %v, want execution limit", tc.code, err)
+		}
+	}
+}
+
+// TestCmdMatrixMemory checks that matrix counts against MaxMemory.
+func TestCmdMatrixMemory(t *testing.T) {
+	intp := NewInterpreter()
+	intp.MaxMemory = 1000
+	err := intp.ExecuteString("{matrix pop} loop")
+	if errType(err) != eLimitcheck {
+		t.Errorf("got %v, want limitcheck", err)
 	}
 }

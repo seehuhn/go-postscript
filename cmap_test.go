@@ -435,3 +435,110 @@ end
 		t.Errorf("wrong code space ranges (-want +got):\n%s", diff)
 	}
 }
+
+// TestReadCMapUseFont checks that usefont directs the mappings to the font
+// selected, and that reading continues after it.
+func TestReadCMapUseFont(t *testing.T) {
+	const head = "/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n" +
+		"/CMapName /test def\n1 begincodespacerange\n<00> <ff>\nendcodespacerange\n"
+	const tail = "endcmap\nCMapName currentdict /CMap defineresource pop\nend\nend\n"
+
+	type test struct {
+		name string
+		src  string
+		want CMapInfo
+	}
+	space := []CodeSpaceRange{{[]byte{0x00}, []byte{0xff}}}
+	c1 := []CharMap{{[]byte{1}, Integer(1)}}
+	c2 := []CharMap{{[]byte{2}, Integer(2)}}
+	r3 := []RangeMap{{[]byte{0x10}, []byte{0x1f}, Integer(3)}}
+	tests := []test{
+		{
+			name: "font 0",
+			src:  head + "0 usefont\n1 begincidchar\n<01> 1\nendcidchar\n" + tail,
+			want: CMapInfo{CodeSpaceRanges: space, CMapEntries: CMapEntries{CidChars: c1}},
+		},
+		{
+			name: "several fonts",
+			src: head + "0 usefont\n1 begincidchar\n<01> 1\nendcidchar\n" +
+				"1 usefont\n1 begincidchar\n<02> 2\nendcidchar\n" +
+				"2 usefont\n1 begincidrange\n<10> <1f> 3\nendcidrange\n" + tail,
+			want: CMapInfo{
+				CodeSpaceRanges: space,
+				CMapEntries:     CMapEntries{CidChars: c1},
+				Fonts: map[int]*CMapEntries{
+					1: {CidChars: c2},
+					2: {CidRanges: r3},
+				},
+			},
+		},
+		{
+			name: "back to font 0",
+			src: head + "1 usefont\n1 begincidchar\n<02> 2\nendcidchar\n" +
+				"0 usefont\n1 begincidchar\n<01> 1\nendcidchar\n" +
+				"1 usefont\n1 begincidrange\n<10> <1f> 3\nendcidrange\n" + tail,
+			want: CMapInfo{
+				CodeSpaceRanges: space,
+				CMapEntries:     CMapEntries{CidChars: c1},
+				Fonts:           map[int]*CMapEntries{1: {CidChars: c2, CidRanges: r3}},
+			},
+		},
+		{
+			name: "missing end operator",
+			src: head + "1 begincidchar\n<01> 1\n" +
+				"1 usefont\n1 begincidchar\n<02> 2\nendcidchar\n" + tail,
+			want: CMapInfo{
+				CodeSpaceRanges: space,
+				CMapEntries:     CMapEntries{CidChars: c1},
+				Fonts:           map[int]*CMapEntries{1: {CidChars: c2}},
+			},
+		},
+		{
+			name: "invalid font number",
+			src: head + "-1 usefont\n1 begincidchar\n<02> 2\nendcidchar\n" +
+				"(x) usefont\n1 begincidchar\n<02> 2\nendcidchar\n" +
+				"usefont\n1 begincidchar\n<02> 2\nendcidchar\n" +
+				"99999999 usefont\n1 begincidchar\n<02> 2\nendcidchar\n" +
+				"0 usefont\n1 begincidchar\n<01> 1\nendcidchar\n" + tail,
+			want: CMapInfo{CodeSpaceRanges: space, CMapEntries: CMapEntries{CidChars: c1}},
+		},
+		{
+			name: "matrix and rearranged font",
+			src: head + "/F [/A /B] beginrearrangedfont\n" +
+				"1 beginusematrix [1 0 0 1 0 0] endusematrix\n" +
+				"1 begincidchar\n<01> 1\nendcidchar\nendrearrangedfont\n" +
+				"endusematrix\nbeginusematrix\nbeginrearrangedfont\n" + tail,
+			want: CMapInfo{CodeSpaceRanges: space, CMapEntries: CMapEntries{CidChars: c1}},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, codeMap, err := ReadCMap(strings.NewReader(tc.src), "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if diff := cmp.Diff(&tc.want, codeMap); diff != "" {
+				t.Errorf("wrong CMap (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+// TestUseFontNewCMap checks that a new CMap starts with font 0.
+func TestUseFontNewCMap(t *testing.T) {
+	const src = "/CIDInit /ProcSet findresource begin\n" +
+		"12 dict begin\nbegincmap\n/CMapName /a def\n" +
+		"1 usefont\n1 begincidchar\n<02> 2\nendcidchar\n" +
+		"endcmap\nCMapName currentdict /CMap defineresource pop\nend\n" +
+		"12 dict begin\nbegincmap\n/CMapName /b def\n" +
+		"1 begincidchar\n<01> 1\nendcidchar\n" +
+		"endcmap\nCMapName currentdict /CMap defineresource pop\nend\nend\n"
+	_, codeMap, err := ReadCMap(strings.NewReader(src), "b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := &CMapInfo{CMapEntries: CMapEntries{CidChars: []CharMap{{[]byte{1}, Integer(1)}}}}
+	if diff := cmp.Diff(want, codeMap); diff != "" {
+		t.Errorf("wrong CMap (-want +got):\n%s", diff)
+	}
+}

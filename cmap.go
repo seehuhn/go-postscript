@@ -118,15 +118,27 @@ func (intp *Interpreter) cmapResult(name Name) (Dict, *CMapInfo, error) {
 // The Dst field of a CID or notdef mapping is an [Integer] or a [Real].  For
 // a bfchar mapping it is a [String] or a [Name], and for a bfrange mapping
 // a [String] or an [Array].
+//
+// The embedded [CMapEntries] holds the mappings for font number 0, which is
+// the font selected when the usefont operator is not used.
 type CMapInfo struct {
 	UseCMap         Name
 	CodeSpaceRanges []CodeSpaceRange
-	CidChars        []CharMap
-	CidRanges       []RangeMap
-	BfChars         []CharMap
-	BfRanges        []RangeMap
-	NotdefChars     []CharMap
-	NotdefRanges    []RangeMap
+	CMapEntries
+
+	// Fonts holds the mappings for the other fonts of a rearranged font,
+	// indexed by the font number given to the usefont operator.
+	Fonts map[int]*CMapEntries
+}
+
+// CMapEntries holds the mappings a CMap gives for one font.
+type CMapEntries struct {
+	CidChars     []CharMap
+	CidRanges    []RangeMap
+	BfChars      []CharMap
+	BfRanges     []RangeMap
+	NotdefChars  []CharMap
+	NotdefRanges []RangeMap
 }
 
 // CodeSpaceRange represents a range of character codes.
@@ -153,21 +165,22 @@ type cmapBlock struct {
 	// size is the number of operands per entry.
 	size int
 
-	// add appends an entry to m, unless the entry is malformed.
-	add func(m *CMapInfo, entry []Object)
+	// add appends an entry to m, unless the entry is malformed.  Mappings
+	// go into the lists of font.
+	add func(m *CMapInfo, font *CMapEntries, entry []Object)
 }
 
 var cmapBlocks = map[Name]*cmapBlock{
 	"codespacerange": {size: 2, add: addCodeSpaceRange},
-	"cidchar":        charBlock(func(m *CMapInfo) *[]CharMap { return &m.CidChars }, isNumber),
-	"cidrange":       rangeBlock(func(m *CMapInfo) *[]RangeMap { return &m.CidRanges }, isNumber),
-	"bfchar":         charBlock(func(m *CMapInfo) *[]CharMap { return &m.BfChars }, isStringOrName),
-	"bfrange":        rangeBlock(func(m *CMapInfo) *[]RangeMap { return &m.BfRanges }, isStringOrArray),
-	"notdefchar":     charBlock(func(m *CMapInfo) *[]CharMap { return &m.NotdefChars }, isNumber),
-	"notdefrange":    rangeBlock(func(m *CMapInfo) *[]RangeMap { return &m.NotdefRanges }, isNumber),
+	"cidchar":        charBlock(func(m *CMapEntries) *[]CharMap { return &m.CidChars }, isNumber),
+	"cidrange":       rangeBlock(func(m *CMapEntries) *[]RangeMap { return &m.CidRanges }, isNumber),
+	"bfchar":         charBlock(func(m *CMapEntries) *[]CharMap { return &m.BfChars }, isStringOrName),
+	"bfrange":        rangeBlock(func(m *CMapEntries) *[]RangeMap { return &m.BfRanges }, isStringOrArray),
+	"notdefchar":     charBlock(func(m *CMapEntries) *[]CharMap { return &m.NotdefChars }, isNumber),
+	"notdefrange":    rangeBlock(func(m *CMapEntries) *[]RangeMap { return &m.NotdefRanges }, isNumber),
 }
 
-func addCodeSpaceRange(m *CMapInfo, entry []Object) {
+func addCodeSpaceRange(m *CMapInfo, _ *CMapEntries, entry []Object) {
 	lo, ok1 := entry[0].(String)
 	hi, ok2 := entry[1].(String)
 	if ok1 && ok2 && len(lo) == len(hi) {
@@ -175,10 +188,10 @@ func addCodeSpaceRange(m *CMapInfo, entry []Object) {
 	}
 }
 
-func charBlock(field func(*CMapInfo) *[]CharMap, validDst func(Object) bool) *cmapBlock {
+func charBlock(field func(*CMapEntries) *[]CharMap, validDst func(Object) bool) *cmapBlock {
 	return &cmapBlock{
 		size: 2,
-		add: func(m *CMapInfo, entry []Object) {
+		add: func(_ *CMapInfo, m *CMapEntries, entry []Object) {
 			code, ok := entry[0].(String)
 			if ok && validDst(entry[1]) {
 				list := field(m)
@@ -188,10 +201,10 @@ func charBlock(field func(*CMapInfo) *[]CharMap, validDst func(Object) bool) *cm
 	}
 }
 
-func rangeBlock(field func(*CMapInfo) *[]RangeMap, validDst func(Object) bool) *cmapBlock {
+func rangeBlock(field func(*CMapEntries) *[]RangeMap, validDst func(Object) bool) *cmapBlock {
 	return &cmapBlock{
 		size: 3,
-		add: func(m *CMapInfo, entry []Object) {
+		add: func(_ *CMapInfo, m *CMapEntries, entry []Object) {
 			lo, ok1 := entry[0].(String)
 			hi, ok2 := entry[1].(String)
 			if ok1 && ok2 && len(lo) == len(hi) && bytes.Compare(lo, hi) <= 0 &&
@@ -212,16 +225,16 @@ var cidInit = makeCIDInit()
 
 func makeCIDInit() Dict {
 	d := Dict{
-		"begincmap": &builtin{func(intp *Interpreter) error {
+		"begincmap": &builtin{fn: func(intp *Interpreter) error {
 			intp.cmapStart()
 			return nil
 		}},
-		"endcmap": &builtin{func(intp *Interpreter) error {
+		"endcmap": &builtin{fn: func(intp *Interpreter) error {
 			intp.cmapStart()
 			intp.cmapFinish()
 			return nil
 		}},
-		"usecmap": &builtin{func(intp *Interpreter) error {
+		"usecmap": &builtin{fn: func(intp *Interpreter) error {
 			m := intp.cmapStart()
 			if n := len(intp.Stack); n > 0 {
 				if name, ok := intp.Stack[n-1].(Name); ok {
@@ -231,16 +244,44 @@ func makeCIDInit() Dict {
 			}
 			return nil
 		}},
+		"usefont": &builtin{fn: func(intp *Interpreter) error {
+			intp.cmapUseFont()
+			return nil
+		}},
+
+		// The transformation matrices and the font list of a rearranged
+		// font are not part of the code mappings, and are discarded.
+		"beginusematrix": &builtin{fn: func(intp *Interpreter) error {
+			intp.cmapStart()
+			intp.popIf(func(o Object) bool { _, ok := o.(Integer); return ok })
+			return nil
+		}},
+		"endusematrix": &builtin{fn: func(intp *Interpreter) error {
+			intp.popIf(func(o Object) bool { _, ok := arrayElems(o); return ok })
+			return nil
+		}},
+		"beginrearrangedfont": &builtin{fn: func(intp *Interpreter) error {
+			if intp.popIf(func(o Object) bool { _, ok := arrayElems(o); return ok }) {
+				intp.popIf(isStringOrName)
+			}
+			return nil
+		}},
+		"endrearrangedfont": &builtin{fn: func(intp *Interpreter) error {
+			return nil
+		}},
 	}
 	for name, b := range cmapBlocks {
-		d["begin"+name] = &builtin{func(intp *Interpreter) error {
+		d["begin"+name] = &builtin{fn: func(intp *Interpreter) error {
 			intp.cmapBegin(b)
 			return nil
 		}}
-		d["end"+name] = &builtin{func(intp *Interpreter) error {
+		d["end"+name] = &builtin{fn: func(intp *Interpreter) error {
 			intp.cmapEnd(b)
 			return nil
 		}}
+	}
+	for name, val := range d {
+		val.(*builtin).name = string(name)
 	}
 	return d
 }
@@ -266,7 +307,55 @@ func (intp *Interpreter) cmapStart() *CMapInfo {
 	}
 	intp.cmapMappings = m
 	intp.cmapDict = top
+	intp.cmapFont = &m.CMapEntries
 	return m
+}
+
+// cmapUseFont selects the font which receives the mappings read from now on.
+// A block which is still open is completed first.  After an invalid font
+// number the mappings are discarded, until the next usefont operator.
+func (intp *Interpreter) cmapUseFont() {
+	m := intp.cmapStart()
+	font := -1
+	if n := len(intp.Stack); n > 0 {
+		if id, ok := intp.Stack[n-1].(Integer); ok {
+			intp.Stack = intp.Stack[:n-1]
+			if id >= 0 && id <= maxCMapFont {
+				font = int(id)
+			}
+		}
+	}
+	if intp.cmapBlock != nil {
+		intp.cmapFlush()
+	}
+	switch {
+	case font < 0:
+		intp.cmapFont = nil
+	case font == 0:
+		intp.cmapFont = &m.CMapEntries
+	default:
+		if m.Fonts == nil {
+			m.Fonts = make(map[int]*CMapEntries)
+		}
+		if m.Fonts[font] == nil {
+			m.Fonts[font] = &CMapEntries{}
+		}
+		intp.cmapFont = m.Fonts[font]
+	}
+}
+
+// maxCMapFont is the largest font number usefont accepts.  A rearranged font
+// has at most as many component fonts as an array has elements.
+const maxCMapFont = maxArraySize - 1
+
+// popIf removes the topmost operand if it satisfies test.
+func (intp *Interpreter) popIf(test func(Object) bool) bool {
+	n := len(intp.Stack)
+	if n == 0 || !test(intp.Stack[n-1]) {
+		return false
+	}
+	intp.Stack = intp.Stack[:n-1]
+	return true
 }
 
 // cmapFinish completes the CMap being built.
@@ -317,8 +406,13 @@ func (intp *Interpreter) cmapFlush() {
 	b := intp.cmapBlock
 	mark := min(intp.cmapMark, len(intp.Stack))
 	operands := intp.Stack[mark:]
+	font := intp.cmapFont
+	if font == nil {
+		// the mappings follow an invalid usefont
+		font = &CMapEntries{}
+	}
 	for i := len(operands) % b.size; i < len(operands); i += b.size {
-		b.add(intp.cmapMappings, operands[i:i+b.size])
+		b.add(intp.cmapMappings, font, operands[i:i+b.size])
 	}
 	clear(operands)
 	intp.Stack = intp.Stack[:mark]

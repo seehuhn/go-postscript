@@ -8,7 +8,7 @@ import (
 	"fmt"
 )
 
-var defaultErrorHandler = &builtin{defaultErrorHandlerFn}
+var defaultErrorHandler = &builtin{fn: defaultErrorHandlerFn}
 
 func defaultErrorHandlerFn(intp *Interpreter) error {
 	return intp.errors[len(intp.errors)-1]
