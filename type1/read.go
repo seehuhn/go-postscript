@@ -49,6 +49,9 @@ const type1MaxMemory = 64 << 20 // 64 MiB
 
 // Read reads a Type 1 font from a reader.
 // The function supports both ".pfa" and ".pfb" files.
+//
+// If the PostScript code fails after it has defined the font, the font is
+// returned and the error is ignored.
 func Read(r io.Reader) (*Font, error) {
 	head, r, err := peek(r, 1)
 	if err != nil {
@@ -63,11 +66,11 @@ func Read(r io.Reader) (*Font, error) {
 	// TODO(voss): Is this enough?  I have seen a font with NumOps=310_788.
 	intp.MaxOps = 3_000_000
 	intp.MaxMemory = type1MaxMemory
-	err = intp.Execute(r)
-	if err != nil {
-		return nil, err
-	}
+	execErr := intp.Execute(r)
 	if len(intp.FontDirectory) == 0 {
+		if execErr != nil {
+			return nil, execErr
+		}
 		return nil, errors.New("no font found")
 	}
 	if len(intp.FontDirectory) > 1 {

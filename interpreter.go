@@ -82,9 +82,8 @@ type Interpreter struct {
 	// These are comments of the form "%%key: value" or "%%key".
 	DSC []Comment
 
-	errors    []*postScriptError
-	files     []*file // the files being executed, innermost last
-	procStart []int
+	errors []*postScriptError
+	files  []*file // the files being executed, innermost last
 
 	execStackDepth int
 
@@ -156,13 +155,11 @@ func (intp *Interpreter) Execute(r io.Reader) error {
 	case errStop:
 		err = nil
 	}
-	if err != nil {
-		return err
-	}
 
+	// the comments seen so far are kept even if execution fails
 	intp.DSC = append(intp.DSC, s.DSC...)
 
-	return nil
+	return err
 }
 
 func (intp *Interpreter) executeFile(f *file) error {
@@ -185,6 +182,12 @@ func (intp *Interpreter) executeFile(f *file) error {
 		f.closed = true
 	}()
 
+	// Procedures are built while reading the file, not by the executor:
+	// braces only have their special meaning when read from a file.  The
+	// procedures still being read are kept in open, innermost last.  They
+	// stay off the operand stack, so that an error leaves the stack
+	// unchanged.
+	var open []Procedure
 	for !f.isClosed() {
 		o, err := s.ScanToken()
 		if err == io.EOF {
@@ -192,10 +195,30 @@ func (intp *Interpreter) executeFile(f *file) error {
 		} else if err != nil {
 			return err
 		}
-		err = intp.executeOne(o, false)
+
+		switch o {
+		case Operator("{"):
+			open = append(open, Procedure{})
+			continue
+		case Operator("}"):
+			if len(open) == 0 {
+				return intp.e(eSyntaxerror, "unmatched '}'")
+			}
+			o = open[len(open)-1]
+			open = open[:len(open)-1]
+		}
+
+		if len(open) == 0 {
+			err = intp.executeOne(o, false)
+		} else {
+			err = intp.appendToken(&open[len(open)-1], o)
+		}
 		if err != nil {
 			return err
 		}
+	}
+	if len(open) > 0 {
+		return intp.e(eSyntaxerror, "unterminated procedure")
 	}
 	return nil
 }
@@ -209,43 +232,11 @@ func (intp *Interpreter) executeOne(obj Object, execProc bool) error {
 		defer func() { intp.execStackDepth-- }()
 	}
 
-	maxStack := intp.maxStack
-	if maxStack == 0 {
-		maxStack = maxOperandStackDepth
-	}
-	if len(intp.Stack) > maxStack {
-		return intp.e(eStackoverflow, "operand stack overflow")
+	if err := intp.checkStack(); err != nil {
+		return err
 	}
 
-	if obj == Operator("}") {
-		if len(intp.procStart) == 0 {
-			return intp.e(eSyntaxerror, "unmatched '}'")
-		}
-		a := intp.procStart[len(intp.procStart)-1]
-		intp.procStart = intp.procStart[:len(intp.procStart)-1]
-		b := len(intp.Stack)
-		if err := intp.charge((b - a) * objectSize); err != nil {
-			return err
-		}
-		proc := make(Procedure, b-a)
-		copy(proc, intp.Stack[a:])
-		intp.Stack = append(intp.Stack[:a], proc)
-		return nil
-	} else if obj == Operator("{") {
-		intp.procStart = append(intp.procStart, len(intp.Stack))
-		return nil
-	} else if len(intp.procStart) > 0 {
-		intp.Stack = append(intp.Stack, obj)
-		return nil
-	}
-
-	// quax := true
 recurseTail:
-	// if !quax {
-	// 	fmt.Println("|-", intp.stackString(), "|", intp.objectString(obj))
-	// }
-	// quax = false
-
 	intp.NumOps++
 	if intp.MaxOps > 0 && intp.NumOps > intp.MaxOps {
 		return ErrExecutionLimitExceeded
@@ -288,7 +279,9 @@ recurseTail:
 					return err
 				}
 			}
+			// the last element runs like the others: a procedure is pushed
 			obj = o[len(o)-1]
+			execProc = false
 			goto recurseTail
 		} else {
 			intp.Stack = append(intp.Stack, o)
@@ -296,6 +289,33 @@ recurseTail:
 
 	default:
 		intp.Stack = append(intp.Stack, o)
+	}
+	return nil
+}
+
+// appendToken adds o to a procedure which is being read from a file.
+func (intp *Interpreter) appendToken(proc *Procedure, o Object) error {
+	if len(*proc) >= maxArraySize {
+		return intp.e(eLimitcheck, "procedure too long")
+	}
+	if err := intp.charge(objectSize); err != nil {
+		return err
+	}
+	*proc = append(*proc, o)
+	return nil
+}
+
+// checkStack reports a stackoverflow error if the operand stack holds more
+// than the permitted number of entries.  Pushes are not checked one by one:
+// an operator may push past the limit, and the overflow is reported when a
+// later object executes.
+func (intp *Interpreter) checkStack() error {
+	maxStack := intp.maxStack
+	if maxStack == 0 {
+		maxStack = maxOperandStackDepth
+	}
+	if len(intp.Stack) > maxStack {
+		return intp.e(eStackoverflow, "operand stack overflow")
 	}
 	return nil
 }

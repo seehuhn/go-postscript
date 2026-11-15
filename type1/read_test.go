@@ -5,6 +5,7 @@ package type1
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -86,5 +87,28 @@ func TestSeacMissingComponent(t *testing.T) {
 		if g.Outline != nil && len(g.Outline.Cmds) != 0 {
 			t.Errorf("%s: unexpected outline for incomplete composite: %v", name, g.Outline)
 		}
+	}
+}
+
+// TestReadErrorAfterFont checks that a font is returned if the PostScript
+// code fails only after the font has been defined, and that the error is
+// reported if no font has been defined.
+func TestReadErrorAfterFont(t *testing.T) {
+	want := readSeacFont(t)
+
+	for _, junk := range []string{"\n{ 1", "\n}", "\nundefinedname"} {
+		data := append(debug.MakeSeacFont(), junk...)
+		got, err := Read(bytes.NewReader(data))
+		if err != nil {
+			t.Errorf("%q: %v", junk, err)
+			continue
+		}
+		if d := cmp.Diff(want, got); d != "" {
+			t.Errorf("%q: font mismatch (-want +got):\n%s", junk, d)
+		}
+	}
+
+	if _, err := Read(strings.NewReader("%!\n{ 1")); err == nil {
+		t.Error("no font: got no error")
 	}
 }

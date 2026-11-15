@@ -9,6 +9,7 @@ import (
 	"io"
 	"maps"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -90,6 +91,84 @@ func TestNestedProcedures2(t *testing.T) {
 	}
 	if d := cmp.Diff(intp.Stack, []Object{Array{Integer(1), Integer(2)}, Integer(3)}); d != "" {
 		t.Fatal(d)
+	}
+}
+
+// TestTrailingProcedure checks that a procedure in the last position of
+// an executed procedure is pushed, not executed.
+func TestTrailingProcedure(t *testing.T) {
+	intp := NewInterpreter()
+	err := intp.ExecuteString("{ 1 {2} } exec true { {undefinedname} } if")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Object{Integer(1), Procedure{Integer(2)}, Procedure{Operator("undefinedname")}}
+	if d := cmp.Diff(want, intp.Stack); d != "" {
+		t.Fatalf("stack mismatch (-want +got):\n%s", d)
+	}
+}
+
+// TestBraceNames checks that braces only delimit procedures when read from
+// a file: inside an executed procedure, "{" and "}" are ordinary names.
+func TestBraceNames(t *testing.T) {
+	for _, name := range []Operator{"{", "}"} {
+		for _, proc := range []Procedure{
+			{name, Integer(1)}, // early position
+			{Integer(1), name}, // tail position
+		} {
+			intp := NewInterpreter()
+			intp.UserDict["p"] = proc
+			err := intp.ExecuteString("p")
+			if psErr, ok := errors.AsType[*postScriptError](err); !ok || psErr.tp != eUndefined {
+				t.Errorf("%v: got error %v, want undefined", proc, err)
+			}
+		}
+	}
+}
+
+// TestUnbalancedBraces checks that procedures do not extend past the end
+// of the file which contains them, and that an unfinished procedure leaves
+// the operand stack unchanged.
+func TestUnbalancedBraces(t *testing.T) {
+	for _, code := range []string{"5 { 1", "5 1 }", "5 { { } 2", "5 { 1 (abc"} {
+		intp := NewInterpreter()
+		err := intp.ExecuteString(code)
+		if psErr, ok := errors.AsType[*postScriptError](err); !ok || psErr.tp != eSyntaxerror {
+			t.Errorf("%q: got error %v, want syntaxerror", code, err)
+		}
+		if code != "5 1 }" {
+			if d := cmp.Diff([]Object{Integer(5)}, intp.Stack); d != "" {
+				t.Errorf("%q: stack mismatch (-want +got):\n%s", code, d)
+			}
+		}
+	}
+
+	intp := NewInterpreter()
+	if err := intp.ExecuteString("{ 1"); err == nil {
+		t.Error("unterminated procedure: got no error")
+	}
+	err := intp.ExecuteString("2 }")
+	if psErr, ok := errors.AsType[*postScriptError](err); !ok || psErr.tp != eSyntaxerror {
+		t.Errorf("procedure spans two files: got error %v, want syntaxerror", err)
+	}
+}
+
+// TestLongProcedure checks that the length of a procedure is limited by the
+// maximum array size, not by the operand stack depth.
+func TestLongProcedure(t *testing.T) {
+	intp := NewInterpreter()
+	err := intp.ExecuteString("{ " + strings.Repeat("1 ", maxArraySize) + "}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(intp.Stack) != 1 || len(intp.Stack[0].(Procedure)) != maxArraySize {
+		t.Errorf("wrong result for a procedure of %d tokens", maxArraySize)
+	}
+
+	intp = NewInterpreter()
+	err = intp.ExecuteString("{ " + strings.Repeat("1 ", maxArraySize+1) + "}")
+	if psErr, ok := errors.AsType[*postScriptError](err); !ok || psErr.tp != eLimitcheck {
+		t.Errorf("got error %v, want limitcheck", err)
 	}
 }
 
@@ -224,5 +303,17 @@ func TestWorkLimitBind(t *testing.T) {
 	err = intp.ExecuteString("1000 { /p load bind pop } repeat")
 	if !errors.Is(err, ErrExecutionLimitExceeded) {
 		t.Errorf("got %v, want ErrExecutionLimitExceeded", err)
+	}
+}
+
+// TestDSCAfterError checks that the DSC comments seen before an error are
+// kept.
+func TestDSCAfterError(t *testing.T) {
+	intp := NewInterpreter()
+	if err := intp.ExecuteString("%%Title: test\nundefinedname"); err == nil {
+		t.Fatal("got no error")
+	}
+	if len(intp.DSC) != 1 || intp.DSC[0].Key != "Title" {
+		t.Errorf("wrong DSC comments: %v", intp.DSC)
 	}
 }
