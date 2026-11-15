@@ -58,7 +58,7 @@ func TestCmdAbs(t *testing.T) {
 		{Integer(1), Integer(1)},
 		{Integer(-1), Integer(1)},
 		{Integer(-100), Integer(100)},
-		{Integer(math.MinInt), -Real(math.MinInt)},
+		{Integer(math.MinInt32), -Real(math.MinInt32)},
 		{Real(0), Real(0)},
 		{Real(1), Real(1)},
 		{Real(-1), Real(1)},
@@ -90,7 +90,7 @@ func TestCmdAdd(t *testing.T) {
 		{Integer(1), Real(2), Real(3)},
 		{Real(1), Integer(2), Real(3)},
 		{Real(1), Real(2), Real(3)},
-		{Integer(math.MaxInt), Integer(1), Real(math.MaxInt + 1)},
+		{Integer(math.MaxInt32), Integer(1), Real(math.MaxInt32 + 1)},
 	}
 	for _, c := range cases {
 		intp := NewInterpreter()
@@ -271,12 +271,11 @@ func TestCmdCopy(t *testing.T) {
 	}
 }
 
-// TestCmdCopyOverflow checks that a malicious count near math.MaxInt64
-// returns an error instead of panicking from an integer overflow in the
-// stack-bounds check.
+// TestCmdCopyOverflow checks that the largest possible count is rejected by
+// the stack-bounds check.
 func TestCmdCopyOverflow(t *testing.T) {
 	intp := NewInterpreter()
-	if err := intp.ExecuteString("9223372036854775807 copy\n"); err == nil {
+	if err := intp.ExecuteString("2147483647 copy\n"); err == nil {
 		t.Fatal("expected error, got nil")
 	}
 }
@@ -482,61 +481,6 @@ func TestEqualNaN(t *testing.T) {
 	for _, b := range []Object{nan, Real(1), Integer(1)} {
 		if equal(nan, b) || equal(b, nan) {
 			t.Errorf("NaN is equal to %v", b)
-		}
-	}
-}
-
-// TestEqLargeIntegers checks that integers which round to the same float64
-// still compare unequal.
-func TestEqLargeIntegers(t *testing.T) {
-	if math.MaxInt < 1<<62 {
-		t.Skip("integers are 32 bits wide")
-	}
-	cases := []struct {
-		code string
-		want bool
-	}{
-		{"9007199254740993 9007199254740992 eq", false},
-		{"9007199254740993 9007199254740992 gt", true},
-		{"9007199254740993 9007199254740992.0 eq", false},
-		{"9007199254740992 9007199254740992.0 eq", true},
-		{"9223372036854775807 9223372036854775808.0 lt", true},
-	}
-	for _, c := range cases {
-		intp, err := run(c.code, 1)
-		if err != nil {
-			t.Errorf("%s: %v", c.code, err)
-			continue
-		}
-		if got := intp.Stack[0]; got != Boolean(c.want) {
-			t.Errorf("%s: got %v, want %v", c.code, got, c.want)
-		}
-	}
-}
-
-func TestCompareIntReal(t *testing.T) {
-	cases := []struct {
-		i    int64
-		r    float64
-		want int
-	}{
-		{0, 0, 0},
-		{0, math.Copysign(0, -1), 0},
-		{1, 0.5, 1},
-		{0, 0.5, -1},
-		{-2, -2.5, 1},
-		{-3, -2.5, -1},
-		{1<<53 + 1, 1 << 53, 1},
-		{1 << 53, 1<<53 + 2, -1},
-		{math.MaxInt64, 0x1p63, -1},
-		{math.MinInt64, -0x1p63, 0},
-		{math.MinInt64, -0x1p64, 1},
-		{0, math.Inf(1), -1},
-		{0, math.Inf(-1), 1},
-	}
-	for _, c := range cases {
-		if got := compareIntReal(c.i, c.r); got != c.want {
-			t.Errorf("compareIntReal(%d, %g) = %d, want %d", c.i, c.r, got, c.want)
 		}
 	}
 }
@@ -854,7 +798,7 @@ func TestCmdMul(t *testing.T) {
 		{Integer(1), Real(-2), Real(-2)},
 		{Real(1), Integer(-2), Real(-2)},
 		{Real(1), Real(-2), Real(-2)},
-		{Integer(math.MaxInt), Integer(2), Real(math.MaxInt) * 2},
+		{Integer(math.MaxInt32), Integer(2), Real(math.MaxInt32) * 2},
 	}
 	for i, c := range cases {
 		intp := NewInterpreter()
@@ -974,12 +918,11 @@ func TestCmdPutInterval(t *testing.T) {
 	}
 }
 
-// TestCmdPutIntervalOverflow checks that a malicious index near
-// math.MaxInt64 returns an error instead of panicking from an integer
-// overflow in the destination-bounds check.
+// TestCmdPutIntervalOverflow checks that the largest possible index is
+// rejected by the destination-bounds check.
 func TestCmdPutIntervalOverflow(t *testing.T) {
 	intp := NewInterpreter()
-	if err := intp.ExecuteString("10 string 9223372036854775807 (X) putinterval\n"); err == nil {
+	if err := intp.ExecuteString("10 string 2147483647 (X) putinterval\n"); err == nil {
 		t.Fatal("expected error, got nil")
 	}
 }
@@ -1034,7 +977,7 @@ func TestCmdSub(t *testing.T) {
 		{Integer(1), Real(-2), Real(3)},
 		{Real(1), Integer(-2), Real(3)},
 		{Real(1), Real(-2), Real(3)},
-		{Integer(math.MaxInt), Integer(-1), Real(math.MaxInt + 1)},
+		{Integer(math.MaxInt32), Integer(-1), Real(math.MaxInt32 + 1)},
 	}
 	for i, c := range cases {
 		intp := NewInterpreter()
@@ -1103,6 +1046,9 @@ func TestCmdBitshift(t *testing.T) {
 	cases := []testCase{
 		{Integer(7), Integer(3), Integer(56)},
 		{Integer(142), Integer(-3), Integer(17)},
+		{Integer(1), Integer(31), Integer(math.MinInt32)},
+		{Integer(1), Integer(32), Integer(0)},
+		{Integer(-1), Integer(math.MinInt32), Integer(-1)},
 	}
 	for _, c := range cases {
 		intp := NewInterpreter()
@@ -1185,7 +1131,7 @@ func TestCmdCvi(t *testing.T) {
 		{"( 12\n) cvi", Integer(12)},
 		{"(16#ff) cvi", Integer(255)},
 		{"(-7.9) cvi", Integer(-7)},
-		{fmt.Sprintf("%d.0 cvi", math.MinInt), Integer(math.MinInt)},
+		{fmt.Sprintf("%d.0 cvi", math.MinInt32), Integer(math.MinInt32)},
 	}
 	for _, c := range cases {
 		intp, err := run(c.in, 1)
@@ -1239,8 +1185,8 @@ func TestNumberConversionErrors(t *testing.T) {
 		{"(1 2) cvi", eSyntaxerror},
 		{"() cvr", eSyntaxerror},
 		{"(1e999) cvr", eLimitcheck},
-		{fmt.Sprintf("%.1f cvi", float64(-math.MinInt)), eRangecheck},
-		{fmt.Sprintf("(%.1f) cvi", float64(-math.MinInt)), eRangecheck},
+		{fmt.Sprintf("%.1f cvi", float64(-math.MinInt32)), eRangecheck},
+		{fmt.Sprintf("(%.1f) cvi", float64(-math.MinInt32)), eRangecheck},
 		{"(1e999) cvi", eRangecheck},
 	}
 	for _, c := range cases {
@@ -1255,8 +1201,8 @@ func TestNumberConversionErrors(t *testing.T) {
 }
 
 func TestIntegerOverflowToReal(t *testing.T) {
-	minInt := fmt.Sprint(math.MinInt)
-	want := Real(-float64(math.MinInt))
+	minInt := fmt.Sprint(math.MinInt32)
+	want := Real(-float64(math.MinInt32))
 	for _, prog := range []string{
 		"-1 " + minInt + " mul",
 		minInt + " -1 mul",
@@ -1736,7 +1682,7 @@ func TestArithmeticUndefinedResult(t *testing.T) {
 		"1e308 1e308 add",
 		"1e308 neg 1e308 sub",
 		"1e300 1e-300 div",
-		fmt.Sprint(math.MinInt) + " -1 idiv",
+		fmt.Sprint(math.MinInt32) + " -1 idiv",
 	}
 	for _, prog := range programs {
 		t.Run(prog, func(t *testing.T) {
@@ -2140,8 +2086,8 @@ func TestCmdForOverflow(t *testing.T) {
 		initial, increment, limit Integer
 		want                      int
 	}{
-		{math.MaxInt - 2, 2, math.MaxInt, 2},
-		{math.MinInt + 2, -2, math.MinInt, 2},
+		{math.MaxInt32 - 2, 2, math.MaxInt32, 2},
+		{math.MinInt32 + 2, -2, math.MinInt32, 2},
 	} {
 		intp := NewInterpreter()
 		intp.MaxOps = 1000
@@ -2250,6 +2196,10 @@ func TestConversionOperators(t *testing.T) {
 		{code: "255 16 10 string cvrs", want: []Object{String("FF")}},
 		{code: "5 2 10 string cvrs", want: []Object{String("101")}},
 		{code: "-1 16 10 string cvrs", want: []Object{String("FFFFFFFF")}},
+		{code: "-123 16 10 string cvrs", want: []Object{String("FFFFFF85")}},
+		{code: "-2147483648 16 10 string cvrs", want: []Object{String("80000000")}},
+		{code: "-2147483648.0 16 10 string cvrs", want: []Object{String("80000000")}},
+		{code: "2147483648.0 16 10 string cvrs", err: eRangecheck},
 		{code: "-12 10 10 string cvrs", want: []Object{String("-12")}},
 		{code: "1.5 10 10 string cvrs", want: []Object{String("1.5")}},
 		{code: "17.9 16 10 string cvrs", want: []Object{String("11")}},

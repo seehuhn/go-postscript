@@ -239,7 +239,7 @@ func bAbs(intp *Interpreter) error {
 	intp.Stack = intp.Stack[:len(intp.Stack)-1]
 	switch x := x.(type) {
 	case Integer:
-		if x == math.MinInt {
+		if x == math.MinInt32 {
 			intp.Stack = append(intp.Stack, -Real(x))
 		} else if x < 0 {
 			intp.Stack = append(intp.Stack, -x)
@@ -691,7 +691,7 @@ func bCvrs(intp *Interpreter) error {
 		}
 		truncated := math.Trunc(float64(num))
 		// The limits are powers of two and so exact as float64 values.
-		if !(truncated >= math.MinInt && truncated < -math.MinInt) {
+		if !(truncated >= math.MinInt32 && truncated < -math.MinInt32) {
 			return intp.e(eRangecheck, "cvrs: number too large to convert to integer")
 		}
 		text = formatRadix(Integer(truncated), int(radix))
@@ -1360,7 +1360,7 @@ func bMul(intp *Interpreter) error {
 	} else {
 		ci := ai * bi
 		// check for integer overflow
-		if (ai == -1 && bi == math.MinInt) || (ai != 0 && ci/ai != bi) {
+		if (ai == -1 && bi == math.MinInt32) || (ai != 0 && ci/ai != bi) {
 			intp.Stack = append(intp.Stack, Real(ai)*Real(bi))
 		} else {
 			intp.Stack = append(intp.Stack, ci)
@@ -1974,49 +1974,15 @@ func arrayElems(o Object) ([]Object, bool) {
 // compareNumbers compares a and b by their mathematical values and returns
 // -1, 0 or +1.  The result ok is false if a or b is not a number, or is NaN.
 func compareNumbers(a, b Object) (c int, ok bool) {
-	switch a := a.(type) {
-	case Integer:
-		switch b := b.(type) {
-		case Integer:
-			return cmp.Compare(a, b), true
-		case Real:
-			if math.IsNaN(float64(b)) {
-				return 0, false
-			}
-			return compareIntReal(int64(a), float64(b)), true
-		}
-	case Real:
-		if math.IsNaN(float64(a)) {
-			return 0, false
-		}
-		switch b := b.(type) {
-		case Integer:
-			return -compareIntReal(int64(b), float64(a)), true
-		case Real:
-			if math.IsNaN(float64(b)) {
-				return 0, false
-			}
-			return cmp.Compare(a, b), true
-		}
+	if !isNumber(a) || !isNumber(b) {
+		return 0, false
 	}
-	return 0, false
-}
-
-// compareIntReal compares the integer i to the real number r, which must not
-// be NaN.  Converting i to float64 could round, so the comparison is done on
-// the integer part of r first.
-func compareIntReal(i int64, r float64) int {
-	switch {
-	case r >= 0x1p63:
-		return -1
-	case r < -0x1p63:
-		return 1
+	// every integer is exactly representable as a real
+	x, y := toReal(a), toReal(b)
+	if math.IsNaN(float64(x)) || math.IsNaN(float64(y)) {
+		return 0, false
 	}
-	t := math.Trunc(r)
-	if c := cmp.Compare(i, int64(t)); c != 0 {
-		return c
-	}
-	return cmp.Compare(t, r)
+	return cmp.Compare(x, y), true
 }
 
 // compare implements the relational operators ge, gt, le and lt, which
@@ -2289,7 +2255,7 @@ func bCvr(intp *Interpreter) error {
 func (intp *Interpreter) pushRealAsInt(r Real) error {
 	truncated := math.Trunc(float64(r))
 	// The limits are powers of two and so exact as float64 values.
-	if !(truncated >= math.MinInt && truncated < -math.MinInt) {
+	if !(truncated >= math.MinInt32 && truncated < -math.MinInt32) {
 		return intp.e(eRangecheck, "cvi: number too large to convert to integer")
 	}
 	intp.Stack = append(intp.Stack, Integer(truncated))
@@ -2452,7 +2418,7 @@ func bIdiv(intp *Interpreter) error {
 	if int2 == 0 {
 		return intp.e(eUndefinedresult, "idiv: division by zero")
 	}
-	if int1 == math.MinInt && int2 == -1 {
+	if int1 == math.MinInt32 && int2 == -1 {
 		return intp.e(eUndefinedresult, "idiv: quotient too large")
 	}
 
@@ -2564,7 +2530,7 @@ func bNeg(intp *Interpreter) error {
 
 	switch n := num.(type) {
 	case Integer:
-		if n == math.MinInt {
+		if n == math.MinInt32 {
 			// the negation does not fit into an integer
 			intp.Stack = append(intp.Stack, Real(-float64(n)))
 		} else {
@@ -2797,14 +2763,9 @@ func formatReal(r Real) []byte {
 }
 
 // formatRadix returns the digits of an integer for a radix other than 10.
-// A negative number is shown as its two's complement, in 32 bits where the
-// number fits.
+// A negative number is shown as its two's complement.
 func formatRadix(i Integer, radix int) []byte {
-	u := uint64(i)
-	if i < 0 && i >= math.MinInt32 {
-		u = uint64(uint32(i))
-	}
-	return bytes.ToUpper(strconv.AppendUint(nil, u, radix))
+	return bytes.ToUpper(strconv.AppendUint(nil, uint64(uint32(i)), radix))
 }
 
 // search implements search and anchorsearch.  The function find returns the

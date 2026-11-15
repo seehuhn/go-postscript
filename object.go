@@ -12,7 +12,8 @@ import (
 // Object is a PostScript object.  The null object is represented by nil.
 type Object any
 
-type Integer int
+// Integer is a PostScript integer object.  Integers are 32 bits wide.
+type Integer int32
 
 type Real float64
 

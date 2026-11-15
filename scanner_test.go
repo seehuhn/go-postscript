@@ -221,7 +221,7 @@ func TestScanToken(t *testing.T) {
 func TestScanNumberOutOfRange(t *testing.T) {
 	huge := strings.Repeat("9", 400)
 	// a radix number which fills an Integer exactly, and one digit too many
-	allOnes := strings.Repeat("F", strconv.IntSize/4)
+	allOnes := strings.Repeat("F", 8)
 	tooLong := "1" + allOnes
 
 	cases := []struct {
@@ -236,7 +236,7 @@ func TestScanNumberOutOfRange(t *testing.T) {
 		{in: huge + ".5", limit: true},
 		{in: "1." + huge + "e400", limit: true},
 		{in: "16#" + tooLong, limit: true},
-		{in: "2#" + strings.Repeat("1", strconv.IntSize+1), limit: true},
+		{in: "2#" + strings.Repeat("1", 33), limit: true},
 
 		{in: "1e-400", exp: Real(0)},
 		{in: "-1e-400", exp: Real(0)},
@@ -244,6 +244,14 @@ func TestScanNumberOutOfRange(t *testing.T) {
 
 		// a radix number is unsigned and keeps its binary representation
 		{in: "16#" + allOnes, exp: Integer(-1)},
+		{in: "16#80000000", exp: Integer(math.MinInt32)},
+		{in: "16#7FFFFFFF", exp: Integer(math.MaxInt32)},
+
+		// a decimal integer beyond the range of integers is a real
+		{in: "2147483647", exp: Integer(math.MaxInt32)},
+		{in: "2147483648", exp: Real(2147483648)},
+		{in: "-2147483648", exp: Integer(math.MinInt32)},
+		{in: "-2147483649", exp: Real(-2147483649)},
 
 		// tokens which are not numbers are names
 		{in: "inf", exp: Operator("inf")},

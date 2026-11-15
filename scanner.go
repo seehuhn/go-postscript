@@ -790,7 +790,7 @@ func ParseNumber(s []byte) (Object, error) {
 	}
 
 	if isDecimalInt(s) {
-		x, err := strconv.ParseInt(string(s), 10, 0)
+		x, err := strconv.ParseInt(string(s), 10, 32)
 		if err == nil {
 			return Integer(x), nil
 		}
@@ -813,11 +813,10 @@ func ParseNumber(s []byte) (Object, error) {
 		base, err := strconv.ParseInt(string(mm[1]), 10, 0)
 		if err == nil && base >= 2 && base <= 36 {
 			// A radix number is unsigned and keeps its binary representation
-			// when converted to an integer, so 16#FFFFFFFF is -1 where
-			// integers are 32 bits wide.
-			z, err := strconv.ParseUint(string(mm[2]), int(base), 0)
+			// when converted to an integer, so 16#FFFFFFFF is -1.
+			z, err := strconv.ParseUint(string(mm[2]), int(base), 32)
 			if err == nil {
-				return Integer(z), nil
+				return Integer(uint32(z)), nil
 			}
 			if errors.Is(err, strconv.ErrRange) {
 				return nil, outOfRange(s)

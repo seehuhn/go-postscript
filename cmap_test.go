@@ -537,7 +537,7 @@ func TestUseFontNewCMap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := &CMapInfo{CMapEntries: CMapEntries{CidChars: []CharMap{{[]byte{1}, Integer(1)}}}}
+	want := &CMapInfo{CidChars: []CharMap{{[]byte{1}, Integer(1)}}}
 	if diff := cmp.Diff(want, codeMap); diff != "" {
 		t.Errorf("wrong CMap (-want +got):\n%s", diff)
 	}
