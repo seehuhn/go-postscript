@@ -37,6 +37,7 @@ var defaultWriterOptions = &WriterOptions{
 }
 
 // Write writes the font to the given writer.
+// A nil opt selects the default options, which write a PFA file.
 func (f *Font) Write(w io.Writer, opt *WriterOptions) error {
 	if opt == nil {
 		opt = defaultWriterOptions
