@@ -35,13 +35,11 @@ func (g *Glyph) encodeCharString() []byte {
 		return appendOp(buf, t1endchar)
 	}
 
-	var pos vec.Vec2 // current point
-	i := 0           // coordinate index
-	for _, cmd := range g.Outline.Cmds {
+	var pos vec.Vec2 // current point of the charstring
+	for cmd, pts := range explicitMoves(g.Outline) {
 		switch cmd {
 		case path.CmdMoveTo, path.CmdLineTo:
-			p := g.Outline.Coords[i]
-			i++
+			p := pts[0]
 			d := p.Sub(pos)
 			hOp, vOp, rOp := t1hmoveto, t1vmoveto, t1rmoveto
 			if cmd == path.CmdLineTo {
@@ -61,8 +59,7 @@ func (g *Glyph) encodeCharString() []byte {
 			}
 			pos = p
 		case path.CmdCubeTo:
-			p1, p2, p3 := g.Outline.Coords[i], g.Outline.Coords[i+1], g.Outline.Coords[i+2]
-			i += 3
+			p1, p2, p3 := pts[0], pts[1], pts[2]
 			da, db, dc := p1.Sub(pos), p2.Sub(p1), p3.Sub(p2)
 			switch {
 			case da.Y == 0 && dc.X == 0:
@@ -144,4 +141,38 @@ func appendNumber(buf []byte, x float64) []byte {
 	}
 	buf = appendInt(buf, q)
 	return appendOp(buf, t1div)
+}
+
+// explicitMoves returns the outline with a CmdMoveTo inserted before every
+// drawing command which starts a sub-path, at the start of the outline or
+// after a CmdClose.  The inserted move goes to the current point of the
+// outline, which a charstring needs explicitly: hsbw does not start a
+// sub-path, and the Type 1 closepath command, unlike CmdClose, leaves the
+// current point where it is.
+func explicitMoves(o *path.Data) path.Path {
+	return func(yield func(path.Command, []vec.Vec2) bool) {
+		var start vec.Vec2 // start of the current sub-path
+		open := false      // a sub-path has been started
+		var buf [1]vec.Vec2
+		for cmd, pts := range o.Iter() {
+			switch cmd {
+			case path.CmdMoveTo:
+				start = pts[0]
+				open = true
+			case path.CmdClose:
+				open = false
+			default:
+				if !open {
+					buf[0] = start
+					if !yield(path.CmdMoveTo, buf[:]) {
+						return
+					}
+					open = true
+				}
+			}
+			if !yield(cmd, pts) {
+				return
+			}
+		}
+	}
 }

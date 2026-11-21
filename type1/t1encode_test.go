@@ -11,6 +11,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"seehuhn.de/go/geom/path"
+	"seehuhn.de/go/geom/vec"
 )
 
 func TestMoveTo(t *testing.T) {
@@ -93,6 +94,34 @@ func TestCurveTo(t *testing.T) {
 		if d := cmp.Diff(g1, g2); d != "" {
 			t.Errorf("unexpected diff: %s", d)
 		}
+	}
+}
+
+// TestEncodeImplicitMoves checks that drawing commands which start a
+// sub-path without a move are encoded from the current point: the origin at
+// the start of the outline, and the start of the closed sub-path after a
+// close.
+func TestEncodeImplicitMoves(t *testing.T) {
+	g1 := &Glyph{}
+	g1.LineTo(600, 0)
+	g1.LineTo(300, 700)
+	g1.ClosePath()
+	g1.CurveTo(100, 100, 200, 100, 300, 0)
+	buf := g1.encodeCharString()
+
+	ctx := &decodeInfo{budget: newTestBudget()}
+	g2 := ctx.decodeCharString(buf, "test")
+
+	want := &path.Data{}
+	want.MoveTo(vec.Vec2{})
+	want.LineTo(vec.Vec2{X: 600})
+	want.LineTo(vec.Vec2{X: 300, Y: 700})
+	want.Close()
+	want.MoveTo(vec.Vec2{})
+	want.CubeTo(vec.Vec2{X: 100, Y: 100}, vec.Vec2{X: 200, Y: 100}, vec.Vec2{X: 300})
+	want.Close() // added by the decoder at endchar
+	if d := cmp.Diff(want, path.DataFromPath(g2.Path())); d != "" {
+		t.Errorf("outline differs (-want +got):\n%s", d)
 	}
 }
 

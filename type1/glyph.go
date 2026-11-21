@@ -17,7 +17,10 @@ import (
 type Glyph struct {
 	// Outline is the glyph outline in glyph space.  The difference between
 	// consecutive points, and the first point itself, must be less than
-	// 32000 in absolute value in each coordinate.
+	// 32000 in absolute value in each coordinate.  Where a drawing command
+	// starts a sub-path without a move, its start point, the current point,
+	// counts as one of these points.  The outline must not contain quadratic
+	// Bézier curves.
 	Outline *path.Data
 
 	// HStem and VStem hold the horizontal and vertical stem hints, as

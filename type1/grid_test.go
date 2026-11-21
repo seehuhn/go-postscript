@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
+	"seehuhn.de/go/geom/path"
 	"seehuhn.de/go/geom/vec"
 	"seehuhn.de/go/postscript/psenc"
 )
@@ -175,6 +176,19 @@ func TestWriteOutOfRange(t *testing.T) {
 		"width y": func(g *Glyph) { g.WidthY = -32000 },
 		"step":    func(g *Glyph) { g.Outline.Coords[1].X = 32400 },
 		"first":   func(g *Glyph) { g.Outline.Coords[0].Y = 32000 },
+		"quadratic": func(g *Glyph) {
+			g.Outline.QuadTo(vec.Vec2{X: 100, Y: 100}, vec.Vec2{X: 200})
+		},
+		"implicit move": func(g *Glyph) {
+			// the points are close to their neighbours, but drawing after
+			// the close first returns from (20000, 0) to (-20000, 0)
+			g.Outline = &path.Data{}
+			g.MoveTo(-20000, 0)
+			g.LineTo(0, 0)
+			g.LineTo(20000, 0)
+			g.ClosePath()
+			g.LineTo(19000, 100)
+		},
 	}
 	for name, modify := range cases {
 		t.Run(name, func(t *testing.T) {

@@ -33,20 +33,22 @@ func numberUsable(x float64) bool {
 }
 
 // outlineUsable reports whether every step between consecutive points of
-// the outline, starting from the origin, can be written as charstring
-// operands.  These are exactly the differences which encodeCharString
-// writes.
+// the outline, starting from the origin and including the moves which
+// [explicitMoves] inserts, can be written as charstring operands.  These are
+// exactly the differences which encodeCharString writes.
 func outlineUsable(o *path.Data) bool {
 	if o == nil {
 		return true
 	}
 	var prev vec.Vec2
-	for _, p := range o.Coords {
-		d := p.Sub(prev)
-		if !numberUsable(d.X) || !numberUsable(d.Y) {
-			return false
+	for _, pts := range explicitMoves(o) {
+		for _, p := range pts {
+			d := p.Sub(prev)
+			if !numberUsable(d.X) || !numberUsable(d.Y) {
+				return false
+			}
+			prev = p
 		}
-		prev = p
 	}
 	return true
 }

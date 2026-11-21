@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"slices"
 	"strings"
 	"text/template"
 	"time"
 
+	"seehuhn.de/go/geom/path"
 	"seehuhn.de/go/postscript"
 	"seehuhn.de/go/postscript/psenc"
 )
@@ -330,6 +332,9 @@ func (f *Font) encodeCharstrings() (map[string]string, error) {
 		if !numberUsable(g.WidthX) || !numberUsable(g.WidthY) {
 			return nil, fmt.Errorf("glyph %q: width (%v, %v) out of range",
 				name, g.WidthX, g.WidthY)
+		}
+		if g.Outline != nil && slices.Contains(g.Outline.Cmds, path.CmdQuadTo) {
+			return nil, fmt.Errorf("glyph %q: outline contains a quadratic curve", name)
 		}
 		if !outlineUsable(g.Outline) {
 			return nil, fmt.Errorf("glyph %q: outline coordinates out of range", name)

@@ -103,7 +103,8 @@ func (f *Font) glyphHeightPDF(chars string) float64 {
 		if !ok {
 			continue
 		}
-		h := g.Path().Transform(M).BBox().URy
+		bbox, _ := g.Path().Transform(M).TightBBox()
+		h := bbox.URy
 		if h > 0 { // the test also rejects NaN
 			return h
 		}

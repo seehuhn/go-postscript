@@ -93,5 +93,6 @@ func (o *Outlines) GlyphBBox(M matrix.Matrix, name string) (bbox rect.Rect) {
 		}
 	}
 
-	return g.Path().Transform(M).BBox()
+	bbox, _ = g.Path().Transform(M).TightBBox()
+	return bbox
 }

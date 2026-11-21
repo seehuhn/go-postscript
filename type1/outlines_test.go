@@ -126,7 +126,7 @@ func TestOutlinesGlyphBBox(t *testing.T) {
 			setup: func() *Outlines {
 				g := &Glyph{WidthX: 100}
 				g.MoveTo(0, 0)
-				g.CurveTo(10, 20, 30, 40, 50, 10)
+				g.CurveTo(10, 40, 40, 40, 50, 0)
 				return &Outlines{
 					Glyphs: map[string]*Glyph{
 						"D": g,
@@ -135,8 +135,8 @@ func TestOutlinesGlyphBBox(t *testing.T) {
 			},
 			matrix:    matrix.Identity,
 			glyphName: "D",
-			// BBox includes control points as conservative approximation
-			expected: rect.Rect{LLx: 0, LLy: 0, URx: 50, URy: 40},
+			// the curve peaks at t = 1/2, below its control points
+			expected: rect.Rect{LLx: 0, LLy: 0, URx: 50, URy: 30},
 		},
 	}
 
