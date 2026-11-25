@@ -13,7 +13,9 @@ import (
 	"text/template"
 	"time"
 
+	"seehuhn.de/go/geom/matrix"
 	"seehuhn.de/go/geom/path"
+	"seehuhn.de/go/geom/rect"
 	"seehuhn.de/go/postscript"
 	"seehuhn.de/go/postscript/psenc"
 )
@@ -24,7 +26,7 @@ type FileFormat int
 // List of supported file formats.
 const (
 	FormatPFA     FileFormat = iota + 1 // hex eexec
-	FormatPFB                           // hex eexec, pfb wrapper
+	FormatPFB                           // binary eexec, pfb wrapper
 	FormatBinary                        // binary eexec
 	FormatNoEExec                       // no eexec
 )
@@ -228,6 +230,9 @@ func (f *Font) makeTemplateData(opt *WriterOptions) (*fontInfo, error) {
 	if err := f.Private.Validate(); err != nil {
 		return nil, err
 	}
+	if len(f.Encoding) != 256 {
+		return nil, fmt.Errorf("invalid Encoding: %d entries, need 256", len(f.Encoding))
+	}
 	// the format spells these as integers, unlike CFF
 	blueValues, err := toIntegers("BlueValues", f.Private.BlueValues)
 	if err != nil {
@@ -247,6 +252,10 @@ func (f *Font) makeTemplateData(opt *WriterOptions) (*fontInfo, error) {
 	}
 
 	charStrings, err := f.encodeCharstrings()
+	if err != nil {
+		return nil, err
+	}
+	fontBBox, err := f.glyphSpaceBBox()
 	if err != nil {
 		return nil, err
 	}
@@ -275,7 +284,9 @@ func (f *Font) makeTemplateData(opt *WriterOptions) (*fontInfo, error) {
 		Copyright:          f.FontInfo.Copyright,
 		CreationDate:       f.CreationDate,
 		Encoding:           f.Encoding,
+		StandardEncoding:   isStandardEncoding(f.Encoding, f.Glyphs),
 		FamilyName:         f.FontInfo.FamilyName,
+		FontBBox:           fontBBox,
 		FontMatrix:         fontMatrix,
 		FontName:           f.FontInfo.FontName,
 		ForceBold:          f.Private.ForceBold,
@@ -297,6 +308,18 @@ func (f *Font) makeTemplateData(opt *WriterOptions) (*fontInfo, error) {
 		info.StdVW = []float64{f.Private.StdVW}
 	}
 	return info, nil
+}
+
+// glyphSpaceBBox returns the smallest rectangle with integer coordinates
+// which encloses all glyphs, in glyph space.  A font without ink gives
+// the zero rectangle.
+func (f *Font) glyphSpaceBBox() ([]int32, error) {
+	var bbox rect.Rect
+	for name := range f.Glyphs {
+		bbox.Extend(f.Outlines.GlyphBBox(matrix.Identity, name))
+	}
+	bbox = bbox.Rounded()
+	return toIntegers("FontBBox", []float64{bbox.LLx, bbox.LLy, bbox.URx, bbox.URy})
 }
 
 // toInteger converts a value the format spells as an integer.  Any value
@@ -379,13 +402,6 @@ func (f *Font) encodeCharstrings() (map[string]string, error) {
 }
 
 func writeEncoding(encoding []string) string {
-	if len(encoding) != 256 {
-		return ""
-	}
-	if isStandardEncoding(encoding) {
-		return "/Encoding StandardEncoding def\n"
-	}
-
 	b := &strings.Builder{}
 	b.WriteString("/Encoding 256 array\n")
 	b.WriteString("0 1 255 {1 index exch /.notdef put} for\n")
@@ -399,14 +415,20 @@ func writeEncoding(encoding []string) string {
 	return b.String()
 }
 
-func isStandardEncoding(encoding []string) bool {
-	if len(encoding) != 256 {
-		return false
-	}
+// isStandardEncoding reports whether a file with StandardEncoding reads back
+// as the given encoding.  The reader maps codes whose glyph is missing to
+// ".notdef", so ".notdef" matches wherever the font lacks the glyph which
+// StandardEncoding has at that code.
+func isStandardEncoding(encoding []string, glyphs map[string]*Glyph) bool {
 	for i, s := range encoding {
-		if s != psenc.StandardEncoding[i] && s != ".notdef" {
-			return false
+		std := psenc.StandardEncoding[i]
+		if s == std {
+			continue
 		}
+		if _, hasGlyph := glyphs[std]; s == ".notdef" && !hasGlyph {
+			continue
+		}
+		return false
 	}
 	return true
 }
@@ -441,11 +463,12 @@ var tmpl = template.Must(template.New("type1").Funcs(template.FuncMap{
 /UnderlineThickness {{.UnderlineThickness}} def
 end def
 /FontName {{.FontName|PN}} def
-{{ .Encoding|E -}}
+{{if .StandardEncoding}}/Encoding StandardEncoding def
+{{else}}{{ .Encoding|E }}{{end -}}
 /PaintType 0 def
 /FontType 1 def
 /FontMatrix {{ .FontMatrix }} def
-/FontBBox [0 0 0 0] def
+/FontBBox {{ .FontBBox }} def
 currentdict end
 {{if .EExec}}currentfile eexec
 {{end -}}
@@ -523,7 +546,9 @@ type fontInfo struct {
 	Copyright          string
 	CreationDate       time.Time
 	Encoding           []string
+	StandardEncoding   bool
 	FamilyName         string
+	FontBBox           []int32
 	FontMatrix         [6]float64
 	FontName           string
 	ForceBold          bool

@@ -83,7 +83,8 @@ type PrivateDict struct {
 
 	// BlueShift is the height a character feature must overshoot its zone by
 	// before it is rendered curved rather than flat, in glyph space units.
-	// Valid values are finite and zero or above.
+	// Valid values are finite and zero or above.  Zero is a valid value; a
+	// font which gives no BlueShift has [DefaultBlueShift].
 	//
 	// The Type 1 format allows only whole numbers here, so a font with a
 	// fractional BlueShift cannot be written as Type 1.
@@ -91,7 +92,8 @@ type PrivateDict struct {
 
 	// BlueFuzz is the distance by which an alignment zone is extended when
 	// deciding whether a horizontal stem falls inside it, in glyph space
-	// units.  Valid values are finite and zero or above.
+	// units.  Valid values are finite and zero or above.  Zero is a valid
+	// value; a font which gives no BlueFuzz has [DefaultBlueFuzz].
 	//
 	// The Type 1 format allows only whole numbers here, so a font with a
 	// fractional BlueFuzz cannot be written as Type 1.

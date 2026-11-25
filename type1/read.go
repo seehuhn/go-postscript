@@ -216,17 +216,7 @@ creationDateLoop:
 
 	// TODO(voss): StemSnapH, StemSnapV
 
-	var encoding []string
-	if enc, _ := fd["Encoding"].(postscript.Array); len(enc) == 256 {
-		encoding = make([]string, 256)
-		for i, glyphNameObj := range enc {
-			glyphName, ok := glyphNameObj.(postscript.Name)
-			if !ok {
-				return nil, errors.New("invalid Encoding array")
-			}
-			encoding[i] = string(glyphName)
-		}
-	}
+	encoding := readEncoding(fd["Encoding"])
 
 	private := &PrivateDict{
 		BlueValues: blueValues,
@@ -467,4 +457,25 @@ var dateFormats = []string{
 	"Mon Jan 2 15:04:05 2006",
 	"Mon, 2 Jan 2006 15:04:05",
 	"Mon Jan 2 2006",
+}
+
+// readEncoding converts the Encoding entry of a font dictionary into a list
+// of 256 glyph names.  An array keeps its first 256 entries, codes beyond its
+// end and entries which are not names map to ".notdef", and a font without
+// an Encoding array gets StandardEncoding.
+func readEncoding(obj postscript.Object) []string {
+	enc, ok := obj.(postscript.Array)
+	if !ok {
+		return slices.Clone(psenc.StandardEncoding[:])
+	}
+	encoding := make([]string, 256)
+	for i := range encoding {
+		encoding[i] = ".notdef"
+		if i < len(enc) {
+			if name, ok := enc[i].(postscript.Name); ok {
+				encoding[i] = string(name)
+			}
+		}
+	}
+	return encoding
 }

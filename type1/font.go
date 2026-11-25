@@ -46,18 +46,8 @@ func (f *Font) GlyphWidthPDF(name string) float64 {
 func (f *Font) FontBBoxPDF() (fontBBox rect.Rect) {
 	M := f.FontMatrix.Mul(matrix.Scale(1000, 1000))
 
-	first := true
 	for glyphName := range f.Glyphs {
-		glyphBBox := f.Outlines.GlyphBBox(M, glyphName)
-		if glyphBBox.IsZero() {
-			continue
-		}
-		if first {
-			fontBBox = glyphBBox
-			first = false
-		} else {
-			fontBBox.Extend(glyphBBox)
-		}
+		fontBBox.Extend(f.Outlines.GlyphBBox(M, glyphName))
 	}
 	return fontBBox
 }

@@ -5,6 +5,7 @@ package type1
 
 import (
 	"bytes"
+	"io"
 	"math"
 	"strings"
 	"testing"
@@ -13,6 +14,8 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"seehuhn.de/go/geom/matrix"
+	"seehuhn.de/go/geom/rect"
+	"seehuhn.de/go/postscript"
 	"seehuhn.de/go/postscript/psenc"
 )
 
@@ -207,5 +210,141 @@ func TestWriteStemInvalid(t *testing.T) {
 				t.Error("expected an error")
 			}
 		})
+	}
+}
+
+// makeBBoxTestFont returns a font whose glyph extremes lie at fractional
+// coordinates, some of them between curve control points.
+func makeBBoxTestFont() *Font {
+	encoding := makeEmptyEncoding()
+	encoding[65] = "A"
+	F := &Font{
+		FontInfo: &FontInfo{
+			FontName:   "BBoxTest",
+			FontMatrix: matrix.Matrix{0.002, 0, 0, 0.002, 0, 0},
+		},
+		Outlines: &Outlines{
+			Private:  &PrivateDict{BlueValues: []float64{-10, 0}},
+			Glyphs:   map[string]*Glyph{},
+			Encoding: encoding,
+		},
+	}
+	F.NewGlyph(".notdef", 250)
+	g := F.NewGlyph("A", 500)
+	g.MoveTo(10.25, -20.5)
+	g.LineTo(300.75, -20.5)
+	g.LineTo(300.75, 400)
+	g.ClosePath()
+	g = F.NewGlyph("B", 500)
+	g.MoveTo(0, 0)
+	g.CurveTo(0, 800, 200, 800, 200, 0) // the top lies at y = 600
+	g.ClosePath()
+	return F
+}
+
+// fontDictEntry writes the font without eexec and returns an entry of the
+// font dictionary, as a PostScript interpreter sees it.
+func fontDictEntry(t *testing.T, F *Font, key postscript.Name) postscript.Object {
+	t.Helper()
+	buf := &bytes.Buffer{}
+	err := F.Write(buf, &WriterOptions{Format: FormatNoEExec})
+	if err != nil {
+		t.Fatal(err)
+	}
+	intp := postscript.NewInterpreter()
+	err = intp.Execute(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, fd := range intp.FontDirectory {
+		return fd.(postscript.Dict)[key]
+	}
+	t.Fatal("no font found")
+	return nil
+}
+
+func TestWriteFontBBox(t *testing.T) {
+	F := makeBBoxTestFont()
+
+	obj := fontDictEntry(t, F, "FontBBox")
+	arr, ok := obj.(postscript.Array)
+	if !ok || len(arr) != 4 {
+		t.Fatalf("FontBBox = %v", obj)
+	}
+	var got [4]float64
+	for i, x := range arr {
+		v, ok := x.(postscript.Integer)
+		if !ok {
+			t.Fatalf("FontBBox entry %d = %v, want an integer", i, x)
+		}
+		got[i] = float64(v)
+	}
+	bbox := rect.Rect{LLx: got[0], LLy: got[1], URx: got[2], URy: got[3]}
+
+	// the box encloses every glyph, and no smaller integer box does
+	var union rect.Rect
+	for name := range F.Glyphs {
+		glyphBBox := F.GlyphBBox(matrix.Identity, name)
+		if glyphBBox.IsZero() {
+			continue
+		}
+		if !bbox.Covers(glyphBBox) {
+			t.Errorf("FontBBox %v does not contain glyph %q with box %v", bbox, name, glyphBBox)
+		}
+		union.Extend(glyphBBox)
+	}
+	if union.LLx-bbox.LLx >= 1 || union.LLy-bbox.LLy >= 1 ||
+		bbox.URx-union.URx >= 1 || bbox.URy-union.URy >= 1 {
+		t.Errorf("FontBBox %v is not tight around %v", bbox, union)
+	}
+}
+
+func TestWriteFontBBoxNoInk(t *testing.T) {
+	F := makeBBoxTestFont()
+	F.Glyphs = map[string]*Glyph{}
+	F.NewGlyph(".notdef", 250)
+	F.NewGlyph("space", 250)
+
+	obj := fontDictEntry(t, F, "FontBBox")
+	want := postscript.Array{postscript.Integer(0), postscript.Integer(0), postscript.Integer(0), postscript.Integer(0)}
+	if d := cmp.Diff(want, obj); d != "" {
+		t.Errorf("FontBBox mismatch (-want +got):\n%s", d)
+	}
+}
+
+func TestWriteEncodingLength(t *testing.T) {
+	for _, n := range []int{0, 255, 257} {
+		F := makeBBoxTestFont()
+		if n == 0 {
+			F.Encoding = nil
+		} else {
+			F.Encoding = make([]string, n)
+			for i := range F.Encoding {
+				F.Encoding[i] = ".notdef"
+			}
+		}
+		err := F.Write(io.Discard, nil)
+		if err == nil {
+			t.Errorf("%d entries: expected an error", n)
+		}
+	}
+}
+
+// TestWriteEncodingRoundTrip checks that an encoding which leaves the code of
+// an existing glyph unused reads back unchanged.
+func TestWriteEncodingRoundTrip(t *testing.T) {
+	F := makeBBoxTestFont() // code 65 ("A") is used, code 66 ("B") is not
+
+	buf := &bytes.Buffer{}
+	err := F.Write(buf, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	G, err := Read(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := cmp.Diff(F.Encoding, G.Encoding); d != "" {
+		t.Errorf("encoding changed (-want +got):\n%s", d)
 	}
 }

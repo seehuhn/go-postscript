@@ -18,6 +18,8 @@ type Outlines struct {
 
 	Private *PrivateDict
 
+	// Encoding is the built-in encoding of the font.  It holds 256 glyph
+	// names, indexed by character code, with ".notdef" for unused codes.
 	Encoding []string
 }
 

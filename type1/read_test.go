@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
+	"seehuhn.de/go/geom/matrix"
 	"seehuhn.de/go/geom/path"
 	"seehuhn.de/go/geom/vec"
 
@@ -110,5 +111,69 @@ func TestReadErrorAfterFont(t *testing.T) {
 
 	if _, err := Read(strings.NewReader("%!\n{ 1")); err == nil {
 		t.Error("no font: got no error")
+	}
+}
+
+// TestReadRepairsEncoding checks that fonts with a missing or malformed
+// Encoding can be read, and that a read-write-read cycle is stable.
+func TestReadRepairsEncoding(t *testing.T) {
+	encoding := makeEmptyEncoding()
+	encoding[1] = "A"
+	F := &Font{
+		FontInfo: &FontInfo{
+			FontName:   "EncodingTest",
+			FontMatrix: matrix.Matrix{0.001, 0, 0, 0.001, 0, 0},
+		},
+		Outlines: &Outlines{
+			Private:  &PrivateDict{BlueValues: []float64{-10, 0}},
+			Glyphs:   map[string]*Glyph{},
+			Encoding: encoding,
+		},
+	}
+	F.NewGlyph(".notdef", 250)
+	g := F.NewGlyph("A", 500)
+	g.MoveTo(0, 0)
+	g.LineTo(400, 0)
+	g.LineTo(200, 600)
+	g.ClosePath()
+
+	buf := &bytes.Buffer{}
+	err := F.Write(buf, &WriterOptions{Format: FormatNoEExec})
+	if err != nil {
+		t.Fatal(err)
+	}
+	orig := buf.String()
+	const encodingCode = "/Encoding 256 array\n0 1 255 {1 index exch /.notdef put} for\ndup 1 /A put\nreadonly def\n"
+	if !strings.Contains(orig, encodingCode) {
+		t.Fatal("unexpected encoding code in test font")
+	}
+
+	cases := map[string]string{
+		"missing":   "",
+		"long":      "/Encoding 300 array\n0 1 299 {1 index exch /.notdef put} for\ndup 1 /A put\nreadonly def\n",
+		"short":     "/Encoding 100 array\n0 1 99 {1 index exch /.notdef put} for\ndup 1 /A put\nreadonly def\n",
+		"not names": "/Encoding 256 array\n0 1 255 {1 index exch /.notdef put} for\ndup 1 7 put\nreadonly def\n",
+		"not array": "/Encoding 42 def\n",
+	}
+	for name, code := range cases {
+		t.Run(name, func(t *testing.T) {
+			data := strings.Replace(orig, encodingCode, code, 1)
+			F1, err := Read(strings.NewReader(data))
+			if err != nil {
+				t.Fatal(err)
+			}
+			buf := &bytes.Buffer{}
+			err = F1.Write(buf, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			F2, err := Read(buf)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if d := cmp.Diff(F1, F2); d != "" {
+				t.Errorf("round trip failed (-want +got):\n%s", d)
+			}
+		})
 	}
 }
